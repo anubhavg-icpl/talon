@@ -103,7 +103,7 @@ func (s *Server) runWorkflow(ctx context.Context, runID string, input core.RunIn
 	s.store.SetStatus(runID, "running")
 	result, err := s.orch.Run(ctx, input)
 	if err != nil {
-		log.Printf("api: run %s: %v", runID, err)
+		log.Printf("talon-core: run %s: %v", runID, err)
 		s.store.SetError(runID, err)
 		return
 	}
@@ -188,13 +188,13 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 
 	go s.resumeWorkflow(context.Background(), runID, sess.RunInput, decision)
 
-	writeJSON(w, http.StatusOK, map[string]string{"message": "Decision received, resuming core..."})
+	writeJSON(w, http.StatusOK, map[string]string{"message": "Decision received, resuming orchestrator..."})
 }
 
 func (s *Server) resumeWorkflow(ctx context.Context, runID string, input core.RunInput, decision core.Decision) {
 	result, err := s.orch.Resume(ctx, input, decision)
 	if err != nil {
-		log.Printf("api: resume %s: %v", runID, err)
+		log.Printf("talon-core: resume %s: %v", runID, err)
 		s.store.SetError(runID, err)
 		return
 	}
