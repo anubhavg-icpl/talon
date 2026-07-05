@@ -1,0 +1,44 @@
+services:
+  # 1. Kali-based Metasploit RPC Server
+  metasploit:
+    build:
+      context: ./kali-msf # Points to the folder with the Kali Dockerfile
+      dockerfile: Dockerfile
+    container_name: msf_rpc
+    # Maps the dynamic host port to the dynamic container port
+    # ports:
+    #   - "${MSF_PORT:-5554}:${MSF_PORT:-5554}"
+    environment:
+      - MSF_PORT=${MSF_PORT:-5554}
+
+    volumes:
+      # Note: The default user in the Kali image is 'root', so the MSF directory changes
+      - ./msf-data:/root/.msf4
+      - ./msf_payloads:/payloads
+    restart: unless-stopped
+    network_mode: host
+
+  # 2. Hexstrike AI Server
+  hexstrike:
+    image: ghcr.io/suryaaramesh/suryaarc-hexstrike:latest
+    container_name: hexstrike
+    privileged: true
+    # Maps the hexstrike port dynamically
+    # ports:
+    #   - "${HEXSTRIKE_PORT:-8888}:${HEXSTRIKE_PORT:-8888}"
+    environment:
+      - HEXSTRIKE_PORT=${HEXSTRIKE_PORT:-8888}
+    restart: unless-stopped
+    # If your Python script takes a port argument, you can append it like this:
+    # python hexstrike_server.py --port $HEXSTRIKE_PORT
+    command: >
+      bash -c "cd hexstrike-ai &&
+      source hexstrike-env/bin/activate &&
+      python hexstrike_server.py --port $HEXSTRIKE_PORT"
+    network_mode: host
+      
+
+  # 3. Custom Python FastAPI Agent
+t
+
+# Define the custom bridge network for internal DNS resolution
