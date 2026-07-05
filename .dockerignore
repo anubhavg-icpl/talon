@@ -1,0 +1,8 @@
+.git
+.claude
+.claude-flow
+kali-msf
+msf-data
+msf_payloads
+database.yml
+docker-compose.yml

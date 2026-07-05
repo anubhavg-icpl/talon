@@ -28,14 +28,14 @@ services:
       python hexstrike_server.py --port $HEXSTRIKE_PORT"
     network_mode: host
 
-  # 3. Go API server (replaces pentest_core/fast_api.py) -- spawns
-  # hexstrike-mcp and metasploit-mcp as local stdio subprocesses.
-  api:
+  # 3. Talon Core -- the HTTP control plane (replaces pentest_core/fast_api.py),
+  # spawns Talon Arsenal and Talon Strike as local stdio subprocesses.
+  talon-core:
     build:
-      context: ./go
+      context: .
       dockerfile: Dockerfile
-    container_name: pentester2_api
-    command: ["/app/api"]
+    container_name: talon_core
+    command: ["/app/talon-core"]
     environment:
       - HEXSTRIKE_SERVER_URL=http://localhost:${HEXSTRIKE_PORT:-8888}
       - MSF_SERVER=localhost
@@ -52,13 +52,13 @@ services:
     restart: unless-stopped
     network_mode: host
 
-  # 4. Go queue worker (replaces executor.py's Celery task)
-  worker:
+  # 4. Talon Relay -- the AMQP queue worker (replaces executor.py's Celery task)
+  talon-relay:
     build:
-      context: ./go
+      context: .
       dockerfile: Dockerfile
-    container_name: pentester2_worker
-    command: ["/app/worker"]
+    container_name: talon_relay
+    command: ["/app/talon-relay"]
     environment:
       - AMQP_URL=${AMQP_URL:?AMQP_URL must be set}
       - HEXSTRIKE_SERVER_URL=http://localhost:${HEXSTRIKE_PORT:-8888}

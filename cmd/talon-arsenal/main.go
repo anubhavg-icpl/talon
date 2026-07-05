@@ -1,0 +1,24 @@
+// Command talon-arsenal is the Go port of pentest_core/hexstrike_mcp.py: an
+// MCP stdio server exposing the HexStrike AI HTTP API as 151 tools.
+package main
+
+import (
+	"log"
+	"time"
+
+	"github.com/anubhavg-icpl/pentester2/internal/arsenal"
+	"github.com/anubhavg-icpl/pentester2/internal/config"
+	"github.com/mark3labs/mcp-go/server"
+)
+
+func main() {
+	cfg := config.LoadHexstrikeConfig()
+	client := arsenal.NewClient(cfg.ServerURL, time.Duration(cfg.Timeout)*time.Second)
+
+	srv := server.NewMCPServer("talon-arsenal", "1.0.0")
+	arsenal.Register(srv, client)
+
+	if err := server.ServeStdio(srv); err != nil {
+		log.Fatalf("talon-arsenal: %v", err)
+	}
+}
