@@ -10,6 +10,7 @@ RUN apt-get update && \
 # Set a default port in case the environment variable is missing
 ENV MSF_PORT=5554
 
-# Run msfrpcd in the foreground using the port from the environment variable
-# 'sh -c' is required here so Docker evaluates the $MSF_PORT variable at runtime
-CMD sh -c "msfrpcd -P network_msf -f -a 0.0.0.0 -p $MSF_PORT"
+# MSF_PASSWORD has no default -- msfrpcd refuses to start without one, which
+# is the point: no hardcoded credential baked into the image.
+# 'sh -c' is required here so Docker evaluates the env vars at runtime
+CMD sh -c "if [ -z \"$MSF_PASSWORD\" ]; then echo 'MSF_PASSWORD is required' >&2; exit 1; fi; exec msfrpcd -P \"$MSF_PASSWORD\" -f -a 0.0.0.0 -p $MSF_PORT"
