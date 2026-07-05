@@ -19,7 +19,7 @@ import (
 
 const (
 	taskQueue   = "execute_agent_task"
-	outputQueue = "core.pentest.output"
+	outputQueue = "agent.pentest.output"
 
 	// maxAutoApprovals bounds the auto-approve loop below in case the
 	// orchestrator keeps re-raising the same interrupt.
@@ -63,7 +63,7 @@ type CompletionPayload struct {
 }
 
 // Worker consumes execute_agent_task messages and publishes RUN_COMPLETED
-// events to core.pentest.output.
+// events to agent.pentest.output.
 type Worker struct {
 	conn *amqp.Connection
 	ch   *amqp.Channel
