@@ -1,7 +1,4 @@
-// Package hexstrike proxies the HexStrike AI HTTP API server as MCP tools,
-// porting pentest_core/hexstrike_mcp.py. HexStrike itself (a prebuilt image,
-// ghcr.io/suryaaramesh/suryaarc-hexstrike) is untouched -- this package only
-// replaces the Python MCP client that sits in front of it.
+// Package arsenal proxies the Talon Arsenal Engine's HTTP API as MCP tools.
 package arsenal
 
 import (
@@ -31,10 +28,10 @@ func (c *Client) url(endpoint string) string {
 	return c.baseURL + "/" + strings.TrimLeft(endpoint, "/")
 }
 
-// Get mirrors HexStrikeClient.safe_get: GET with query params, never returns
-// a Go error for HTTP/network failures -- it folds them into the result map
-// as {"error": ..., "success": false}, matching the Python client's contract
-// so callers don't need special-case error handling per tool.
+// Get issues a GET request with query params. It never returns a Go error
+// for HTTP/network failures -- it folds them into the result map as
+// {"error": ..., "success": false} so callers don't need special-case
+// error handling per tool.
 func (c *Client) Get(endpoint string, params map[string]any) map[string]any {
 	q := url.Values{}
 	for k, v := range params {
@@ -55,7 +52,7 @@ func (c *Client) Get(endpoint string, params map[string]any) map[string]any {
 	return decodeOrError(resp)
 }
 
-// Post mirrors HexStrikeClient.safe_post.
+// Post issues a POST request with a JSON body, same error contract as Get.
 func (c *Client) Post(endpoint string, data map[string]any) map[string]any {
 	body, err := json.Marshal(data)
 	if err != nil {

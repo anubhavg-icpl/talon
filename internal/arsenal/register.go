@@ -69,8 +69,8 @@ func asInt(v any) (int64, bool) {
 }
 
 // buildHandler implements the uniform proxy behavior every generated tool
-// shares: gather declared params (falling back to their Python-side
-// defaults), map them onto the HexStrike request shape, and forward.
+// shares: gather declared params (falling back to their defaults), map
+// them onto the Arsenal Engine's request shape, and forward.
 func buildHandler(spec toolSpec, client *Client) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args := req.GetArguments()

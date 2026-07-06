@@ -1,5 +1,5 @@
-// Command talon-arsenal is the Go port of pentest_core/hexstrike_mcp.py: an
-// MCP stdio server exposing the HexStrike AI HTTP API as 151 tools.
+// Command talon-arsenal is an MCP stdio server exposing the Talon Arsenal
+// Engine's HTTP API as 151 tools.
 package main
 
 import (

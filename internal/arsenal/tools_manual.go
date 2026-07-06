@@ -10,16 +10,12 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// registerManualTools ports the 11 hexstrike_mcp.py tools whose bodies do
-// more than a straight param->body passthrough (comma-split lists, int
+// registerManualTools registers the 11 Arsenal tools whose bodies do more
+// than a straight param->body passthrough (comma-split lists, int
 // clamping, or fully local playbook generation) and so don't fit the
-// mechanical generatedTools table.
-//
-// ponytail: ai_generate_attack_suite and comprehensive_api_audit called
-// `self.ai_generate_payload(...)` / `self.api_fuzzer(...)` etc. in the
-// Python source with no `self` param in scope -- a real bug (NameError at
-// call time). Here they call the same underlying HexStrike endpoints
-// directly instead, which is what the Python code was clearly trying to do.
+// mechanical generatedTools table. ai_generate_attack_suite and
+// comprehensive_api_audit call the underlying Arsenal Engine endpoints
+// directly rather than delegating to the sibling tool functions.
 func registerManualTools(srv *server.MCPServer, client *Client) {
 	textResult := func(v any) *mcp.CallToolResult {
 		b, err := json.Marshal(v)
@@ -130,7 +126,7 @@ func registerManualTools(srv *server.MCPServer, client *Client) {
 			ctxStr := strOr(a["context"], "{}")
 			var ctxDict map[string]any
 			if ctxStr != "{}" {
-				_ = json.Unmarshal([]byte(ctxStr), &ctxDict) // best-effort, same as the Python try/except
+				_ = json.Unmarshal([]byte(ctxStr), &ctxDict) // best-effort; falls through to an empty map on parse failure
 			}
 			if ctxDict == nil {
 				ctxDict = map[string]any{}
@@ -549,8 +545,8 @@ func intOr(v any, fallback int) int {
 	}
 }
 
-// splitRaw mirrors Python's bare `s.split(",")` (no trimming/filtering),
-// used by the three bugbounty_* tools' scope/priority_vulns fields.
+// splitRaw is a plain comma-split (no trimming/filtering), used by the
+// three bugbounty_* tools' scope/priority_vulns fields.
 func splitRaw(s string) []string {
 	if s == "" {
 		return []string{}
