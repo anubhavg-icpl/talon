@@ -1,6 +1,6 @@
-// Package config holds run-scoped attacker context and process-wide env config,
-// mirroring pentest_core.final.Context and the various os.getenv() reads scattered
-// through the Python codebase.
+// Package config holds run-scoped attacker context and process-wide,
+// env-var-driven configuration. No setting here has a hardcoded credential
+// fallback -- anything required fails fast if unset.
 package config
 
 import (
@@ -8,8 +8,8 @@ import (
 	"strconv"
 )
 
-// Context is the attacker context for a single run (LHOST/LPORT for reverse
-// shells and listeners), equivalent to pentest_core.final.Context.
+// Context is the attacker context for a single run (LHOST/LPORT for
+// reverse shells and listeners).
 type Context struct {
 	LHOST string
 	LPORT int
@@ -55,16 +55,15 @@ type MSFConfig struct {
 	Server   string
 	Port     string
 	SSL      bool
-	// PayloadSaveDir mirrors PAYLOAD_SAVE_DIR from MetasploitMCP.py.
+	// PayloadSaveDir is where generated Metasploit payloads are written.
 	PayloadSaveDir string
 }
 
 func LoadMSFConfig() MSFConfig {
 	home, _ := os.UserHomeDir()
 	return MSFConfig{
-		// ponytail: no hardcoded password fallback (Python had "network_msf" baked
-		// in two places) -- required env var, fail fast instead of silently using
-		// a guessable default in production.
+		// ponytail: no hardcoded password fallback -- required env var, fail
+		// fast instead of silently using a guessable default in production.
 		Password:       os.Getenv("MSF_PASSWORD"),
 		Server:         getenv("MSF_SERVER", "msf_rpc"),
 		Port:           getenv("MSF_PORT", "5554"),
@@ -81,4 +80,20 @@ type AMQPConfig struct {
 func LoadAMQPConfig() AMQPConfig {
 	// ponytail: no hardcoded guest:guest@localhost fallback -- required env var.
 	return AMQPConfig{URL: os.Getenv("AMQP_URL")}
+}
+
+// LLMConfig selects and configures the ChatModel backend. Bedrock remains
+// the default (region + model IDs are set per-caller); set
+// LLM_PROVIDER=ollama to run every model call against a local Ollama
+// server instead, with zero AWS dependency.
+type LLMConfig struct {
+	Provider  string // "bedrock" (default) or "ollama"
+	OllamaURL string
+}
+
+func LoadLLMConfig() LLMConfig {
+	return LLMConfig{
+		Provider:  getenv("LLM_PROVIDER", "bedrock"),
+		OllamaURL: getenv("OLLAMA_URL", "http://localhost:11434"),
+	}
 }
