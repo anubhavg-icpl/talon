@@ -52,12 +52,15 @@ RUN go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest && \
 # exploitation stack) from the vendored, unmodified requirements.txt.
 # ---------------------------------------------------------------------------
 COPY requirements.txt /opt/arsenal-engine/requirements.txt
-RUN pip3 install --break-system-packages --no-cache-dir -r /opt/arsenal-engine/requirements.txt
+# --ignore-installed: kali-rolling ships several of these via apt without a
+# pip RECORD file, so a plain install aborts with "uninstall-no-record-file".
+# Ignoring the installed copies lets pip lay its pinned versions down cleanly.
+RUN pip3 install --break-system-packages --no-cache-dir --ignore-installed -r /opt/arsenal-engine/requirements.txt
 
 # ---------------------------------------------------------------------------
 # Python packages available via pip that aren't in Kali's apt repos.
 # ---------------------------------------------------------------------------
-RUN pip3 install --break-system-packages --no-cache-dir \
+RUN pip3 install --break-system-packages --no-cache-dir --ignore-installed \
     volatility3 paramspider uro x8
 
 # ---------------------------------------------------------------------------
