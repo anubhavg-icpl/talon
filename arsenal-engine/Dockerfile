@@ -59,9 +59,11 @@ RUN pip3 install --break-system-packages --no-cache-dir --ignore-installed -r /o
 
 # ---------------------------------------------------------------------------
 # Python packages available via pip that aren't in Kali's apt repos.
+# Skipped in the lean local e2e build (none are needed to boot the API server
+# or run nmap recon); uncomment for a full production image.
 # ---------------------------------------------------------------------------
-RUN pip3 install --break-system-packages --no-cache-dir --ignore-installed \
-    volatility3 paramspider uro x8
+#RUN pip3 install --break-system-packages --no-cache-dir --ignore-installed \
+#    volatility3 paramspider uro x8
 
 # ---------------------------------------------------------------------------
 # NOT installed -- documented rather than silently missing. Any tool call
