@@ -1,7 +1,7 @@
-// Package agent is the Go port of pentest_core/final.py: a LangGraph-style
-// orchestrator delegating to recon/exploit/post_exploit/codegen/report
-// subagents over MCP tools, with tool tracking, tool-call limits, context
-// trimming, and a human-in-the-loop gate on nmap_scan.
+// Package core implements the agent orchestrator: a tool-calling loop that
+// delegates to recon/exploit/post_exploit/codegen/report subagents over MCP
+// tools, with tool tracking, tool-call limits, context trimming, and a
+// human-in-the-loop gate on nmap_scan.
 package core
 
 import (
@@ -13,8 +13,7 @@ import (
 	"github.com/anubhavg-icpl/pentester2/internal/mcpclient"
 )
 
-// RunInput mirrors the TargetRequest/TargetInput payloads from fast_api.py
-// and final.py's CLI main().
+// RunInput describes the target and attacker context for one validation run.
 type RunInput struct {
 	TargetIP    string
 	CVEID       string
@@ -23,7 +22,7 @@ type RunInput struct {
 	Context     config.Context
 }
 
-// ToolCallRecord mirrors ToolCallRecord in final.py's ToolCallTrackerMiddleware.
+// ToolCallRecord is one logged tool invocation within a run.
 type ToolCallRecord struct {
 	Index    int
 	ToolName string
@@ -35,30 +34,29 @@ type ToolCallRecord struct {
 type RunResult struct {
 	FinalMessage string
 	ToolLog      []ToolCallRecord
-	// JudgeVerdict reports whether the judge_output LLM call confirmed the
+	// JudgeVerdict reports whether the judge model confirmed the
 	// exploitation objective was met. Only meaningful when Interrupted is false.
 	JudgeVerdict bool
 	Interrupted  bool
 	Interrupt    *PendingInterrupt
 }
 
-// PendingInterrupt describes a HITL-gated tool call awaiting a decision,
-// mirroring the HumanInTheLoopMiddleware interrupt payload in final.py.
+// PendingInterrupt describes a HITL-gated tool call awaiting a decision.
 type PendingInterrupt struct {
 	ToolName string
 	Args     map[string]any
 }
 
-// Decision resolves a PendingInterrupt, mirroring ResumeRequest in fast_api.py.
+// Decision resolves a PendingInterrupt.
 type Decision struct {
 	Type       string // "approve", "reject", "edit"
 	EditedArgs map[string]any
 }
 
 // CodegenTool is the "custom_exploit" tool the codegen subagent calls when
-// prebuilt Metasploit modules fail -- implemented by internal/codegen,
-// injected here to avoid an import cycle (agent <- codegen <- llm, not
-// agent -> codegen -> agent).
+// prebuilt Metasploit modules fail -- implemented by internal/forge,
+// injected here to avoid an import cycle (core <- forge <- llm, not
+// core -> forge -> core).
 type CodegenTool interface {
 	Name() string
 	Description() string
@@ -66,19 +64,18 @@ type CodegenTool interface {
 }
 
 // Orchestrator runs one full pentest validation workflow against a live MCP
-// tool set. It is stateless between runs except for the ToolCallTracker log,
-// mirroring build_agent()'s returned LangGraph app in final.py.
+// tool set. It is stateless between runs except for its tool-call log and
+// any parked interrupted-run sessions.
 type Orchestrator struct {
 	model   llm.ChatModel
 	tools   *mcpclient.Multi
 	codegen CodegenTool
 	judge   llm.ChatModel
 
-	// mu/sessions hold state for interrupted runs. There is no LangGraph
-	// checkpointer in this port, so the Orchestrator itself is the one piece
-	// of state a paused run rides on between Run() and Resume() -- keyed by
-	// the identical RunInput the caller passes to both (see run() in
-	// orchestrator.go for how sessions are parked and resumed).
+	// mu/sessions hold state for interrupted runs -- the Orchestrator is
+	// the one place a paused run's state rides between Run() and Resume(),
+	// keyed by the identical RunInput the caller passes to both (see run()
+	// in orchestrator.go for how sessions are parked and resumed).
 	mu       sync.Mutex
 	sessions map[RunInput]*orchestratorSession
 }
@@ -94,9 +91,8 @@ func New(model llm.ChatModel, judge llm.ChatModel, tools *mcpclient.Multi, codeg
 }
 
 // Run executes the workflow to completion (or to its first pending
-// interrupt). Callers resume an interrupted run by calling Run again with
-// the same RunInput plus a non-nil Decision via ResumeWith -- see
-// orchestrator.go for the stateful session wrapper used by cmd/api.
+// interrupt). Callers resume an interrupted run via Resume, passing the
+// identical RunInput plus the human's Decision.
 func (o *Orchestrator) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	return o.run(ctx, input, nil)
 }

@@ -7,14 +7,13 @@ import (
 	"github.com/anubhavg-icpl/pentester2/internal/llm"
 )
 
-// judgeRunObjective is the fixed objective string main() passes into
-// judge_output() in final.py (line 558) -- that's the only call site there
-// is, so it's baked in here rather than threaded through as a parameter.
+// judgeRunObjective is the fixed objective every run is judged against --
+// there's currently only one call site, so it's baked in here rather than
+// threaded through as a parameter.
 const judgeRunObjective = "verify if the exploitation happened or not based on the output given and ONLY return TRUE or FALSE"
 
-// judgeOutput ports judge_output() from final.py: asks the judge model
-// whether the orchestrator's final output actually demonstrates the
-// exploitation objective was met.
+// judgeOutput asks the judge model whether the orchestrator's final output
+// actually demonstrates the exploitation objective was met.
 func judgeOutput(ctx context.Context, judge llm.ChatModel, outputStr string) (bool, error) {
 	prompt := "You are a quality control judge for a penetration testing agent.\n" +
 		"OBJECTIVE: " + judgeRunObjective + "\n" +

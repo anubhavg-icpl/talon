@@ -1,8 +1,6 @@
 package core
 
-// System prompts ported verbatim from pentest_core/final.py lines 321-364
-// (the commented-out earlier draft at lines 308-320 is intentionally not
-// used -- orchestrator_sys below is the one actually wired into build_agent).
+// System prompts for the orchestrator and each subagent it delegates to.
 const (
 	orchestratorSystemPrompt = "You are a senior penetration testing orchestrator. You will receive target infrastructure details and attacker context (LHOST, LPORT). " +
 		"Your workflow MUST follow these strict sequential steps. DO NOT skip steps or stop early.\n\n" +

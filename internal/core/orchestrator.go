@@ -1,7 +1,7 @@
-// Package agent is the Go port of pentest_core/final.py: a LangGraph-style
-// orchestrator delegating to recon/exploit/post_exploit/codegen/report
-// subagents over MCP tools, with tool tracking, tool-call limits, context
-// trimming, and a human-in-the-loop gate on nmap_scan.
+// Package core implements the agent orchestrator: a tool-calling loop that
+// delegates to recon/exploit/post_exploit/codegen/report subagents over MCP
+// tools, with tool tracking, tool-call limits, context trimming, and a
+// human-in-the-loop gate on nmap_scan.
 package core
 
 import (
@@ -12,17 +12,15 @@ import (
 	"github.com/anubhavg-icpl/pentester2/internal/llm"
 )
 
-// maxToolCalls mirrors ToolCallLimitMiddleware(thread_limit=30, run_limit=30)
-// in final.py. That middleware only wraps the top-level orchestrator (whose
-// only "tools" are subagent delegations), but this port has no separate step
-// budget for the nested subagent loops, so one shared cap applies to every
-// tool call in the run -- delegate_* calls and the real MCP/codegen calls
-// they trigger -- which is the more conservative reading of "cap total tool
-// calls across the whole run".
+// maxToolCalls caps the total number of tool calls across an entire run --
+// both the orchestrator's own delegate_* calls and the real MCP/codegen
+// calls they trigger -- the conservative reading of "cap total tool calls
+// across the whole run".
 const maxToolCalls = 30
 
-// contextTrimTrigger/contextTrimKeep mirror
-// ContextEditingMiddleware(ClearToolUsesEdit(trigger=100_000, keep=3)).
+// contextTrimTrigger/contextTrimKeep bound the running conversation size:
+// once it exceeds contextTrimTrigger characters, all but the last
+// contextTrimKeep tool-result messages are dropped.
 const (
 	contextTrimTrigger = 100_000
 	contextTrimKeep    = 3
@@ -51,11 +49,11 @@ func (t *tracker) record(name string, args map[string]any, output string) {
 	t.log = append(t.log, ToolCallRecord{Index: len(t.log), ToolName: name, Args: args, Output: output})
 }
 
-// orchestratorSession is the resumable state for one interrupted run. There
-// is no LangGraph checkpointer in this port, so the Orchestrator itself
-// (mu/sessions in types.go) is the only place state can ride between a Run()
-// that returns Interrupted and the matching Resume() call -- keyed by the
-// caller's RunInput, which the caller is required to pass back unchanged.
+// orchestratorSession is the resumable state for one interrupted run. The
+// Orchestrator itself (mu/sessions in types.go) is the only place state can
+// ride between a Run() that returns Interrupted and the matching Resume()
+// call -- keyed by the caller's RunInput, which the caller is required to
+// pass back unchanged.
 //
 // ponytail: keying sessions by RunInput means two concurrent runs against an
 // identical target (same IP/CVE/service/description/context) collide.
@@ -98,8 +96,7 @@ type delegateBatchResume struct {
 }
 
 // subagentSpec is the (model, prompt, tools, gate, executor) tuple for one
-// named delegate target, mirroring one entry of SubAgentMiddleware's
-// `subagents=[...]` list in final.py's build_agent().
+// named delegate target.
 type subagentSpec struct {
 	model        llm.ChatModel
 	systemPrompt string
@@ -173,9 +170,8 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 
 // delegateToolSpecs is the synthetic tool surface exposed to the
 // orchestrator's own model -- one callable per subagent, taking a single
-// free-form "instructions" string. This mirrors how SubAgentMiddleware
-// exposes each configured subagent as a callable "task" tool rather than
-// handing the orchestrator raw MCP tool access in final.py.
+// free-form "instructions" string, rather than handing the orchestrator
+// raw MCP tool access directly.
 func delegateToolSpecs() []llm.ToolSpec {
 	const desc = "Detailed task instructions for the subagent, including any target/context details it needs."
 	schema := map[string]any{
@@ -197,7 +193,8 @@ func delegateToolSpecs() []llm.ToolSpec {
 	}
 }
 
-// seedPrompt mirrors main()'s initial_prompt construction in final.py.
+// seedPrompt builds the initial user message describing the target and
+// attacker context.
 func seedPrompt(input RunInput) string {
 	return fmt.Sprintf(
 		"Target Info:\n"+
@@ -242,11 +239,10 @@ func messageLen(messages []llm.Message) int {
 	return n
 }
 
-// trimContext ports ContextEditingMiddleware(ClearToolUsesEdit(trigger=
-// 100_000, keep=3)): once the transcript grows past the trigger, every
-// tool-result message is dropped except the most recent few, keeping all
-// other messages intact. This is a simple length-based trim, not the
-// token-accurate accounting the Python middleware does.
+// trimContext keeps the running conversation from growing unbounded: once
+// the transcript grows past contextTrimTrigger, every tool-result message
+// is dropped except the most recent few, keeping all other messages
+// intact. This is a simple length-based trim, not token-accurate.
 func trimContext(messages []llm.Message) []llm.Message {
 	if messageLen(messages) <= contextTrimTrigger {
 		return messages

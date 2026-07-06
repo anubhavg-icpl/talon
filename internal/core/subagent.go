@@ -10,8 +10,7 @@ import (
 // toolExecFunc runs one real tool call (an MCP tool or the injected codegen
 // tool) and records it into the tracker. Tool-level failures never surface
 // as a Go error here -- they come back as (output, isErr=true) so the model
-// sees them and can react, mirroring how a failed ToolMessage still flows
-// back into the conversation in final.py.
+// sees them and can react.
 type toolExecFunc func(ctx context.Context, call llm.ToolCall) (output string, isErr bool)
 
 func mcpExec(tools *mcpclient.Multi, tr *tracker) toolExecFunc {
@@ -62,8 +61,8 @@ type subagentInterrupt struct {
 }
 
 // applyDecision executes (or rejects) a gated tool call per a human
-// decision, mirroring HumanInTheLoopMiddleware's approve/edit/reject
-// handling in final.py's main() loop.
+// decision: approve runs it as requested, edit runs it with the human's
+// replacement args, reject feeds back an error result.
 func applyDecision(ctx context.Context, call llm.ToolCall, decision Decision, exec toolExecFunc, tr *tracker) (llm.ToolResult, error) {
 	switch decision.Type {
 	case "approve", "edit":
@@ -85,8 +84,7 @@ func applyDecision(ctx context.Context, call llm.ToolCall, decision Decision, ex
 
 // runSubagent drives one subagent's nested tool-calling loop to completion
 // (final text, no more tool calls requested) or until it hits a HITL-gated
-// tool call, mirroring the isolated inner create_agent() loop
-// SubAgentMiddleware runs for each configured subagent in final.py.
+// tool call.
 //
 // Pass resume to continue a loop previously paused by an interrupt:
 // resume.gatedCall is executed per resume.decision, then the loop carries on
