@@ -5,6 +5,7 @@ package strike
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,6 +45,16 @@ func NewClient(ctx context.Context, cfg config.MSFConfig) (*Client, error) {
 		baseURL:        fmt.Sprintf("%s://%s:%s/api/", scheme, cfg.Server, cfg.Port),
 		http:           &http.Client{},
 		PayloadSaveDir: cfg.PayloadSaveDir,
+	}
+	// msfrpcd serves SSL with a self-signed cert that carries no SAN/CN, so
+	// Go's default verifier rejects it ("certificate is not valid for any
+	// names"). msfrpcd is a local, network-isolated daemon whose real auth
+	// boundary is the RPC password, so skip TLS verification here -- the same
+	// way every other msfrpcd client (msfrpc, metasploit's own) handles it.
+	if cfg.SSL {
+		c.http.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
 	}
 
 	loginResp, err := c.doCall(ctx, "auth.login", []any{"auth.login", msfDefaultUsername, cfg.Password})

@@ -42,7 +42,10 @@ mitmproxy>=9.0.0,<11.0.0        # HTTP proxy (mitmproxy imports)
 # exploitation tool surface.
 #pwntools>=4.10.0,<5.0.0         # Binary exploitation (from pwn import *)
 #angr>=9.2.0,<10.0.0             # Binary analysis (import angr)
-#bcrypt==4.0.1                   # Pin bcrypt version for passlib compatibility (fixes pwntools dependency issue)
+# bcrypt pin is KEPT: it fixes a passlib crash (passlib's bcrypt-wrap bug-detect
+# feeds a >72-byte secret to bcrypt, which >=4.1 rejects with ValueError),
+# independent of pwntools. Without it arsenal_engine refuses to boot.
+bcrypt==4.0.1                   # passlib compatibility (bcrypt<4.1)
 
 # ============================================================================
 # EXTERNAL SECURITY TOOLS (150+ Tools - Install separately)
