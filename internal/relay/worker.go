@@ -1,7 +1,7 @@
-// Package queue is a plain AMQP consumer/publisher standing in for the
-// Celery pairing in executor.py (execute_agent_task / get_pentest_ouput).
-// Celery's wire protocol is Python-specific and out of scope here -- this
-// drops into the same RabbitMQ topology by using the same queue names.
+// Package relay is a plain AMQP consumer/publisher: it consumes pentest
+// run requests off a task queue and publishes completion events, using a
+// flat JSON envelope rather than any particular task-queue framework's
+// wire protocol.
 package relay
 
 import (
@@ -26,8 +26,7 @@ const (
 	maxAutoApprovals = 50
 )
 
-// AgentInputs mirrors the agent_inputs kwargs execute_pentest_task receives
-// in executor.py (forwarded on to run_hexstrike_agent).
+// AgentInputs is the target/attacker-context payload for one pentest run.
 type AgentInputs struct {
 	TargetIP    string `json:"target_ip"`
 	CVEID       string `json:"cve_id"`
@@ -36,8 +35,8 @@ type AgentInputs struct {
 	Description string `json:"description"`
 }
 
-// AgentTask mirrors the run_id/project_id/agent_name/agent_inputs payload
-// execute_pentest_task is invoked with.
+// AgentTask is the run_id/project_id/agent_name/agent_inputs message
+// consumed off taskQueue.
 type AgentTask struct {
 	RunID       string      `json:"run_id"`
 	ProjectID   string      `json:"project_id"`
@@ -51,7 +50,7 @@ type CompletionResult struct {
 	RawOutput string `json:"raw_output"`
 }
 
-// CompletionPayload mirrors completion_payload built in executor.py lines 68-79.
+// CompletionPayload is the run-completion event published to outputQueue.
 type CompletionPayload struct {
 	EventType     string           `json:"event_type"`
 	RunID         string           `json:"run_id"`
