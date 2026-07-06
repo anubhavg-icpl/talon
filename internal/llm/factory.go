@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/anubhavg-icpl/ talon/internal/config"
+	"github.com/anubhavg-icpl/talon/internal/config"
 )
 
 // NewModel is the single construction point for every ChatModel in the

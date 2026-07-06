@@ -1,4 +1,4 @@
-module github.com/anubhavg-icpl/ talon
+module github.com/anubhavg-icpl/talon
 
 go 1.25.5
 

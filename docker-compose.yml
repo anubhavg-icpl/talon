@@ -41,13 +41,19 @@ services:
     restart: unless-stopped
     network_mode: host
 
-  # 4. Ollama -- optional local LLM runtime. Only needed if LLM_PROVIDER=ollama;
-  # bring it up explicitly with `docker compose up -d ollama talon-core ...`.
+  # 4. Ollama -- optional local LLM runtime. Only needed when LLM_PROVIDER=ollama
+  # (or LLM_CODE_PROVIDER=ollama). Gated behind the "ollama" profile so a plain
+  # `docker compose up -d` does NOT pull the ~3.2GB ollama image when you're
+  # pointing at a hosted provider (bedrock/openai) instead.
+  #   local stack:   docker compose --profile ollama up -d
+  #   hosted stack:  docker compose up -d
   ollama:
     image: ollama/ollama:latest
     container_name: talon_ollama
+    profiles: ["ollama"]
     volumes:
       - ./ollama-data:/root/.ollama
+      - ./models:/models:ro          # so `ollama create talon -f /models/Modelfile` works in-container
     restart: unless-stopped
     network_mode: host
 
@@ -65,10 +71,23 @@ services:
       - MSF_PORT=${MSF_PORT:-5554}
       - MSF_PASSWORD=${MSF_PASSWORD:?MSF_PASSWORD must be set}
       - MSF_SSL=${MSF_SSL:-true}
+      # ---- LLM provider (bedrock default | ollama | openai) ----
       - LLM_PROVIDER=${LLM_PROVIDER:-bedrock}
+      - LLM_CODE_PROVIDER=${LLM_CODE_PROVIDER:-}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.3}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1000}
+      # Ollama (used when provider=ollama, or LLM_CODE_PROVIDER=ollama)
       - OLLAMA_URL=http://localhost:${OLLAMA_PORT:-11434}
-      - OLLAMA_MAIN_MODEL=${OLLAMA_MAIN_MODEL:-qwen2.5:14b}
-      - OLLAMA_CODE_MODEL=${OLLAMA_CODE_MODEL:-qwen2.5-coder:14b}
+      - OLLAMA_MAIN_MODEL=${OLLAMA_MAIN_MODEL:-talon}
+      - OLLAMA_JUDGE_MODEL=${OLLAMA_JUDGE_MODEL:-talon}
+      - OLLAMA_CODE_MODEL=${OLLAMA_CODE_MODEL:-talon}
+      # OpenAI-compatible (used when provider=openai) -- GLM-5.2 via z.ai by default
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.z.ai/api/coding/paas/v4}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MAIN_MODEL=${OPENAI_MAIN_MODEL:-glm-5.2}
+      - OPENAI_JUDGE_MODEL=${OPENAI_JUDGE_MODEL:-glm-5.2}
+      - OPENAI_CODE_MODEL=${OPENAI_CODE_MODEL:-glm-5.2}
+      # Bedrock (used when provider=bedrock)
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
@@ -96,10 +115,20 @@ services:
       - MSF_PORT=${MSF_PORT:-5554}
       - MSF_PASSWORD=${MSF_PASSWORD:?MSF_PASSWORD must be set}
       - MSF_SSL=${MSF_SSL:-true}
+      # ---- LLM provider (bedrock default | ollama | openai) ----
       - LLM_PROVIDER=${LLM_PROVIDER:-bedrock}
+      - LLM_CODE_PROVIDER=${LLM_CODE_PROVIDER:-}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.3}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1000}
       - OLLAMA_URL=http://localhost:${OLLAMA_PORT:-11434}
-      - OLLAMA_MAIN_MODEL=${OLLAMA_MAIN_MODEL:-qwen2.5:14b}
-      - OLLAMA_CODE_MODEL=${OLLAMA_CODE_MODEL:-qwen2.5-coder:14b}
+      - OLLAMA_MAIN_MODEL=${OLLAMA_MAIN_MODEL:-talon}
+      - OLLAMA_JUDGE_MODEL=${OLLAMA_JUDGE_MODEL:-talon}
+      - OLLAMA_CODE_MODEL=${OLLAMA_CODE_MODEL:-talon}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.z.ai/api/coding/paas/v4}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MAIN_MODEL=${OPENAI_MAIN_MODEL:-glm-5.2}
+      - OPENAI_JUDGE_MODEL=${OPENAI_JUDGE_MODEL:-glm-5.2}
+      - OPENAI_CODE_MODEL=${OPENAI_CODE_MODEL:-glm-5.2}
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}

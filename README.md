@@ -605,7 +605,7 @@ services:
   metasploit:      # kali-msf/Dockerfile -- real Metasploit Framework + msfrpcd
   arsenal-engine:  # arsenal-engine/Dockerfile -- self-built Talon Arsenal Engine
   rabbitmq:        # bundled broker for talon-relay
-  ollama:          # optional local LLM runtime (LLM_PROVIDER=ollama)
+  ollama:          # optional local LLM runtime, gated behind the "ollama" profile
   talon-core:      # this repo's Dockerfile, command: ["/app/talon-core"]
   talon-relay:     # this repo's Dockerfile, command: ["/app/talon-relay"]
 ```
@@ -617,6 +617,45 @@ actually expects to bind, and simplifies the container graph at the cost of
 host-network isolation. If you need real network segmentation, replace this
 with a user-defined bridge network and adjust `MSF_SERVER`/
 `HEXSTRIKE_SERVER_URL` to the bridge's service DNS names).
+
+### Choosing your LLM provider
+
+Talon ships three interchangeable inference backends, selected with
+`LLM_PROVIDER` (see `.env`):
+
+| `LLM_PROVIDER` | Backend | When |
+|---|---|---|
+| `bedrock` (default) | AWS Bedrock | You have AWS access; managed, no local GPU |
+| `openai` | Any OpenAI-compatible `/chat/completions` endpoint (OpenAI, Azure, z.ai/GLM, vLLM, LiteLLM) | Hosted model, no AWS, no local GPU |
+| `ollama` | Local Ollama server | Fully offline / air-gapped; uncensored models for exploit codegen |
+
+The **codegen** role can run on a *different* provider than the rest via
+`LLM_CODE_PROVIDER` — the production best-of-both: a hosted model for
+orchestration/judging and an uncensored local model for exploit generation:
+
+```bash
+# Orchestrator + judge on hosted GLM-5.2; codegen on local uncensored model
+LLM_PROVIDER=openai
+LLM_CODE_PROVIDER=ollama
+```
+
+The bundled `ollama` service is **profile-gated**, so a plain
+`docker compose up -d` (hosted provider) does **not** pull the ~3.2 GB Ollama
+image. Only bring it up when you're actually using a local model:
+
+```bash
+docker compose up -d                          # hosted provider (bedrock/openai)
+docker compose --profile ollama up -d         # adds the local Ollama runtime
+```
+
+When using Ollama, build the model once (Dolphin3-Cyber-8B, the cybersecurity
+fine-tune of dolphin3 — one model serves all three roles):
+
+```bash
+docker compose --profile ollama up -d ollama
+docker compose exec ollama ollama create talon -f /models/Modelfile
+# then OLLAMA_MAIN_MODEL=talon (the default)
+```
 
 ### Minimal walkthrough
 
@@ -1343,7 +1382,7 @@ naming the ceiling and the upgrade condition.
 | Metasploit's console-based execution path (raw byte-stream reads, regex prompt matching against `msf6 >`) isn't implemented, in favor of the `module.execute` RPC job path. | `internal/strike/tools.go` | If a future module type genuinely needs interactive console semantics that `module.execute` can't express. |
 | `send_session_command` doesn't support a nested "shell-within-Meterpreter" state machine. It's a flat write-then-poll-read against the session's native read/write RPC methods. | `internal/strike/tools.go` | If a workflow genuinely needs to drop a Meterpreter session into an OS shell mid-session and run commands there. |
 | Talon Relay auto-approves the `nmap_scan` HITL gate rather than blocking. | `cmd/talon-relay/main.go` (orchestrator construction) | If queue-driven runs need the same human checkpoint as the HTTP API — would require a second AMQP round-trip (publish "awaiting approval," consume a decision message) rather than a synchronous HTTP resume. |
-| `talon-core`'s Bedrock region and three Bedrock model IDs are compiled-in constants (the `LLM_PROVIDER`/`OLLAMA_*` switch is env-configurable, but per-model Bedrock overrides aren't, unlike `talon-relay`'s `AGENT_MODEL_ID`/`JUDGE_MODEL_ID`/`CODE_MODEL_ID`/`BEDROCK_REGION`). | `cmd/talon-core/main.go` | If you need to change Bedrock models without a rebuild — promote the `const`s to `getenv()` calls matching `talon-relay`'s existing pattern. |
+| `talon-core` and `talon-relay` now share a single model factory (`llm.NewModel` + `config.ResolveModel`), so all three roles and all three providers (bedrock/ollama/openai) resolve uniformly from env — no compiled-in model constants remain. (Previously each binary had its own `newModel` copy and `talon-core` ignored `OLLAMA_MAIN_MODEL`.) | `cmd/talon-core/main.go`, `cmd/talon-relay/main.go`, `internal/llm/factory.go` | Resolved; no action. If a future provider needs role-specific construction, extend `llm.NewModel`. |
 | `GET /monitor/tools` requires a `run_id` query parameter and serves per-run logs rather than a single cross-run global tracker. | `internal/control/server.go` | Documented here as an API-shape detail, not a defect. |
 | The `agent.pentest.output` AMQP queue name is a hardcoded string constant, not derived from any config. | `internal/relay/worker.go` | If the platform this integrates with ever needs a configurable output queue name. |
 

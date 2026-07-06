@@ -155,14 +155,17 @@ func ModelIDFor(cfg LLMConfig, role string) string {
 	provider := ProviderFor(cfg, role)
 	switch provider {
 	case "ollama":
+		// Single local model ("talon", built from models/Modelfile) covers all
+		// three roles by default; per-role env still lets an operator split if
+		// they ever want to.
 		if role == RoleMain {
-			return getenv("OLLAMA_MAIN_MODEL", "talon-dolphin")
+			return getenv("OLLAMA_MAIN_MODEL", "talon")
 		}
 		if role == RoleCode {
-			return getenv("OLLAMA_CODE_MODEL", "talon-cyber")
+			return getenv("OLLAMA_CODE_MODEL", "talon")
 		}
 		// judge
-		return getenv("OLLAMA_JUDGE_MODEL", getenv("OLLAMA_MAIN_MODEL", "talon-dolphin"))
+		return getenv("OLLAMA_JUDGE_MODEL", getenv("OLLAMA_MAIN_MODEL", "talon"))
 	case "openai":
 		if role == RoleMain {
 			return getenv("OPENAI_MAIN_MODEL", "glm-5.2")

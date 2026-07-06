@@ -9,12 +9,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/anubhavg-icpl/ talon/internal/config"
-	"github.com/anubhavg-icpl/ talon/internal/control"
-	"github.com/anubhavg-icpl/ talon/internal/core"
-	"github.com/anubhavg-icpl/ talon/internal/forge"
-	"github.com/anubhavg-icpl/ talon/internal/llm"
-	"github.com/anubhavg-icpl/ talon/internal/mcpclient"
+	"github.com/anubhavg-icpl/talon/internal/config"
+	"github.com/anubhavg-icpl/talon/internal/control"
+	"github.com/anubhavg-icpl/talon/internal/core"
+	"github.com/anubhavg-icpl/talon/internal/forge"
+	"github.com/anubhavg-icpl/talon/internal/llm"
+	"github.com/anubhavg-icpl/talon/internal/mcpclient"
 )
 
 // Models are built via the shared llm.NewModel factory (single provider

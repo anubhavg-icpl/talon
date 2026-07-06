@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/anubhavg-icpl/ talon/internal/llm"
+	"github.com/anubhavg-icpl/talon/internal/llm"
 )
 
 // generatorSystemPrompt instructs the model on how to write executable

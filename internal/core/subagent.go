@@ -3,8 +3,8 @@ package core
 import (
 	"context"
 
-	"github.com/anubhavg-icpl/ talon/internal/llm"
-	"github.com/anubhavg-icpl/ talon/internal/mcpclient"
+	"github.com/anubhavg-icpl/talon/internal/llm"
+	"github.com/anubhavg-icpl/talon/internal/mcpclient"
 )
 
 // toolExecFunc runs one real tool call (an MCP tool or the injected codegen

@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/anubhavg-icpl/ talon/internal/config"
-	"github.com/anubhavg-icpl/ talon/internal/core"
+	"github.com/anubhavg-icpl/talon/internal/config"
+	"github.com/anubhavg-icpl/talon/internal/core"
 	"github.com/google/uuid"
 )
 
