@@ -1,4 +1,19 @@
 services:
+  # 0. Vulnerable target (vsftpd 2.3.4 backdoor mimic, CVE-2011-2523) -- ONLY
+  # for authorized local pipeline testing. Profile-gated so a normal deploy
+  # never builds or ships an intentionally-vulnerable service. Bring it up
+  # explicitly:  docker compose --profile vuln up -d vuln-target
+  # Recon finds ftp:21 (fingerprint vsftpd 2.3.4); the backdoor shell lands on
+  # 6200 after the ":)" USER trigger.
+  vuln-target:
+    build:
+      context: ./vuln-target
+      dockerfile: Dockerfile
+    container_name: talon_vuln_target
+    profiles: ["vuln"]
+    restart: "no"
+    network_mode: host
+
   # 1. Kali-based Metasploit RPC Server
   metasploit:
     build:
