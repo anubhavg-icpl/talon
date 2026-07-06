@@ -1,6 +1,6 @@
-// Package api is the Go port of pentest_core/fast_api.py: an HTTP layer in
-// front of the agent orchestrator, exposing start/status/resume/monitor
-// routes for a long-running pentest validation session.
+// Package control is the HTTP layer in front of the agent orchestrator,
+// exposing start/status/resume/monitor routes for a long-running pentest
+// validation session.
 package control
 
 import (
@@ -9,8 +9,7 @@ import (
 	"github.com/anubhavg-icpl/pentester2/internal/core"
 )
 
-// Session is one run's state, equivalent to a session_db[run_id] entry in
-// fast_api.py.
+// Session is one run's state.
 type Session struct {
 	Status           string
 	Output           string
@@ -20,10 +19,7 @@ type Session struct {
 	ToolLog          []core.ToolCallRecord
 }
 
-// Store is a thread-safe in-memory session table. The Python used a bare
-// module-level dict (session_db) mutated from asyncio background tasks with
-// no locking at all -- a real race under concurrent requests; this fixes
-// that with a RWMutex.
+// Store is a thread-safe (RWMutex-protected) in-memory session table.
 type Store struct {
 	mu       sync.RWMutex
 	sessions map[string]*Session
@@ -92,7 +88,7 @@ func (s *Store) SetError(runID string, err error) {
 }
 
 // ClearInterrupt drops the pending interrupt after a resume decision has
-// been accepted, mirroring session_db[run_id]["interrupt"] = None.
+// been accepted.
 func (s *Store) ClearInterrupt(runID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -101,11 +97,9 @@ func (s *Store) ClearInterrupt(runID string) {
 	}
 }
 
-// ToolLog returns the accumulated tool-call log for one run, for
-// GET /monitor/tools?run_id=... -- a deliberate deviation from fast_api.py's
-// single process-wide tool_tracker singleton (final.py has no equivalent of
-// a global tracker in the Go port: ToolCallRecord lives on RunResult
-// per-run), documented in the API summary.
+// ToolLog returns the accumulated tool-call log for one run, served by
+// GET /monitor/tools?run_id=... (per-run rather than a single global log,
+// since ToolCallRecord lives on RunResult per-run).
 func (s *Store) ToolLog(runID string) ([]core.ToolCallRecord, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
