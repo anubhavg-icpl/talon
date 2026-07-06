@@ -15,8 +15,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// Register wires the 12 MetasploitMCP.py @mcp.tool() functions onto srv,
-// backed by c.
+// Register wires the 12 Metasploit tools onto srv, backed by c.
 func Register(srv *server.MCPServer, c *Client) {
 	srv.AddTool(
 		mcp.NewTool("list_exploits",
@@ -213,12 +212,13 @@ func Register(srv *server.MCPServer, c *Client) {
 				payload = &payloadSpec{Name: name, Options: payloadOptions}
 			}
 
-			// ponytail: check_vulnerability and run_as_job mirrored the Python
-			// tool's console-based 'check' pre-flight and its console-vs-job
-			// branch -- both needed the console fallback that was dropped (see
-			// executeModuleJob). Every exploit now always runs as an RPC
-			// background job via module.execute. Upgrade when console support
-			// is ported and the check-then-run flow can be restored.
+			// ponytail: check_vulnerability/run_as_job params are accepted for
+			// API compatibility but not acted on -- both would need a
+			// console-based pre-flight/branch that this client doesn't
+			// implement (see executeModuleJob). Every exploit currently runs
+			// as an RPC background job via module.execute. Upgrade when
+			// console support is added and the check-then-run flow can be
+			// restored.
 			result := executeModuleJob(ctx, c, "exploit", moduleName, options, payload)
 			return textResult(result), nil
 		},
@@ -316,13 +316,11 @@ func Register(srv *server.MCPServer, c *Client) {
 			info, _ := infoRaw.(map[string]any)
 			sessionType := strings.ToLower(strOr(info["type"], "unknown"))
 
-			// ponytail: this drops pymetasploit3's session_shell_type submode
-			// tracking (entering a nested `shell` channel from within
-			// meterpreter via run_with_output(end_strs=["created."]), and
-			// detach()-ing back out via `exit`) -- every command here is a
-			// flat write-then-poll-read against the session's native RPC
-			// methods. Upgrade when meterpreter's nested shell-channel UX
-			// needs to be scripted through this tool.
+			// ponytail: no support for dropping a meterpreter session into a
+			// nested `shell` sub-channel and detaching back out -- every
+			// command here is a flat write-then-poll-read against the
+			// session's native RPC methods. Upgrade when meterpreter's
+			// nested shell-channel UX needs to be scripted through this tool.
 			var status, message, output string
 			switch sessionType {
 			case "meterpreter":
@@ -537,10 +535,9 @@ const (
 
 var shellPromptRE = regexp.MustCompile(`([#$>]|%)\s*$`)
 
-// executeModuleJob mirrors _execute_module_rpc (RPC/background-job path
-// only). The Python source also has a slower console-based fallback with
-// raw byte-stream prompt-regex matching for synchronous exploit/auxiliary/
-// post runs -- that was dropped here; module.execute covers every exec path
+// executeModuleJob runs a module as an RPC background job. A synchronous,
+// console-based execution path (raw byte-stream prompt-regex matching) was
+// deliberately left out; module.execute covers every exec path
 // run_exploit/run_post_module/run_auxiliary_module/start_listener need.
 func executeModuleJob(ctx context.Context, c *Client, modtype, modname string, moduleOptions map[string]any, payload *payloadSpec) map[string]any {
 	fullOptions := make(map[string]any, len(moduleOptions)+2)
@@ -687,9 +684,8 @@ func runShellCommand(ctx context.Context, c *Client, sessionID, command string, 
 }
 
 // pollSessionRead is the Meterpreter equivalent of the shell read loop:
-// there is no reliable end-of-output prompt to match against, so completion
-// is inactivity-based, mirroring what pymetasploit3's run_with_output does
-// under the hood for a plain (non-"shell"/"exit") Meterpreter command.
+// there is no reliable end-of-output prompt to match against, so
+// completion is inactivity-based instead.
 func pollSessionRead(ctx context.Context, c *Client, sessionID, sessionType string, timeout time.Duration) (string, bool) {
 	deadline := time.Now().Add(timeout)
 	lastActivity := time.Now()
@@ -779,7 +775,7 @@ func limitStrings(s []string, n int) []string {
 	return s
 }
 
-// containsSegment mirrors Python's `arch_lower in p.lower().split("/")`.
+// containsSegment reports whether segment is one of path's "/"-separated parts.
 func containsSegment(path, segment string) bool {
 	for _, part := range strings.Split(path, "/") {
 		if part == segment {

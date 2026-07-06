@@ -62,21 +62,19 @@ func normalizeModuleName(name string) string {
 	return name
 }
 
-// Execute runs a module as a background job via module.execute, mirroring
-// _execute_module_rpc's RPC call -- this is the only execution path ported;
-// see tools.go for why the Python source's console-based fallback was
-// dropped. pymetasploit3's module.info/module.options round trips (used to
-// validate options client-side before sending) are skipped too: module.execute
-// validates server-side and fails the same way.
+// Execute runs a module as a background job via module.execute -- the only
+// execution path implemented; see tools.go for why a console-based
+// fallback was left out. A client-side module.info/module.options
+// validation round trip is skipped too: module.execute validates
+// server-side and fails the same way.
 func (c *Client) Execute(ctx context.Context, modtype, modname string, options map[string]any) (map[string]any, error) {
 	return c.Call(ctx, "module.execute", modtype, normalizeModuleName(modname), coerceOptionTypes(options))
 }
 
-// ParseOptionsGracefully mirrors _parse_options_gracefully: accepts a map
-// (already correct), a "key=value,key2=value2" string (the common mistake
-// the Python source tolerates), a JSON object string (an even more common
-// mistake when a caller must pass options through a string-typed field),
-// or nil/empty.
+// ParseOptionsGracefully tolerates a few common ways module options arrive:
+// a map (already correct), a "key=value,key2=value2" string, a JSON object
+// string (common when a caller must pass options through a string-typed
+// field), or nil/empty.
 func ParseOptionsGracefully(v any) (map[string]any, error) {
 	switch opts := v.(type) {
 	case nil:

@@ -1,6 +1,5 @@
-// Command talon-strike is the Go port of
-// pentest_core/MetasploitMCP/MetasploitMCP.py: an MCP server exposing
-// Metasploit RPC functionality (msfrpcd) as 12 tools.
+// Command talon-strike is an MCP server exposing Metasploit RPC
+// functionality (msfrpcd) as 12 tools.
 package main
 
 import (
@@ -14,10 +13,9 @@ import (
 )
 
 func main() {
-	// ponytail: only stdio transport is implemented -- the Python source's
-	// --transport http (SSE via FastAPI/uvicorn) mode was dropped since this
-	// codebase's only caller (the agent orchestrator) always spawns MCP
-	// servers over stdio. Upgrade if an HTTP-facing deployment needs SSE.
+	// ponytail: only stdio transport is implemented -- the only caller (the
+	// agent orchestrator) always spawns MCP servers over stdio. Upgrade to
+	// add an HTTP/SSE transport if a network-facing deployment needs one.
 	transport := flag.String("transport", "stdio", "MCP transport mode (only stdio is supported)")
 	flag.Parse()
 	if *transport != "stdio" {

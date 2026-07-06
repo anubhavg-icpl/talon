@@ -1,6 +1,5 @@
-// Package msfrpc is the Go port of pentest_core/MetasploitMCP/MetasploitMCP.py:
-// a msgpack-RPC client for Metasploit's msfrpcd, plus the 12 MCP tools built
-// on top of it (see tools.go).
+// Package strike is a msgpack-RPC client for Metasploit's msfrpcd, plus the
+// 12 MCP tools built on top of it (see tools.go).
 package strike
 
 import (
@@ -15,13 +14,12 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// msfDefaultUsername mirrors pymetasploit3's MsfRpcClient(username="msf", ...)
-// default -- config.MSFConfig has no Username field since MetasploitMCP.py's
-// own initialize_msf_client() never overrides it either.
+// msfDefaultUsername is the RPC username msfrpcd expects when none is
+// configured -- config.MSFConfig has no Username field since it's never
+// overridden in practice.
 const msfDefaultUsername = "msf"
 
-// Client is a msgpack-RPC client for msfrpcd, mirroring pymetasploit3's
-// MsfRpcClient connection/auth handshake.
+// Client is a msgpack-RPC client for msfrpcd.
 type Client struct {
 	baseURL        string
 	http           *http.Client
@@ -29,12 +27,11 @@ type Client struct {
 	PayloadSaveDir string
 }
 
-// NewClient dials server, authenticates with auth.login, then mirrors
-// pymetasploit3's add_perm_token(): mints a fresh UUID token, registers it
-// via auth.token_add (sent under the login token, per the "every call except
-// auth.login is [method, token, ...params]" rule), and switches to the new
-// token for every subsequent call. This is how the real msfrpcd expects a
-// long-lived client to behave.
+// NewClient dials server, authenticates with auth.login, then mints a fresh
+// UUID token and registers it via auth.token_add (sent under the login
+// token, per the "every call except auth.login is [method, token,
+// ...params]" rule), switching to the new token for every subsequent call.
+// This is how msfrpcd expects a long-lived client to behave.
 func NewClient(ctx context.Context, cfg config.MSFConfig) (*Client, error) {
 	if cfg.Password == "" {
 		return nil, fmt.Errorf("msfrpc: MSF_PASSWORD is required")
