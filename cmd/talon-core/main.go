@@ -1,6 +1,5 @@
-// Command talon-core is the Go port of pentest_core/fast_api.py: an HTTP
-// front end over the agent orchestrator (pentest_core/final.py's
-// build_agent()), mirroring uvicorn.run(app, host="0.0.0.0", port=8000).
+// Command talon-core is the HTTP control plane: a front end over the agent
+// orchestrator, serving on :8000.
 package main
 
 import (
@@ -21,25 +20,41 @@ import (
 const (
 	mainModelID  = "qwen.qwen3-vl-235b-a22b"
 	judgeModelID = "openai.gpt-oss-120b-1:0"
-	// codeModelID mirrors code_gen.py's dedicated code_model, kept distinct
-	// from mainModelID since custom exploit generation is a different task
-	// profile than orchestration.
-	codeModelID        = "us.meta.llama4-maverick-17b-instruct-v1:0"
+	// codeModelID is the dedicated model for custom exploit generation,
+	// kept distinct from mainModelID since it's a different task profile
+	// than orchestration.
+	codeModelID = "us.meta.llama4-maverick-17b-instruct-v1:0"
+
+	ollamaMainModel = "qwen2.5:14b"
+	ollamaCodeModel = "qwen2.5-coder:14b"
+
 	bedrockRegion      = "us-east-1"
 	bedrockTemperature = 0.3
 	bedrockMaxTokens   = 1000
 )
 
+// newModel builds a ChatModel per llmCfg.Provider: Bedrock (default) or a
+// local Ollama server, so the whole platform can run with zero AWS
+// dependency for inference if LLM_PROVIDER=ollama.
+func newModel(ctx context.Context, llmCfg config.LLMConfig, bedrockModelID, ollamaModel string) (llm.ChatModel, error) {
+	if llmCfg.Provider == "ollama" {
+		return llm.NewOllama(llmCfg.OllamaURL, ollamaModel), nil
+	}
+	return llm.NewBedrock(ctx, bedrockModelID, bedrockRegion, bedrockTemperature, bedrockMaxTokens)
+}
+
 func main() {
 	// Load process-wide config up front so missing/invalid env (e.g. no
-	// MSF_PASSWORD) fails fast instead of surfacing later as a confusing MCP
-	// tool-call error, mirroring the config reads scattered through final.py.
+	// MSF_PASSWORD) fails fast instead of surfacing later as a confusing
+	// MCP tool-call error.
 	hexCfg := config.LoadHexstrikeConfig()
 	msfCfg := config.LoadMSFConfig()
+	llmCfg := config.LoadLLMConfig()
 	if msfCfg.Password == "" {
 		log.Println("talon-core: warning: MSF_PASSWORD is not set; Metasploit MCP tool calls will fail")
 	}
 	log.Printf("talon-core: hexstrike server %s (timeout %ds)", hexCfg.ServerURL, hexCfg.Timeout)
+	log.Printf("talon-core: llm provider %s", llmCfg.Provider)
 
 	ctx := context.Background()
 
@@ -52,15 +67,15 @@ func main() {
 	}
 	defer tools.Close()
 
-	model, err := llm.NewBedrock(ctx, mainModelID, bedrockRegion, bedrockTemperature, bedrockMaxTokens)
+	model, err := newModel(ctx, llmCfg, mainModelID, ollamaMainModel)
 	if err != nil {
 		log.Fatalf("talon-core: init main model: %v", err)
 	}
-	judge, err := llm.NewBedrock(ctx, judgeModelID, bedrockRegion, bedrockTemperature, bedrockMaxTokens)
+	judge, err := newModel(ctx, llmCfg, judgeModelID, ollamaMainModel)
 	if err != nil {
 		log.Fatalf("talon-core: init judge model: %v", err)
 	}
-	codeModel, err := llm.NewBedrock(ctx, codeModelID, bedrockRegion, bedrockTemperature, bedrockMaxTokens)
+	codeModel, err := newModel(ctx, llmCfg, codeModelID, ollamaCodeModel)
 	if err != nil {
 		log.Fatalf("talon-core: init code model: %v", err)
 	}
