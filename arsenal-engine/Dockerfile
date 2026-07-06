@@ -22,8 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl wget unzip golang-go \
     # Network & reconnaissance
     nmap masscan amass subfinder fierce dnsenum theharvester \
-    netexec enum4linux-ng smbmap rpcclient nbtscan arp-scan responder \
-    rustscan autorecon \
+    netexec enum4linux-ng smbmap nbtscan arp-scan responder \
+    autorecon \
     # Web application security
     gobuster feroxbuster ffuf dirb dirsearch nuclei nikto sqlmap wpscan \
     wafw00f arjun \
@@ -31,7 +31,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     hydra john hashcat medusa patator hash-identifier \
     # Binary analysis & reverse engineering
     gdb radare2 binwalk checksec foremost steghide exiftool \
-    ropgadget \
     # Forensics
     testdisk sleuthkit \
     && rm -rf /var/lib/apt/lists/*
