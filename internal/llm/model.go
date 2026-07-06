@@ -1,7 +1,6 @@
 // Package llm defines the model-agnostic chat/tool-use contract every agent
-// (orchestrator, subagents, judge) is built against, and a Bedrock Converse
-// implementation of it. Mirrors the role ChatBedrockConverse/ChatOllama play
-// in pentest_core/final.py.
+// (orchestrator, subagents, judge) is built against, with Bedrock and
+// Ollama implementations of it.
 package llm
 
 import "context"

@@ -1,7 +1,6 @@
 // Package mcpclient wraps mark3labs/mcp-go's stdio client so the agent
-// orchestrator can spawn the hexstrike-mcp and metasploit-mcp binaries and
-// call their tools, mirroring langchain_mcp_adapters.MultiServerMCPClient
-// used in pentest_core/final.py and pentest_core/integration.py.
+// orchestrator can spawn the talon-arsenal and talon-strike binaries and
+// call their tools through a single multiplexed client.
 package mcpclient
 
 import (
@@ -74,8 +73,8 @@ func (m *Multi) Tools() []llm.ToolSpec {
 	return append([]llm.ToolSpec(nil), m.tools...)
 }
 
-// Subset returns only the named tools, preserving discovery order -- mirrors
-// final.py's tools_named(*names) helper used to scope each subagent.
+// Subset returns only the named tools, preserving discovery order -- used
+// to scope each subagent to its own tool set.
 func (m *Multi) Subset(names ...string) []llm.ToolSpec {
 	want := make(map[string]bool, len(names))
 	for _, n := range names {

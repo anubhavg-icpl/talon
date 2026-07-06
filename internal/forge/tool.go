@@ -23,10 +23,8 @@ func (t *CustomExploitTool) Description() string {
 	return "Use this tool to generate custom Python code for exploiting vulnerabilities or scanning ports."
 }
 
-// Call runs the generate/execute/feedback retry loop and returns the final
-// execution output, mirroring custom_exploit()'s `return result` in
-// final.py (there result was the whole final_state dict; here we return the
-// last observed output text, which is what the caller LLM actually needs).
+// Call runs the generate/execute/feedback retry loop and returns the last
+// observed execution output -- the text the calling model actually needs.
 func (t *CustomExploitTool) Call(ctx context.Context, query string) (string, error) {
 	return Coder(ctx, t.Model, query)
 }

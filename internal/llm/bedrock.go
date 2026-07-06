@@ -11,8 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 )
 
-// Bedrock implements ChatModel via AWS Bedrock's Converse API, replacing
-// ChatBedrockConverse from pentest_core/final.py.
+// Bedrock implements ChatModel via AWS Bedrock's Converse API.
 type Bedrock struct {
 	client      *bedrockruntime.Client
 	modelID     string

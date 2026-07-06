@@ -9,7 +9,9 @@ import (
 	"github.com/anubhavg-icpl/pentester2/internal/llm"
 )
 
-// generatorSystemPrompt is code_gen.py lines 196-209, verbatim.
+// generatorSystemPrompt instructs the model on how to write executable
+// exploit code for the sandbox: hardcode inputs, always set network
+// timeouts, print clear success/failure output.
 const generatorSystemPrompt = "You are an expert Python exploit developer and pentester.\n" +
 	"Generate ONLY executable Python code that accomplishes the security testing task.\n\n" +
 	"REQUIREMENTS:\n" +
@@ -22,7 +24,8 @@ const generatorSystemPrompt = "You are an expert Python exploit developer and pe
 	"- Unless specified otherwise, assume standard ports (21, 23, 6667, etc.) use plaintext sockets, not SSL.\n" +
 	"COMMON TASKS:\n"
 
-// feedbackSystemPrompt mirrors feedback()'s SystemMessage.
+// feedbackSystemPrompt constrains the completion-check response to a
+// strict boolean.
 const feedbackSystemPrompt = "Respond ONLY true or false."
 
 const (
@@ -31,18 +34,17 @@ const (
 )
 
 var (
-	// codeBlockRe matches a python-tagged (or untagged) fenced code block,
-	// same pattern as the Python re.search(r"```(?:python)?\s*(.*?)```", ...).
+	// codeBlockRe matches a python-tagged (or untagged) fenced code block.
 	codeBlockRe = regexp.MustCompile("(?s)```(?:python)?\\s*(.*?)```")
 
 	// moduleNotFoundRe extracts the missing package name from a
-	// ModuleNotFoundError, same pattern as code_error()'s regex.
+	// ModuleNotFoundError so it can be auto-installed and retried.
 	moduleNotFoundRe = regexp.MustCompile(`ModuleNotFoundError: No module named '([^']+)'`)
 
 	errorKeywords = []string{"error", "traceback", "exception", "failed", "failure"}
 )
 
-// state mirrors CodeExecutorState in code_gen.py.
+// state tracks one generate/execute/feedback retry cycle.
 type state struct {
 	pseudocode string
 	code       string
@@ -53,9 +55,10 @@ type state struct {
 	generatorAttempts int
 }
 
-// Coder runs the generator/executor/feedback retry loop described by
-// get_coder_workflow() in code_gen.py, using a plain Go loop instead of a
-// LangGraph state machine since the state space is bounded (2x2 attempts).
+// Coder runs the generator/executor/feedback retry loop: generate code,
+// execute it in the sandbox, auto-fix a missing-package error and retry,
+// then ask the model whether the task succeeded -- up to 2 generation
+// attempts x 2 execution-fix attempts.
 func Coder(ctx context.Context, model llm.ChatModel, pseudocode string) (string, error) {
 	s := &state{pseudocode: pseudocode}
 
@@ -91,8 +94,8 @@ func Coder(ctx context.Context, model llm.ChatModel, pseudocode string) (string,
 	}
 }
 
-// generate mirrors code_generator(): asks the model for code given the
-// pseudocode plus previous code/output, then extracts the fenced block.
+// generate asks the model for code given the pseudocode plus any previous
+// attempt's code/output, then extracts the fenced code block.
 func generate(ctx context.Context, model llm.ChatModel, s *state) error {
 	messages := []llm.Message{
 		llm.UserMessage(s.pseudocode),
@@ -111,7 +114,7 @@ func generate(ctx context.Context, model llm.ChatModel, s *state) error {
 	return nil
 }
 
-// extractCode mirrors the code_match regex in code_generator(), falling
+// extractCode pulls the fenced code block out of a model response, falling
 // back to the whole response if no fenced block is found.
 func extractCode(text string) string {
 	if m := codeBlockRe.FindStringSubmatch(text); m != nil {
@@ -120,7 +123,8 @@ func extractCode(text string) string {
 	return strings.TrimSpace(text)
 }
 
-// execute mirrors code_executor().
+// execute runs the current generated code in the sandbox and records its
+// combined stdout/stderr.
 func execute(ctx context.Context, s *state) error {
 	stdout, stderr, _, err := ExecPython(ctx, s.code, 0)
 	if err != nil {
@@ -136,7 +140,7 @@ func execute(ctx context.Context, s *state) error {
 	return nil
 }
 
-// hasError mirrors executor_router()'s error-keyword check.
+// hasError reports whether output contains a known error indicator.
 func hasError(output string) bool {
 	lower := strings.ToLower(output)
 	for _, kw := range errorKeywords {
@@ -147,21 +151,21 @@ func hasError(output string) bool {
 	return false
 }
 
-// handleError mirrors code_error(): best-effort pip install of a missing
-// module found via ModuleNotFoundError, then falls through to retry.
+// handleError best-effort pip-installs a missing module found via
+// ModuleNotFoundError, then falls through to retry.
 func handleError(ctx context.Context, s *state) {
 	m := moduleNotFoundRe.FindStringSubmatch(s.output)
 	if m == nil {
 		return
 	}
-	// ponytail: ignore PipInstall errors, same as the Python which never
-	// inspects pip_install()'s return value either -- retry happens
-	// regardless of whether the install succeeded.
+	// ponytail: ignore PipInstall errors -- retry happens regardless of
+	// whether the install succeeded, upgrade if silent install failures
+	// need to short-circuit the retry loop.
 	_, _ = PipInstall(ctx, m[1])
 }
 
-// checkFeedback mirrors feedback(): asks the model whether the task was
-// accomplished given the output.
+// checkFeedback asks the model whether the task was accomplished given the
+// observed output.
 func checkFeedback(ctx context.Context, model llm.ChatModel, s *state) (bool, error) {
 	messages := []llm.Message{
 		llm.UserMessage(fmt.Sprintf("Task: %s\nOutput:\n%s", s.pseudocode, s.output)),

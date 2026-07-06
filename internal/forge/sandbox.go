@@ -1,5 +1,5 @@
-// Package codegen is the Go port of pentest_core/code_gen.py: a Docker-sandboxed
-// Python code executor used as the "codegen" subagent's one tool.
+// Package forge is a Docker-sandboxed Python code executor used as the
+// "codegen" subagent's one tool.
 package forge
 
 import (
@@ -19,16 +19,15 @@ const (
 	image         = "python:3.13-slim"
 )
 
-// ExecResult mirrors the stdout/stderr/exit_code dict returned by
-// exec_python()/pip_install() in code_gen.py.
+// ExecResult is the stdout/stderr/exit-code outcome of a sandboxed command.
 type ExecResult struct {
 	Stdout   string
 	Stderr   string
 	ExitCode int
 }
 
-// EnsureContainer ensures the persistent "python_lab" container exists and is
-// running, mirroring ensure_container().
+// EnsureContainer ensures the persistent "python_lab" sandbox container
+// exists and is running.
 func EnsureContainer(ctx context.Context) error {
 	psOut, err := exec.CommandContext(ctx, "docker", "ps", "-a",
 		"--filter", fmt.Sprintf("name=^%s$", containerName),
@@ -77,8 +76,7 @@ func EnsureContainer(ctx context.Context) error {
 }
 
 // ExecPython executes code inside the persistent container with a strict
-// timeout, mirroring exec_python(). timeout <= 0 defaults to 200s as in the
-// Python default.
+// timeout. timeout <= 0 defaults to 200s.
 func ExecPython(ctx context.Context, code string, timeout time.Duration) (stdout, stderr string, exitCode int, err error) {
 	if timeout <= 0 {
 		timeout = 200 * time.Second
@@ -159,8 +157,7 @@ func ExecPython(ctx context.Context, code string, timeout time.Duration) (stdout
 	return strings.TrimSpace(outBuf.String()), strings.TrimSpace(errBuf.String()), exitCode, nil
 }
 
-// PipInstall installs a package inside the persistent container, mirroring
-// pip_install().
+// PipInstall installs a package inside the persistent sandbox container.
 func PipInstall(ctx context.Context, pkg string) (ExecResult, error) {
 	if err := EnsureContainer(ctx); err != nil {
 		return ExecResult{}, err
