@@ -9,38 +9,21 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/anubhavg-icpl/pentester2/internal/config"
-	"github.com/anubhavg-icpl/pentester2/internal/control"
-	"github.com/anubhavg-icpl/pentester2/internal/core"
-	"github.com/anubhavg-icpl/pentester2/internal/forge"
-	"github.com/anubhavg-icpl/pentester2/internal/llm"
-	"github.com/anubhavg-icpl/pentester2/internal/mcpclient"
+	"github.com/anubhavg-icpl/ talon/internal/config"
+	"github.com/anubhavg-icpl/ talon/internal/control"
+	"github.com/anubhavg-icpl/ talon/internal/core"
+	"github.com/anubhavg-icpl/ talon/internal/forge"
+	"github.com/anubhavg-icpl/ talon/internal/llm"
+	"github.com/anubhavg-icpl/ talon/internal/mcpclient"
 )
 
-const (
-	mainModelID  = "qwen.qwen3-vl-235b-a22b"
-	judgeModelID = "openai.gpt-oss-120b-1:0"
-	// codeModelID is the dedicated model for custom exploit generation,
-	// kept distinct from mainModelID since it's a different task profile
-	// than orchestration.
-	codeModelID = "us.meta.llama4-maverick-17b-instruct-v1:0"
-
-	ollamaMainModel = "qwen2.5:14b"
-	ollamaCodeModel = "qwen2.5-coder:14b"
-
-	bedrockRegion      = "us-east-1"
-	bedrockTemperature = 0.3
-	bedrockMaxTokens   = 1000
-)
-
-// newModel builds a ChatModel per llmCfg.Provider: Bedrock (default) or a
-// local Ollama server, so the whole platform can run with zero AWS
-// dependency for inference if LLM_PROVIDER=ollama.
-func newModel(ctx context.Context, llmCfg config.LLMConfig, bedrockModelID, ollamaModel string) (llm.ChatModel, error) {
-	if llmCfg.Provider == "ollama" {
-		return llm.NewOllama(llmCfg.OllamaURL, ollamaModel), nil
-	}
-	return llm.NewBedrock(ctx, bedrockModelID, bedrockRegion, bedrockTemperature, bedrockMaxTokens)
+// Models are built via the shared llm.NewModel factory (single provider
+// switch for bedrock|ollama|openai), with per-role model IDs resolved from
+// env by config.ResolveModel -- so OLLAMA_MAIN_MODEL / OPENAI_CODE_MODEL /
+// AGENT_MODEL_ID etc. are honored uniformly here and in talon-relay.
+func newModel(ctx context.Context, llmCfg config.LLMConfig, role string) (llm.ChatModel, error) {
+	provider, modelID := config.ResolveModel(llmCfg, role)
+	return llm.NewModel(ctx, llmCfg, provider, modelID)
 }
 
 func main() {
@@ -67,15 +50,15 @@ func main() {
 	}
 	defer tools.Close()
 
-	model, err := newModel(ctx, llmCfg, mainModelID, ollamaMainModel)
+	model, err := newModel(ctx, llmCfg, config.RoleMain)
 	if err != nil {
 		log.Fatalf("talon-core: init main model: %v", err)
 	}
-	judge, err := newModel(ctx, llmCfg, judgeModelID, ollamaMainModel)
+	judge, err := newModel(ctx, llmCfg, config.RoleJudge)
 	if err != nil {
 		log.Fatalf("talon-core: init judge model: %v", err)
 	}
-	codeModel, err := newModel(ctx, llmCfg, codeModelID, ollamaCodeModel)
+	codeModel, err := newModel(ctx, llmCfg, config.RoleCode)
 	if err != nil {
 		log.Fatalf("talon-core: init code model: %v", err)
 	}

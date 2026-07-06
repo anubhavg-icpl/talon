@@ -17,10 +17,6 @@ import (
 	"github.com/anubhavg-icpl/pentester2/internal/relay"
 )
 
-// codeModelID is the dedicated model used for custom exploit generation,
-// kept distinct from the main orchestrator model.
-const codeModelID = "us.meta.llama4-maverick-17b-instruct-v1:0"
-
 func getenv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -28,14 +24,12 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
-// newModel builds a ChatModel per llmCfg.Provider: Bedrock (default) or a
-// local Ollama server, so the whole platform can run with zero AWS
-// dependency for inference if LLM_PROVIDER=ollama.
-func newModel(ctx context.Context, llmCfg config.LLMConfig, region, bedrockModelID, ollamaModel string) (llm.ChatModel, error) {
-	if llmCfg.Provider == "ollama" {
-		return llm.NewOllama(llmCfg.OllamaURL, ollamaModel), nil
-	}
-	return llm.NewBedrock(ctx, bedrockModelID, region, 0.3, 1000)
+// newModel routes through the shared llm.NewModel factory so the provider
+// switch (bedrock|ollama|openai) and per-role model resolution live in one
+// place, identical to talon-core.
+func newModel(ctx context.Context, llmCfg config.LLMConfig, role string) (llm.ChatModel, error) {
+	provider, modelID := config.ResolveModel(llmCfg, role)
+	return llm.NewModel(ctx, llmCfg, provider, modelID)
 }
 
 func main() {

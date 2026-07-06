@@ -13,8 +13,8 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
-	"github.com/anubhavg-icpl/pentester2/internal/config"
-	"github.com/anubhavg-icpl/pentester2/internal/core"
+	"github.com/anubhavg-icpl/ talon/internal/config"
+	"github.com/anubhavg-icpl/ talon/internal/core"
 )
 
 const (

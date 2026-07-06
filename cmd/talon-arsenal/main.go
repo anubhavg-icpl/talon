@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/anubhavg-icpl/pentester2/internal/arsenal"
-	"github.com/anubhavg-icpl/pentester2/internal/config"
+	"github.com/anubhavg-icpl/ talon/internal/arsenal"
+	"github.com/anubhavg-icpl/ talon/internal/config"
 	"github.com/mark3labs/mcp-go/server"
 )
 

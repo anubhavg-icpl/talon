@@ -3,7 +3,7 @@ package forge
 import (
 	"context"
 
-	"github.com/anubhavg-icpl/pentester2/internal/llm"
+	"github.com/anubhavg-icpl/ talon/internal/llm"
 )
 
 // CustomExploitTool implements core.CodegenTool (structurally -- this

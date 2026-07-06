@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/anubhavg-icpl/pentester2/internal/config"
+	"github.com/anubhavg-icpl/ talon/internal/config"
 	"github.com/google/uuid"
 	"github.com/vmihailenco/msgpack/v5"
 )

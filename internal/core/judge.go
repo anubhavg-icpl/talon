@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/anubhavg-icpl/pentester2/internal/llm"
+	"github.com/anubhavg-icpl/ talon/internal/llm"
 )
 
 // judgeRunObjective is the fixed objective every run is judged against --

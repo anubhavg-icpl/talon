@@ -490,8 +490,8 @@ different from Talon Core's behavior.
 ### Building from source
 
 ```bash
-git clone git@github.com:anubhavg-icpl/pentester2.git
-cd pentester2
+git clone git@github.com:anubhavg-icpl/ talon.git
+cd  talon
 go build ./...
 ```
 

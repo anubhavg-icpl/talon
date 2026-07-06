@@ -8,9 +8,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/anubhavg-icpl/pentester2/internal/config"
-	"github.com/anubhavg-icpl/pentester2/internal/llm"
-	"github.com/anubhavg-icpl/pentester2/internal/mcpclient"
+	"github.com/anubhavg-icpl/ talon/internal/config"
+	"github.com/anubhavg-icpl/ talon/internal/llm"
+	"github.com/anubhavg-icpl/ talon/internal/mcpclient"
 )
 
 // RunInput describes the target and attacker context for one validation run.

@@ -1,4 +1,4 @@
-module github.com/anubhavg-icpl/pentester2
+module github.com/anubhavg-icpl/ talon
 
 go 1.25.5
 

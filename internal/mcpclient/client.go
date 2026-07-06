@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/anubhavg-icpl/pentester2/internal/llm"
+	"github.com/anubhavg-icpl/ talon/internal/llm"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )

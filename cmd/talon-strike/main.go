@@ -7,8 +7,8 @@ import (
 	"flag"
 	"log"
 
-	"github.com/anubhavg-icpl/pentester2/internal/config"
-	"github.com/anubhavg-icpl/pentester2/internal/strike"
+	"github.com/anubhavg-icpl/ talon/internal/config"
+	"github.com/anubhavg-icpl/ talon/internal/strike"
 	"github.com/mark3labs/mcp-go/server"
 )
 

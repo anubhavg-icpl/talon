@@ -6,7 +6,7 @@ package control
 import (
 	"sync"
 
-	"github.com/anubhavg-icpl/pentester2/internal/core"
+	"github.com/anubhavg-icpl/ talon/internal/core"
 )
 
 // Session is one run's state.
