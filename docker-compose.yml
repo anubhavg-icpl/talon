@@ -14,22 +14,45 @@ services:
     restart: unless-stopped
     network_mode: host
 
-  # 2. Hexstrike AI Server
-  hexstrike:
-    image: ghcr.io/suryaaramesh/suryaarc-hexstrike:latest
-    container_name: hexstrike
+  # 2. Talon Arsenal Engine -- self-built tool-execution backend for Talon
+  # Arsenal, built from source we control (see arsenal-engine/Dockerfile)
+  # instead of a third-party prebuilt image.
+  arsenal-engine:
+    build:
+      context: ./arsenal-engine
+      dockerfile: Dockerfile
+    container_name: arsenal_engine
     privileged: true
     environment:
-      - HEXSTRIKE_PORT=${HEXSTRIKE_PORT:-8888}
+      - API_PORT=${HEXSTRIKE_PORT:-8888}
     restart: unless-stopped
-    command: >
-      bash -c "cd hexstrike-ai &&
-      source hexstrike-env/bin/activate &&
-      python hexstrike_server.py --port $HEXSTRIKE_PORT"
     network_mode: host
 
-  # 3. Talon Core -- the HTTP control plane (replaces pentest_core/fast_api.py),
-  # spawns Talon Arsenal and Talon Strike as local stdio subprocesses.
+  # 3. RabbitMQ -- backs Talon Relay's queue. Bundled so the stack is
+  # runnable with a single `docker compose up` and no external broker.
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: talon_rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-talon}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+    volumes:
+      - ./rabbitmq-data:/var/lib/rabbitmq
+    restart: unless-stopped
+    network_mode: host
+
+  # 4. Ollama -- optional local LLM runtime. Only needed if LLM_PROVIDER=ollama;
+  # bring it up explicitly with `docker compose up -d ollama talon-core ...`.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: talon_ollama
+    volumes:
+      - ./ollama-data:/root/.ollama
+    restart: unless-stopped
+    network_mode: host
+
+  # 5. Talon Core -- the HTTP control plane, spawns Talon Arsenal and Talon
+  # Strike as local stdio subprocesses.
   talon-core:
     build:
       context: .
@@ -42,17 +65,24 @@ services:
       - MSF_PORT=${MSF_PORT:-5554}
       - MSF_PASSWORD=${MSF_PASSWORD:?MSF_PASSWORD must be set}
       - MSF_SSL=${MSF_SSL:-true}
+      - LLM_PROVIDER=${LLM_PROVIDER:-bedrock}
+      - OLLAMA_URL=http://localhost:${OLLAMA_PORT:-11434}
+      - OLLAMA_MAIN_MODEL=${OLLAMA_MAIN_MODEL:-qwen2.5:14b}
+      - OLLAMA_CODE_MODEL=${OLLAMA_CODE_MODEL:-qwen2.5-coder:14b}
       - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
     volumes:
       # required so the codegen tool's `docker` CLI calls reach the host daemon
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - metasploit
-      - hexstrike
+      - arsenal-engine
     restart: unless-stopped
     network_mode: host
 
-  # 4. Talon Relay -- the AMQP queue worker (replaces executor.py's Celery task)
+  # 6. Talon Relay -- the AMQP queue worker.
   talon-relay:
     build:
       context: .
@@ -66,11 +96,19 @@ services:
       - MSF_PORT=${MSF_PORT:-5554}
       - MSF_PASSWORD=${MSF_PASSWORD:?MSF_PASSWORD must be set}
       - MSF_SSL=${MSF_SSL:-true}
+      - LLM_PROVIDER=${LLM_PROVIDER:-bedrock}
+      - OLLAMA_URL=http://localhost:${OLLAMA_PORT:-11434}
+      - OLLAMA_MAIN_MODEL=${OLLAMA_MAIN_MODEL:-qwen2.5:14b}
+      - OLLAMA_CODE_MODEL=${OLLAMA_CODE_MODEL:-qwen2.5-coder:14b}
       - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - metasploit
-      - hexstrike
+      - arsenal-engine
+      - rabbitmq
     restart: unless-stopped
     network_mode: host

@@ -1,6 +1,8 @@
 .env
-__pycache__
-.venv
-/venv
-venv
 /msf-data
+/msf_payloads
+/rabbitmq-data
+/ollama-data
+/bin
+.claude*
+arsenal-engine/__pycache__/*
