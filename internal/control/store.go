@@ -92,6 +92,16 @@ func (s *Store) SetError(runID string, err error) {
 	}
 }
 
+// SetToolLog updates the live tool log while a run is still "running" so
+// operators can poll progress without waiting for HITL/completion.
+func (s *Store) SetToolLog(runID string, toolLog []core.ToolCallRecord) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sess, ok := s.sessions[runID]; ok {
+		sess.ToolLog = append([]core.ToolCallRecord(nil), toolLog...)
+	}
+}
+
 // ClearInterrupt drops the pending interrupt after a resume decision has
 // been accepted.
 func (s *Store) ClearInterrupt(runID string) {

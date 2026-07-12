@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"log"
+	"time"
 
 	"github.com/anubhavg-icpl/talon/internal/llm"
 	"github.com/anubhavg-icpl/talon/internal/mcpclient"
@@ -122,13 +124,24 @@ func runSubagent(ctx context.Context, model llm.ChatModel, systemPrompt string, 
 				if summary == "" || summary == "Workflow stopped: tool call limit reached before a final summary was produced." {
 					summary = "Subagent stop: model-turn budget exhausted; reporting with evidence gathered so far."
 				}
+				log.Printf("talon-core: subagent turn budget reached (%d)", maxTurns)
 				return summary + "\n[subagent turn budget reached]", nil, nil
 			}
 			turns++
-			msg, err := model.Converse(ctx, systemPrompt, messages, tools)
+			start := time.Now()
+			cctx, cancel := context.WithTimeout(ctx, llmTurnTimeout)
+			msg, err := model.Converse(cctx, systemPrompt, messages, tools)
+			cancel()
 			if err != nil {
+				log.Printf("talon-core: subagent Converse failed after %s: %v", time.Since(start).Round(time.Millisecond), err)
+				// Prefer finishing with evidence over hard-failing the whole run.
+				if turns > 1 {
+					return lastAssistantText(messages) + "\n[subagent stopped: LLM error: " + err.Error() + "]", nil, nil
+				}
 				return "", nil, err
 			}
+			log.Printf("talon-core: subagent turn %d/%d model_ms=%d tool_calls=%d",
+				turns, maxTurns, time.Since(start).Milliseconds(), len(msg.ToolCalls))
 			if len(msg.ToolCalls) == 0 {
 				return msg.Text, nil, nil
 			}
@@ -152,7 +165,10 @@ func runSubagent(ctx context.Context, model llm.ChatModel, systemPrompt string, 
 			if err := tr.allow(); err != nil {
 				return "", nil, err
 			}
+			log.Printf("talon-core: subagent tool %s", tc.Name)
+			t0 := time.Now()
 			out, isErr := exec(ctx, tc)
+			log.Printf("talon-core: subagent tool %s done err=%v ms=%d", tc.Name, isErr, time.Since(t0).Milliseconds())
 			pendingResults = append(pendingResults, llm.ToolResult{ToolCallID: tc.ID, Name: tc.Name, Content: out, IsError: isErr})
 		}
 

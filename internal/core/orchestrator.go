@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/anubhavg-icpl/talon/internal/llm"
 )
@@ -19,11 +21,20 @@ import (
 const maxToolCalls = 30
 
 // maxSubagentModelTurns caps nested subagent model turns (each turn may
-// issue one or more tool calls). Recon is capped tighter so a chatty model
-// cannot burn the whole run budget on nmap/nuclei retries.
+// issue one or more tool calls). Recon/exploit are capped tighter so a
+// chatty model cannot burn the whole run budget on retries.
 const (
-	maxSubagentModelTurnsDefault = 12
+	maxSubagentModelTurnsDefault = 10
 	maxReconModelTurns           = 4
+	maxExploitModelTurns         = 6
+	maxPostExploitModelTurns     = 4
+	maxCodegenModelTurns         = 4
+	// maxOrchestratorTurns caps top-level orchestrator model rounds
+	// (delegate_* planning). After this, the run finishes with whatever
+	// summary is available instead of hanging on more LLM calls.
+	maxOrchestratorTurns = 8
+	// llmTurnTimeout bounds a single Converse call inside the agent loop.
+	llmTurnTimeout = 90 * time.Second
 )
 
 // contextTrimTrigger/contextTrimKeep bound the running conversation size:
@@ -136,7 +147,8 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 				"arp_scan_discovery", "hydra_attack", "rustscan_fast_scan",
 				"responder_credential_harvest",
 			),
-			exec: func(tr *tracker) toolExecFunc { return mcpExec(o.tools, tr) },
+			exec:     func(tr *tracker) toolExecFunc { return mcpExec(o.tools, tr) },
+			maxTurns: maxExploitModelTurns,
 		}, true
 	case "delegate_post_exploit":
 		return subagentSpec{
@@ -144,11 +156,13 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 			systemPrompt: postExploitSystemPrompt,
 			tools:        o.tools.Subset("list_active_sessions", "terminate_session", "send_session_command"),
 			exec:         func(tr *tracker) toolExecFunc { return mcpExec(o.tools, tr) },
+			maxTurns:     maxPostExploitModelTurns,
 		}, true
 	case "delegate_codegen":
 		return subagentSpec{
 			model:        o.model,
 			systemPrompt: codeGenSystemPrompt,
+			maxTurns:     maxCodegenModelTurns,
 			tools: []llm.ToolSpec{{
 				Name:        o.codegen.Name(),
 				Description: o.codegen.Description(),
@@ -346,25 +360,54 @@ func (o *Orchestrator) resumeRun(ctx context.Context, input RunInput, decision D
 // interrupted or exhausts its tool-call budget.
 func (o *Orchestrator) orchestrateLoop(ctx context.Context, input RunInput, messages []llm.Message, tr *tracker) (RunResult, error) {
 	specs := delegateToolSpecs()
-	for {
-		msg, err := o.model.Converse(ctx, orchestratorSystemPrompt, messages, specs)
+	for turn := 0; turn < maxOrchestratorTurns; turn++ {
+		log.Printf("talon-core: orchestrator turn %d/%d tools_so_far=%d target=%s",
+			turn+1, maxOrchestratorTurns, tr.count, input.TargetIP)
+
+		msg, err := converseWithTimeout(ctx, o.model, orchestratorSystemPrompt, messages, specs)
 		if err != nil {
+			// Soft-fail on LLM timeout/errors after some progress: return
+			// what we have rather than leaving the run stuck "running".
+			if tr.count > 0 && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
+				log.Printf("talon-core: orchestrator LLM timeout after progress: %v", err)
+				return RunResult{
+					FinalMessage: lastAssistantText(messages) + "\n[orchestrator stopped: LLM timeout]",
+					ToolLog:      tr.log,
+				}, nil
+			}
 			return RunResult{}, err
 		}
 		messages = append(messages, msg)
 
 		if len(msg.ToolCalls) == 0 {
+			log.Printf("talon-core: orchestrator final text; judging (tools=%d)", tr.count)
 			verdict, err := judgeOutput(ctx, o.judge, msg.Text)
 			if err != nil {
-				return RunResult{}, err
+				log.Printf("talon-core: judge failed (returning without verdict): %v", err)
+				return RunResult{FinalMessage: msg.Text, ToolLog: tr.log}, nil
 			}
 			return RunResult{FinalMessage: msg.Text, ToolLog: tr.log, JudgeVerdict: verdict}, nil
 		}
 
+		names := make([]string, 0, len(msg.ToolCalls))
+		for _, tc := range msg.ToolCalls {
+			names = append(names, tc.Name)
+		}
+		log.Printf("talon-core: orchestrator delegates %v", names)
+
 		resolved, paused, err := o.runDelegateBatch(ctx, msg.ToolCalls, tr, nil)
+		reportProgress(ctx, tr)
 		if err != nil {
 			if errors.Is(err, errBudgetExhausted) {
+				log.Printf("talon-core: tool budget exhausted (tools=%d)", tr.count)
 				return RunResult{FinalMessage: lastAssistantText(messages), ToolLog: tr.log}, nil
+			}
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				log.Printf("talon-core: delegate batch timeout: %v", err)
+				return RunResult{
+					FinalMessage: lastAssistantText(messages) + "\n[orchestrator stopped: delegate timeout]",
+					ToolLog:      tr.log,
+				}, nil
 			}
 			return RunResult{}, err
 		}
@@ -380,6 +423,19 @@ func (o *Orchestrator) orchestrateLoop(ctx context.Context, input RunInput, mess
 		messages = append(messages, llm.Message{Role: llm.RoleTool, ToolResults: resolved})
 		messages = trimContext(messages)
 	}
+	log.Printf("talon-core: orchestrator turn budget exhausted (tools=%d)", tr.count)
+	return RunResult{
+		FinalMessage: lastAssistantText(messages) + "\n[orchestrator stopped: turn budget reached]",
+		ToolLog:      tr.log,
+	}, nil
+}
+
+// converseWithTimeout wraps ChatModel.Converse with llmTurnTimeout so a hung
+// provider cannot leave a run stuck in "running" forever.
+func converseWithTimeout(ctx context.Context, model llm.ChatModel, system string, messages []llm.Message, tools []llm.ToolSpec) (llm.Message, error) {
+	cctx, cancel := context.WithTimeout(ctx, llmTurnTimeout)
+	defer cancel()
+	return model.Converse(cctx, system, messages, tools)
 }
 
 // runDelegateBatch executes one orchestrator turn's delegate_* tool calls in
@@ -395,10 +451,12 @@ func (o *Orchestrator) runDelegateBatch(ctx context.Context, calls []llm.ToolCal
 		if !ok {
 			return nil, nil, fmt.Errorf("agent: unknown delegate %q in resumed session", resume.currentName)
 		}
+		log.Printf("talon-core: resume subagent %s", resume.currentName)
 		text, subI, err := runSubagent(ctx, sub.model, sub.systemPrompt, sub.tools, "", sub.gate, sub.exec(tr), resume.subResume, tr, sub.maxTurns)
 		if err != nil {
 			return nil, nil, err
 		}
+		reportProgress(ctx, tr)
 		if subI != nil {
 			return resolved, &pausedDelegate{callID: resume.currentCallID, name: resume.currentName, remaining: resume.remaining, subInterrupt: subI}, nil
 		}
@@ -416,10 +474,12 @@ func (o *Orchestrator) runDelegateBatch(ctx context.Context, calls []llm.ToolCal
 			return nil, nil, err
 		}
 		instructions, _ := tc.Args["instructions"].(string)
+		log.Printf("talon-core: run subagent %s (tools_so_far=%d)", tc.Name, tr.count)
 		text, subI, err := runSubagent(ctx, sub.model, sub.systemPrompt, sub.tools, instructions, sub.gate, sub.exec(tr), nil, tr, sub.maxTurns)
 		if err != nil {
 			return nil, nil, err
 		}
+		reportProgress(ctx, tr)
 		if subI != nil {
 			return resolved, &pausedDelegate{callID: tc.ID, name: tc.Name, remaining: append([]llm.ToolCall{}, calls[i+1:]...), subInterrupt: subI}, nil
 		}

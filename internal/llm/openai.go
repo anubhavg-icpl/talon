@@ -6,8 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // OpenAI implements ChatModel against any OpenAI-compatible /chat/completions
@@ -22,15 +26,40 @@ type OpenAI struct {
 	http    *http.Client
 }
 
+// defaultOpenAIHTTPTimeout bounds a single /chat/completions call so a hung
+// provider cannot stall the orchestrator forever. Override with
+// OPENAI_HTTP_TIMEOUT (Go duration, e.g. "120s").
+const defaultOpenAIHTTPTimeout = 120 * time.Second
+
 // NewOpenAI returns a client for an OpenAI-compatible chat-completions API.
 // apiKey is required -- pass an empty string and Converse will surface the
 // provider's 401 rather than silently sending an unauthenticated request.
 func NewOpenAI(baseURL, apiKey, model string) *OpenAI {
+	timeout := defaultOpenAIHTTPTimeout
+	if v := os.Getenv("OPENAI_HTTP_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			timeout = d
+		} else if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
+			timeout = time.Duration(secs) * time.Second
+		}
+	}
 	return &OpenAI{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
 		model:   model,
-		http:    &http.Client{},
+		http: &http.Client{
+			Timeout: timeout,
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   15 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				TLSHandshakeTimeout:   15 * time.Second,
+				ResponseHeaderTimeout: timeout,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
+		},
 	}
 }
 

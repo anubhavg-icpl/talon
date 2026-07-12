@@ -63,6 +63,35 @@ type CodegenTool interface {
 	Call(ctx context.Context, query string) (string, error)
 }
 
+// ProgressFunc is invoked when the tool log grows (after each subagent/tool
+// batch) so the control plane can surface live progress without waiting for
+// HITL or completion. Wired via context (WithProgress) so concurrent runs
+// do not share a process-global hook.
+type ProgressFunc func(toolLog []ToolCallRecord)
+
+type progressCtxKey struct{}
+
+// WithProgress attaches a progress callback to ctx for one Run/Resume.
+func WithProgress(ctx context.Context, fn ProgressFunc) context.Context {
+	if fn == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, progressCtxKey{}, fn)
+}
+
+func progressFrom(ctx context.Context) ProgressFunc {
+	fn, _ := ctx.Value(progressCtxKey{}).(ProgressFunc)
+	return fn
+}
+
+func reportProgress(ctx context.Context, tr *tracker) {
+	fn := progressFrom(ctx)
+	if fn == nil || tr == nil {
+		return
+	}
+	fn(append([]ToolCallRecord(nil), tr.log...))
+}
+
 // Orchestrator runs one full pentest validation workflow against a live MCP
 // tool set. It is stateless between runs except for its tool-call log and
 // any parked interrupted-run sessions.

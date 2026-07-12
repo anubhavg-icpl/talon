@@ -5,12 +5,27 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/anubhavg-icpl/talon/internal/config"
 	"github.com/anubhavg-icpl/talon/internal/core"
 	"github.com/google/uuid"
 )
+
+// defaultRunTimeout is the wall-clock budget for one start/resume workflow
+// segment. Override with TALON_RUN_TIMEOUT (Go duration, e.g. "20m").
+const defaultRunTimeout = 20 * time.Minute
+
+func runTimeout() time.Duration {
+	if v := os.Getenv("TALON_RUN_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return defaultRunTimeout
+}
 
 // Server wires the Store to an core.Orchestrator over 5 routes:
 // /input/start, /monitor/traces/{run_id}, /monitor/tools,
@@ -99,7 +114,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// interrupt and returns rather than blocking -- POST
 	// /output/resume/{run_id} is what drives the workflow forward from
 	// there (see handleResume).
-	go s.runWorkflow(context.Background(), runID, input)
+	go s.runWorkflow(runID, input)
 
 	writeJSON(w, http.StatusOK, map[string]string{
 		"run_id":  runID,
@@ -107,14 +122,30 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) runWorkflow(ctx context.Context, runID string, input core.RunInput) {
+func (s *Server) runWorkflow(runID string, input core.RunInput) {
+	ctx, cancel := context.WithTimeout(context.Background(), runTimeout())
+	defer cancel()
+	ctx = core.WithProgress(ctx, func(toolLog []core.ToolCallRecord) {
+		s.store.SetToolLog(runID, toolLog)
+	})
+
 	s.store.SetStatus(runID, "running")
+	log.Printf("talon-core: run %s starting (timeout=%s target=%s)", runID, runTimeout(), input.TargetIP)
 	result, err := s.orch.Run(ctx, input)
 	if err != nil {
 		log.Printf("talon-core: run %s: %v", runID, err)
+		// If we timed out but still have tool output, surface it as completed
+		// with a note rather than a bare error (better for operators).
+		if (ctx.Err() != nil) && len(result.ToolLog) > 0 {
+			result.FinalMessage = strings.TrimSpace(result.FinalMessage + "\n[run stopped: wall-clock timeout]")
+			result.Interrupted = false
+			s.store.SetResult(runID, result)
+			return
+		}
 		s.store.SetError(runID, err)
 		return
 	}
+	log.Printf("talon-core: run %s finished interrupted=%v tools=%d", runID, result.Interrupted, len(result.ToolLog))
 	s.store.SetResult(runID, result)
 }
 
@@ -187,18 +218,32 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 	s.store.ClearInterrupt(runID)
 	s.store.SetStatus(runID, "running")
 
-	go s.resumeWorkflow(context.Background(), runID, sess.RunInput, decision)
+	go s.resumeWorkflow(runID, sess.RunInput, decision)
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Decision received, resuming orchestrator..."})
 }
 
-func (s *Server) resumeWorkflow(ctx context.Context, runID string, input core.RunInput, decision core.Decision) {
+func (s *Server) resumeWorkflow(runID string, input core.RunInput, decision core.Decision) {
+	ctx, cancel := context.WithTimeout(context.Background(), runTimeout())
+	defer cancel()
+	ctx = core.WithProgress(ctx, func(toolLog []core.ToolCallRecord) {
+		s.store.SetToolLog(runID, toolLog)
+	})
+
+	log.Printf("talon-core: resume %s decision=%s", runID, decision.Type)
 	result, err := s.orch.Resume(ctx, input, decision)
 	if err != nil {
 		log.Printf("talon-core: resume %s: %v", runID, err)
+		if ctx.Err() != nil && len(result.ToolLog) > 0 {
+			result.FinalMessage = strings.TrimSpace(result.FinalMessage + "\n[run stopped: wall-clock timeout]")
+			result.Interrupted = false
+			s.store.SetResult(runID, result)
+			return
+		}
 		s.store.SetError(runID, err)
 		return
 	}
+	log.Printf("talon-core: resume %s finished interrupted=%v tools=%d", runID, result.Interrupted, len(result.ToolLog))
 	s.store.SetResult(runID, result)
 }
 
