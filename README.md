@@ -82,6 +82,17 @@ Core and relay spawn arsenal + strike as **local MCP stdio children**
 
 ## Quick start
 
+### Docker layout (exactly four Dockerfiles)
+
+| Path | Image / service | Notes |
+|------|-----------------|--------|
+| **`Dockerfile`** | `talon:latest` → **talon-core** + **talon-relay** | All Go bins; one image, two commands |
+| **`kali-msf/Dockerfile`** | **metasploit** (`msf_rpc`) | `msfrpcd` |
+| **`arsenal-engine/Dockerfile`** | **arsenal-engine** | Kali tool runner |
+| **`vuln-target/Dockerfile`** | **vuln-target** (profile `vuln`) | Targets: **`real`** (default) \| **`mimic`** |
+
+One compose file: **`docker-compose.yml`**. No overlays.
+
 ### Prerequisites
 
 - Go **1.25+** (host builds / CLI)
@@ -104,8 +115,11 @@ cp .env.example .env
 # Core stack (MSF + Arsenal Engine + RabbitMQ + core + relay)
 docker compose up -d --build
 
-# Lab target (real infected vsftpd — Metasploit can open a shell)
+# Lab target — real infected vsftpd (MSF sessions work)
 docker compose --profile vuln up -d --build vuln-target
+
+# Optional: Python mimic instead of real vsftpd
+# VULN_TARGET=mimic docker compose --profile vuln up -d --build vuln-target
 
 # Optional local LLM
 docker compose --profile ollama up -d
@@ -210,23 +224,15 @@ or unreachable core (`talon run status` maps terminal run status to exit codes).
 Authorized **local** validation of the full pipeline (recon → MSF session →
 root shell → report).
 
-### Lab target (one path)
-
-Default compose profile **`vuln`** builds **`Dockerfile.real`**: real infected
-vsftpd 2.3.4 with a restart loop (backdoor replaces the process; entrypoint
-brings FTP back up).
+### Lab target (one Dockerfile, two targets)
 
 ```bash
+# real (default) — infected vsftpd 2.3.4 + restart loop
 docker compose --profile vuln up -d --build vuln-target
-# FTP banner: 220 (vsFTPd 2.3.4)
-# After USER *:) + PASS, backdoor listens on :6200
-```
+# FTP: 220 (vsFTPd 2.3.4); after USER *:) + PASS → shell on :6200
 
-Optional **Python mimic** (recon/forge only — **no** real Metasploit session):
-
-```bash
-VULN_DOCKERFILE=Dockerfile VULN_TARGET_IMAGE=talon-vuln-mimic \
-  docker compose --profile vuln up -d --build vuln-target
+# mimic — Python only (recon/forge; no real MSF session)
+VULN_TARGET=mimic docker compose --profile vuln up -d --build vuln-target
 ```
 
 ### Payload that works
@@ -430,16 +436,15 @@ kali-msf/            msfrpcd image
 docker-compose.yml   single compose file (profiles: vuln, ollama)
 ```
 
-### Vuln images
+### Images
 
-| File | Purpose |
-|------|---------|
-| `vuln-target/Dockerfile.real` | **Default** — infected vsftpd + restart loop |
-| `vuln-target/Dockerfile` | Python mimic (recon speed, no real MSF shell) |
-| `vuln-target/entrypoint-real.sh` | Supervises real vsftpd |
+| Build | Purpose |
+|-------|---------|
+| `docker compose build` | Platform + MSF + arsenal (and vuln if profile set) |
+| `vuln-target` target `real` | Infected vsftpd + `entrypoint.sh` restart loop |
+| `vuln-target` target `mimic` | `server.py` only |
 
-There is **one** compose file — no separate overlay. Switch with
-`VULN_DOCKERFILE` / `VULN_TARGET_IMAGE` if you need the mimic.
+One compose file; switch lab mode with **`VULN_TARGET=real|mimic`**.
 
 ---
 

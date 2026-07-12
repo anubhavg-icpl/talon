@@ -27,53 +27,45 @@ x-talon-env: &talon-env
   AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
 
 services:
-  # 0. Lab vulnerable target (CVE-2011-2523 / vsftpd 2.3.4) — authorized
-  # local testing ONLY. Profile-gated: never starts on plain `compose up`.
-  #
-  #   docker compose --profile vuln up -d vuln-target
-  #
-  # Default image is the REAL infected vsftpd (Metasploit can open a shell).
-  # For a faster recon-only Python mimic (no real MSF session):
-  #   VULN_DOCKERFILE=Dockerfile VULN_TARGET_IMAGE=talon-vuln-mimic \
-  #     docker compose --profile vuln up -d --build vuln-target
+  # 0. Lab target (CVE-2011-2523). Profile: vuln. One Dockerfile, two targets:
+  #   real (default) — infected vsftpd; MSF reverse_bash works
+  #   mimic          — Python only; set VULN_TARGET=mimic
+  #   docker compose --profile vuln up -d --build vuln-target
   vuln-target:
     build:
       context: ./vuln-target
-      dockerfile: ${VULN_DOCKERFILE:-Dockerfile.real}
-    image: ${VULN_TARGET_IMAGE:-talon-vuln-vsftpd-real}
+      dockerfile: Dockerfile
+      target: ${VULN_TARGET:-real}
+    image: ${VULN_TARGET_IMAGE:-talon-vuln-target}
     container_name: talon_vuln_target
     profiles: ["vuln"]
-    # Real vsftpd dies after each backdoor trigger; entrypoint restarts it.
     restart: unless-stopped
     network_mode: host
 
-
-  # 1. Kali-based Metasploit RPC Server
+  # 1. Metasploit RPC (kali-msf/Dockerfile)
   metasploit:
     build:
       context: ./kali-msf
-      dockerfile: Dockerfile
+    image: ${MSF_IMAGE:-talon-msf-rpc}
     container_name: msf_rpc
     environment:
-      - MSF_PORT=${MSF_PORT:-5554}
-      - MSF_PASSWORD=${MSF_PASSWORD:?MSF_PASSWORD must be set}
+      MSF_PORT: ${MSF_PORT:-5554}
+      MSF_PASSWORD: ${MSF_PASSWORD:?MSF_PASSWORD must be set}
     volumes:
       - ./msf-data:/root/.msf4
       - ./msf_payloads:/payloads
     restart: unless-stopped
     network_mode: host
 
-  # 2. Talon Arsenal Engine -- self-built tool-execution backend for Talon
-  # Arsenal, built from source we control (see arsenal-engine/Dockerfile)
-  # instead of a third-party prebuilt image.
+  # 2. Arsenal Engine (arsenal-engine/Dockerfile)
   arsenal-engine:
     build:
       context: ./arsenal-engine
-      dockerfile: Dockerfile
+    image: ${ARSENAL_IMAGE:-talon-arsenal-engine}
     container_name: arsenal_engine
     privileged: true
     environment:
-      - API_PORT=${HEXSTRIKE_PORT:-8888}
+      API_PORT: ${HEXSTRIKE_PORT:-8888}
     restart: unless-stopped
     network_mode: host
 
@@ -106,18 +98,18 @@ services:
     restart: unless-stopped
     network_mode: host
 
-  # 5. Talon Core -- the HTTP control plane, spawns Talon Arsenal and Talon
-  # Strike as local stdio subprocesses.
+  # 5–6. Platform image (root Dockerfile): all Go binaries. Same image,
+  # different command for core vs relay.
   talon-core:
     build:
       context: .
       dockerfile: Dockerfile
+    image: ${TALON_IMAGE:-talon:latest}
     container_name: talon_core
     command: ["/app/talon-core"]
     environment:
       <<: *talon-env
     volumes:
-      # required so the codegen tool's `docker` CLI calls reach the host daemon
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - metasploit
@@ -125,11 +117,12 @@ services:
     restart: unless-stopped
     network_mode: host
 
-  # 6. Talon Relay -- the AMQP queue worker (same LLM/MSF env as core).
   talon-relay:
+    # Same platform image as talon-core (build once, run two commands).
     build:
       context: .
       dockerfile: Dockerfile
+    image: ${TALON_IMAGE:-talon:latest}
     container_name: talon_relay
     command: ["/app/talon-relay"]
     environment:
