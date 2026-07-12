@@ -61,10 +61,12 @@ func NewClient(ctx context.Context, cfg config.MSFConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("msfrpc: login failed: %w", err)
 	}
-	if result, _ := loginResp["result"].(string); result != "success" {
+	// msfrpcd encodes map keys/values as msgpack bin, so vmihailenco often
+	// yields []byte rather than string for "result" / "token".
+	if result := asString(loginResp["result"]); result != "success" {
 		return nil, fmt.Errorf("msfrpc: login failed: unexpected result %v", loginResp["result"])
 	}
-	loginToken, _ := loginResp["token"].(string)
+	loginToken := asString(loginResp["token"])
 	if loginToken == "" {
 		return nil, fmt.Errorf("msfrpc: login succeeded but no token was returned")
 	}
@@ -127,9 +129,22 @@ func (c *Client) CoreVersion(ctx context.Context) (map[string]any, error) {
 	return c.Call(ctx, "core.version")
 }
 
+// asString normalizes msgpack-decoded strings: msfrpcd often sends bin
+// (decodes as []byte) while older servers use str (decodes as string).
+func asString(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case []byte:
+		return string(t)
+	default:
+		return ""
+	}
+}
+
 func firstNonEmptyString(vals ...any) string {
 	for _, v := range vals {
-		if s, ok := v.(string); ok && s != "" {
+		if s := asString(v); s != "" {
 			return s
 		}
 	}
