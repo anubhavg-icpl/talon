@@ -5,14 +5,21 @@ services:
   # explicitly:  docker compose --profile vuln up -d vuln-target
   # Recon finds ftp:21 (fingerprint vsftpd 2.3.4); the backdoor shell lands on
   # 6200 after the ":)" USER trigger.
+  # Default: fast Python mimic (recon + forge PoC). For full Metasploit
+  # sessions on CVE-2011-2523, build/run the real target instead:
+  #   docker build -f vuln-target/Dockerfile.real -t talon-vuln-vsftpd-real ./vuln-target
+  #   docker compose --profile vuln -f docker-compose.yml -f docker-compose.vuln-real.yml up -d vuln-target
+  # Or set VULN_TARGET_IMAGE=talon-vuln-vsftpd-real (see docker-compose.vuln-real.yml).
   vuln-target:
     build:
       context: ./vuln-target
       dockerfile: Dockerfile
+    image: ${VULN_TARGET_IMAGE:-pentester2-vuln-target}
     container_name: talon_vuln_target
     profiles: ["vuln"]
     restart: "no"
     network_mode: host
+
 
   # 1. Kali-based Metasploit RPC Server
   metasploit:

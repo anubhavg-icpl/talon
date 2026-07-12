@@ -125,9 +125,24 @@ func ParseOptionsGracefully(v any) (map[string]any, error) {
 func coerceOptionTypes(options map[string]any) map[string]any {
 	out := make(map[string]any, len(options))
 	for k, v := range options {
-		if s, ok := v.(string); ok {
-			out[k] = coerceScalar(s)
-		} else {
+		switch t := v.(type) {
+		case string:
+			out[k] = coerceScalar(t)
+		case float64:
+			// JSON numbers from MCP args arrive as float64; MSF wants ints
+			// for ports and similar option fields.
+			if t == float64(int64(t)) {
+				out[k] = int(t)
+			} else {
+				out[k] = t
+			}
+		case float32:
+			if t == float32(int32(t)) {
+				out[k] = int(t)
+			} else {
+				out[k] = t
+			}
+		default:
 			out[k] = v
 		}
 	}

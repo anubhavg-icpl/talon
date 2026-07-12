@@ -1,11 +1,12 @@
-# Optional REAL infected vsftpd 2.3.4 (CVE-2011-2523) for full Metasploit
-# session validation. Larger/slower to build than the default Python mimic.
+# REAL infected vsftpd 2.3.4 (CVE-2011-2523) for Metasploit session validation.
+# Build: docker build -f vuln-target/Dockerfile.real -t talon-vuln-vsftpd-real ./vuln-target
+# Run:   docker run -d --network host --name talon_vuln_target talon-vuln-vsftpd-real
 #
-#   docker build -f vuln-target/Dockerfile.real -t talon-vuln-vsftpd-real ./vuln-target
-#   docker stop talon_vuln_target; docker rm talon_vuln_target
-#   docker run -d --network host --name talon_vuln_target talon-vuln-vsftpd-real
-#
-# Source: https://github.com/nikdubois/vsftpd-2.3.4-infected (vulhub-style).
+# Notes:
+# - Trigger is USER containing ":)" then PASS (str_contains_space backdoor).
+# - The backdoor replaces the vsftpd process with a :6200 shell server, so we
+#   wrap vsftpd in a restart loop for repeated exploit attempts.
+# - Use MSF payload cmd/unix/interact (not reverse meterpreter) for this CVE.
 # Authorized local testing only.
 FROM debian:bullseye-slim
 
@@ -22,17 +23,22 @@ RUN git clone --depth 1 https://github.com/nikdubois/vsftpd-2.3.4-infected.git .
     && mkdir -p /usr/share/empty /var/ftp \
     && (useradd -d /var/ftp -s /bin/false ftp || true)
 
+# local_enable=YES is required so non-anonymous USER names (e.g. letmein:))
+# reach handle_login where the smiley backdoor fires. anonymous-only mode
+# rejects those usernames before the backdoor check.
 RUN printf '%s\n' \
       'listen=YES' \
-      'listen_ipv6=NO' \
       'anonymous_enable=YES' \
-      'local_enable=NO' \
+      'local_enable=YES' \
       'write_enable=NO' \
       'anon_root=/var/ftp' \
-      'pasv_enable=NO' \
-      'seccomp_sandbox=NO' \
-      'background=NO' \
+      'secure_chroot_dir=/usr/share/empty' \
+      'xferlog_enable=NO' \
+      'connect_from_port_20=YES' \
       > /etc/vsftpd.conf
 
+COPY entrypoint-real.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 21 6200
-CMD ["/usr/local/sbin/vsftpd", "/etc/vsftpd.conf"]
+CMD ["/entrypoint.sh"]
