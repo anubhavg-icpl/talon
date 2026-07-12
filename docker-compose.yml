@@ -1,23 +1,50 @@
+# Shared env for talon-core and talon-relay (single source — no duplicated lists).
+x-talon-env: &talon-env
+  HEXSTRIKE_SERVER_URL: http://localhost:${HEXSTRIKE_PORT:-8888}
+  MSF_SERVER: localhost
+  MSF_PORT: ${MSF_PORT:-5554}
+  MSF_PASSWORD: ${MSF_PASSWORD:?MSF_PASSWORD must be set}
+  MSF_SSL: ${MSF_SSL:-true}
+  LHOST: ${LHOST:-127.0.0.1}
+  LPORT: ${LPORT:-4444}
+  LLM_PROVIDER: ${LLM_PROVIDER:-bedrock}
+  LLM_CODE_PROVIDER: ${LLM_CODE_PROVIDER:-}
+  LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.3}
+  LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1000}
+  OPENAI_HTTP_TIMEOUT: ${OPENAI_HTTP_TIMEOUT:-120s}
+  OLLAMA_URL: http://localhost:${OLLAMA_PORT:-11434}
+  OLLAMA_MAIN_MODEL: ${OLLAMA_MAIN_MODEL:-talon}
+  OLLAMA_JUDGE_MODEL: ${OLLAMA_JUDGE_MODEL:-talon}
+  OLLAMA_CODE_MODEL: ${OLLAMA_CODE_MODEL:-talon}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.z.ai/api/coding/paas/v4}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MAIN_MODEL: ${OPENAI_MAIN_MODEL:-glm-5.2}
+  OPENAI_JUDGE_MODEL: ${OPENAI_JUDGE_MODEL:-glm-5.2}
+  OPENAI_CODE_MODEL: ${OPENAI_CODE_MODEL:-glm-5.2}
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+
 services:
-  # 0. Vulnerable target (vsftpd 2.3.4 backdoor mimic, CVE-2011-2523) -- ONLY
-  # for authorized local pipeline testing. Profile-gated so a normal deploy
-  # never builds or ships an intentionally-vulnerable service. Bring it up
-  # explicitly:  docker compose --profile vuln up -d vuln-target
-  # Recon finds ftp:21 (fingerprint vsftpd 2.3.4); the backdoor shell lands on
-  # 6200 after the ":)" USER trigger.
-  # Default: fast Python mimic (recon + forge PoC). For full Metasploit
-  # sessions on CVE-2011-2523, build/run the real target instead:
-  #   docker build -f vuln-target/Dockerfile.real -t talon-vuln-vsftpd-real ./vuln-target
-  #   docker compose --profile vuln -f docker-compose.yml -f docker-compose.vuln-real.yml up -d vuln-target
-  # Or set VULN_TARGET_IMAGE=talon-vuln-vsftpd-real (see docker-compose.vuln-real.yml).
+  # 0. Lab vulnerable target (CVE-2011-2523 / vsftpd 2.3.4) — authorized
+  # local testing ONLY. Profile-gated: never starts on plain `compose up`.
+  #
+  #   docker compose --profile vuln up -d vuln-target
+  #
+  # Default image is the REAL infected vsftpd (Metasploit can open a shell).
+  # For a faster recon-only Python mimic (no real MSF session):
+  #   VULN_DOCKERFILE=Dockerfile VULN_TARGET_IMAGE=talon-vuln-mimic \
+  #     docker compose --profile vuln up -d --build vuln-target
   vuln-target:
     build:
       context: ./vuln-target
-      dockerfile: Dockerfile
-    image: ${VULN_TARGET_IMAGE:-pentester2-vuln-target}
+      dockerfile: ${VULN_DOCKERFILE:-Dockerfile.real}
+    image: ${VULN_TARGET_IMAGE:-talon-vuln-vsftpd-real}
     container_name: talon_vuln_target
     profiles: ["vuln"]
-    restart: "no"
+    # Real vsftpd dies after each backdoor trigger; entrypoint restarts it.
+    restart: unless-stopped
     network_mode: host
 
 
@@ -88,32 +115,7 @@ services:
     container_name: talon_core
     command: ["/app/talon-core"]
     environment:
-      - HEXSTRIKE_SERVER_URL=http://localhost:${HEXSTRIKE_PORT:-8888}
-      - MSF_SERVER=localhost
-      - MSF_PORT=${MSF_PORT:-5554}
-      - MSF_PASSWORD=${MSF_PASSWORD:?MSF_PASSWORD must be set}
-      - MSF_SSL=${MSF_SSL:-true}
-      # ---- LLM provider (bedrock default | ollama | openai) ----
-      - LLM_PROVIDER=${LLM_PROVIDER:-bedrock}
-      - LLM_CODE_PROVIDER=${LLM_CODE_PROVIDER:-}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.3}
-      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1000}
-      # Ollama (used when provider=ollama, or LLM_CODE_PROVIDER=ollama)
-      - OLLAMA_URL=http://localhost:${OLLAMA_PORT:-11434}
-      - OLLAMA_MAIN_MODEL=${OLLAMA_MAIN_MODEL:-talon}
-      - OLLAMA_JUDGE_MODEL=${OLLAMA_JUDGE_MODEL:-talon}
-      - OLLAMA_CODE_MODEL=${OLLAMA_CODE_MODEL:-talon}
-      # OpenAI-compatible (used when provider=openai) -- GLM-5.2 via z.ai by default
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.z.ai/api/coding/paas/v4}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_MAIN_MODEL=${OPENAI_MAIN_MODEL:-glm-5.2}
-      - OPENAI_JUDGE_MODEL=${OPENAI_JUDGE_MODEL:-glm-5.2}
-      - OPENAI_CODE_MODEL=${OPENAI_CODE_MODEL:-glm-5.2}
-      # Bedrock (used when provider=bedrock)
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      <<: *talon-env
     volumes:
       # required so the codegen tool's `docker` CLI calls reach the host daemon
       - /var/run/docker.sock:/var/run/docker.sock
@@ -123,7 +125,7 @@ services:
     restart: unless-stopped
     network_mode: host
 
-  # 6. Talon Relay -- the AMQP queue worker.
+  # 6. Talon Relay -- the AMQP queue worker (same LLM/MSF env as core).
   talon-relay:
     build:
       context: .
@@ -131,30 +133,8 @@ services:
     container_name: talon_relay
     command: ["/app/talon-relay"]
     environment:
-      - AMQP_URL=${AMQP_URL:?AMQP_URL must be set}
-      - HEXSTRIKE_SERVER_URL=http://localhost:${HEXSTRIKE_PORT:-8888}
-      - MSF_SERVER=localhost
-      - MSF_PORT=${MSF_PORT:-5554}
-      - MSF_PASSWORD=${MSF_PASSWORD:?MSF_PASSWORD must be set}
-      - MSF_SSL=${MSF_SSL:-true}
-      # ---- LLM provider (bedrock default | ollama | openai) ----
-      - LLM_PROVIDER=${LLM_PROVIDER:-bedrock}
-      - LLM_CODE_PROVIDER=${LLM_CODE_PROVIDER:-}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.3}
-      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-1000}
-      - OLLAMA_URL=http://localhost:${OLLAMA_PORT:-11434}
-      - OLLAMA_MAIN_MODEL=${OLLAMA_MAIN_MODEL:-talon}
-      - OLLAMA_JUDGE_MODEL=${OLLAMA_JUDGE_MODEL:-talon}
-      - OLLAMA_CODE_MODEL=${OLLAMA_CODE_MODEL:-talon}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.z.ai/api/coding/paas/v4}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_MAIN_MODEL=${OPENAI_MAIN_MODEL:-glm-5.2}
-      - OPENAI_JUDGE_MODEL=${OPENAI_JUDGE_MODEL:-glm-5.2}
-      - OPENAI_CODE_MODEL=${OPENAI_CODE_MODEL:-glm-5.2}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      <<: *talon-env
+      AMQP_URL: ${AMQP_URL:?AMQP_URL must be set}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:

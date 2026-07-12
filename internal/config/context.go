@@ -16,7 +16,10 @@ type Context struct {
 }
 
 func DefaultContext() Context {
-	return Context{LHOST: "192.168.122.176", LPORT: 4444}
+	return Context{
+		LHOST: getenv("LHOST", "127.0.0.1"),
+		LPORT: getenvInt("LPORT", 4444),
+	}
 }
 
 func getenv(key, fallback string) string {

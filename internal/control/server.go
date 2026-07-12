@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,10 +95,22 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.LHOST == "" {
-		req.LHOST = "192.168.122.176"
+		// Prefer operator env (compose sets LHOST=127.0.0.1 for local lab).
+		if e := os.Getenv("LHOST"); e != "" {
+			req.LHOST = e
+		} else {
+			req.LHOST = "127.0.0.1"
+		}
 	}
 	if req.LPORT == 0 {
-		req.LPORT = 4444
+		if e := os.Getenv("LPORT"); e != "" {
+			if n, err := strconv.Atoi(e); err == nil && n > 0 {
+				req.LPORT = n
+			}
+		}
+		if req.LPORT == 0 {
+			req.LPORT = 4444
+		}
 	}
 
 	runID := uuid.NewString()
