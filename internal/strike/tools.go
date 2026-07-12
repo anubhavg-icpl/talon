@@ -573,30 +573,37 @@ func executeModuleJob(ctx context.Context, c *Client, modtype, modname string, m
 		}
 	}
 
-	jobID, hasJobID := execResult["job_id"]
-	uuidVal, _ := execResult["uuid"].(string)
-	if !hasJobID || jobID == nil {
-		return map[string]any{
-			"status":  "unknown",
-			"message": fmt.Sprintf("%s executed, but no job ID returned.", capitalizeFirst(modtype)),
-			"result":  execResult,
-			"module":  fullModulePath,
-		}
-	}
+	// msfrpcd sometimes returns only a uuid (no job_id) for short-lived
+	// exploits (e.g. unix/ftp/vsftpd_234_backdoor). Still poll for sessions.
+	jobID := execResult["job_id"]
+	uuidVal := asString(execResult["uuid"])
+	hasJob := jobID != nil && fmt.Sprintf("%v", jobID) != "" && fmt.Sprintf("%v", jobID) != "<nil>"
 
 	var foundSessionID any
-	if modtype == "exploit" && uuidVal != "" {
+	if modtype == "exploit" {
 		foundSessionID = pollForSession(ctx, c, uuidVal)
 	}
 
-	message := fmt.Sprintf("%s module %s started as job %v.", capitalizeFirst(modtype), fullModulePath, jobID)
 	status := "success"
+	var message string
+	switch {
+	case hasJob:
+		message = fmt.Sprintf("%s module %s started as job %v.", capitalizeFirst(modtype), fullModulePath, jobID)
+	case uuidVal != "":
+		message = fmt.Sprintf("%s module %s executed (uuid=%s).", capitalizeFirst(modtype), fullModulePath, uuidVal)
+	default:
+		message = fmt.Sprintf("%s module %s executed.", capitalizeFirst(modtype), fullModulePath)
+		status = "unknown"
+	}
 	if modtype == "exploit" {
 		if foundSessionID != nil {
 			message += fmt.Sprintf(" Session %v created.", foundSessionID)
+			status = "success"
 		} else {
 			message += " No session detected within timeout."
-			status = "warning"
+			if status == "success" {
+				status = "warning"
+			}
 		}
 	}
 
@@ -609,18 +616,46 @@ func executeModuleJob(ctx context.Context, c *Client, modtype, modname string, m
 		"module":       fullModulePath,
 		"options":      moduleOptions,
 		"payload_name": payloadName,
+		"result":       execResult,
 	}
 }
 
 // pollForSession mirrors _execute_module_rpc's post-job session poll:
 // EXPLOIT_SESSION_POLL_TIMEOUT=60s, interval EXPLOIT_SESSION_POLL_INTERVAL=2s.
+// Matches sessions by exploit_uuid when targetUUID is non-empty; otherwise
+// returns the first new shell/meterpreter session observed while polling.
 func pollForSession(ctx context.Context, c *Client, targetUUID string) any {
 	deadline := time.Now().Add(exploitSessionPollTimeout)
+	seen := map[string]bool{}
+	if sessions, err := c.ListSessions(ctx); err == nil {
+		for id := range sessions {
+			seen[fmt.Sprintf("%v", id)] = true
+		}
+	}
 	for time.Now().Before(deadline) {
 		if sessions, err := c.ListSessions(ctx); err == nil {
 			for id, raw := range sessions {
-				if info, ok := raw.(map[string]any); ok {
-					if fmt.Sprintf("%v", info["exploit_uuid"]) == targetUUID {
+				info, _ := raw.(map[string]any)
+				idStr := fmt.Sprintf("%v", id)
+				if targetUUID != "" && info != nil {
+					// msgpack may yield []byte for exploit_uuid
+					eu := asString(info["exploit_uuid"])
+					if eu == "" {
+						eu = fmt.Sprintf("%v", info["exploit_uuid"])
+					}
+					if eu == targetUUID {
+						return id
+					}
+				}
+				// Fallback: any session that appeared after we started polling
+				// (covers modules that don't stamp exploit_uuid).
+				if targetUUID == "" && !seen[idStr] {
+					return id
+				}
+				if targetUUID != "" && !seen[idStr] {
+					// Prefer uuid match, but accept a brand-new session as a
+					// secondary signal once the poll has waited a bit.
+					if time.Until(deadline) < exploitSessionPollTimeout/2 {
 						return id
 					}
 				}

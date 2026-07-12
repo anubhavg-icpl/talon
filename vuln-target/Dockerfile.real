@@ -1,0 +1,38 @@
+# Optional REAL infected vsftpd 2.3.4 (CVE-2011-2523) for full Metasploit
+# session validation. Larger/slower to build than the default Python mimic.
+#
+#   docker build -f vuln-target/Dockerfile.real -t talon-vuln-vsftpd-real ./vuln-target
+#   docker stop talon_vuln_target; docker rm talon_vuln_target
+#   docker run -d --network host --name talon_vuln_target talon-vuln-vsftpd-real
+#
+# Source: https://github.com/nikdubois/vsftpd-2.3.4-infected (vulhub-style).
+# Authorized local testing only.
+FROM debian:bullseye-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates git libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone --depth 1 https://github.com/nikdubois/vsftpd-2.3.4-infected.git . \
+    && chmod +x vsf_findlibs.sh \
+    && make LDFLAGS="-Wl,-s -lcrypt" \
+    && install -m 755 vsftpd /usr/local/sbin/vsftpd \
+    && mkdir -p /usr/share/empty /var/ftp \
+    && (useradd -d /var/ftp -s /bin/false ftp || true)
+
+RUN printf '%s\n' \
+      'listen=YES' \
+      'listen_ipv6=NO' \
+      'anonymous_enable=YES' \
+      'local_enable=NO' \
+      'write_enable=NO' \
+      'anon_root=/var/ftp' \
+      'pasv_enable=NO' \
+      'seccomp_sandbox=NO' \
+      'background=NO' \
+      > /etc/vsftpd.conf
+
+EXPOSE 21 6200
+CMD ["/usr/local/sbin/vsftpd", "/etc/vsftpd.conf"]
