@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/anubhavg-icpl/talon/internal/config"
@@ -17,19 +18,30 @@ import (
 	"github.com/anubhavg-icpl/talon/internal/relay"
 )
 
-func getenv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
 // newModel routes through the shared llm.NewModel factory so the provider
 // switch (bedrock|ollama|openai) and per-role model resolution live in one
 // place, identical to talon-core.
 func newModel(ctx context.Context, llmCfg config.LLMConfig, role string) (llm.ChatModel, error) {
 	provider, modelID := config.ResolveModel(llmCfg, role)
 	return llm.NewModel(ctx, llmCfg, provider, modelID)
+}
+
+// mcpBinaryPath matches talon-core: honor the Dockerfile env names
+// (HEXSTRIKE_MCP_PATH / METASPLOIT_MCP_PATH), then a sibling of this
+// executable. Also accept the legacy *_MCP_BIN names so older compose
+// overrides keep working.
+func mcpBinaryPath(envVar, legacyEnvVar, fallbackName string) string {
+	if v := os.Getenv(envVar); v != "" {
+		return v
+	}
+	if v := os.Getenv(legacyEnvVar); v != "" {
+		return v
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return fallbackName
+	}
+	return filepath.Join(filepath.Dir(exe), fallbackName)
 }
 
 func main() {
@@ -57,8 +69,8 @@ func main() {
 	}
 
 	tools, err := mcpclient.NewMulti(ctx, []mcpclient.ServerSpec{
-		{Name: "hexstrike", Command: getenv("HEXSTRIKE_MCP_BIN", "talon-arsenal")},
-		{Name: "metasploit", Command: getenv("METASPLOIT_MCP_BIN", "talon-strike"), Args: []string{"--transport", "stdio"}},
+		{Name: "hexstrike", Command: mcpBinaryPath("HEXSTRIKE_MCP_PATH", "HEXSTRIKE_MCP_BIN", "talon-arsenal")},
+		{Name: "metasploit", Command: mcpBinaryPath("METASPLOIT_MCP_PATH", "METASPLOIT_MCP_BIN", "talon-strike"), Args: []string{"--transport", "stdio"}},
 	})
 	if err != nil {
 		log.Fatalf("talon-relay: init mcp servers: %v", err)
