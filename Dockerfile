@@ -1,6 +1,6 @@
-# Multi-stage build producing all four Talon binaries this platform ships.
+# Multi-stage build producing the Talon platform binaries.
 # talon-core/talon-relay spawn talon-arsenal and talon-strike as local
-# stdio subprocesses (see internal/mcpclient), so all four live in one image.
+# stdio subprocesses (see internal/mcpclient). talon is the operator CLI.
 FROM golang:1.25-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -10,6 +10,7 @@ RUN CGO_ENABLED=0 go build -o /out/talon-core ./cmd/talon-core
 RUN CGO_ENABLED=0 go build -o /out/talon-relay ./cmd/talon-relay
 RUN CGO_ENABLED=0 go build -o /out/talon-arsenal ./cmd/talon-arsenal
 RUN CGO_ENABLED=0 go build -o /out/talon-strike ./cmd/talon-strike
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/talon ./cmd/talon
 
 FROM alpine:3.20
 # docker-cli: the forge (codegen) tool shells out to `docker` to run
