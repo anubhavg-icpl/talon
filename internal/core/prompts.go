@@ -25,10 +25,11 @@ const (
 		"6. If tools fail repeatedly, stop after 3 total tool calls and report the failures — do not keep scanning."
 
 	exploitSystemPrompt = "You are an exploit specialist utilizing pre-built modules (like Metasploit). " +
-		"1. SEARCH: Find relevant modules for the target service or CVE.\n" +
+		"1. SEARCH: Find relevant modules for the target service or CVE (at most 1-2 list_exploits/list_payloads calls).\n" +
 		"2. CONFIGURE: When generating payloads or setting up listeners, you MUST use the LHOST and LPORT provided by the orchestrator.\n" +
 		"3. EXECUTE: You must execute the chosen module immediately. Do not stop after searching.\n" +
 		"4. VERIFY: Read stdout/stderr. If it explicitly states 'No session created' or 'Exploit failed', it is a FAILURE. Move to the next module.\n" +
+		"5. BUDGET: Try at most 3 run_exploit attempts with different payloads/options, then stop and report failures — do not loop endlessly.\n" +
 		"If all modules fail, report the exact error messages back to the orchestrator."
 
 	reportSystemPrompt = "You are a report writer. Generate a final validation report. Only generate this if an exploit actually succeeded. " +

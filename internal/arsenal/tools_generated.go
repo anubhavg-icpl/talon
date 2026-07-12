@@ -6,12 +6,12 @@ package arsenal
 var generatedTools = []toolSpec{
 	{
 		Name:        "nmap_scan",
-		Description: "Execute an enhanced Nmap scan against a target with real-time logging.",
+		Description: "Execute an enhanced Nmap scan against a target with real-time logging. Prefer explicit ports and '-sT -Pn' or '-sV -Pn'; avoid inventing NSE script names.",
 		Params: []paramSpec{
 			{Name: "target", Kind: "string", Required: true, Default: nil},
-			{Name: "scan_type", Kind: "string", Required: false, Default: "-sV"},
+			{Name: "scan_type", Kind: "string", Required: false, Default: "-sT -Pn"},
 			{Name: "ports", Kind: "string", Required: false, Default: ""},
-			{Name: "additional_args", Kind: "string", Required: false, Default: ""},
+			{Name: "additional_args", Kind: "string", Required: false, Default: "-T4 --host-timeout 60s"},
 		},
 		HTTPMethod:   "POST",
 		Endpoint:     "api/tools/nmap",
@@ -38,7 +38,7 @@ var generatedTools = []toolSpec{
 
 	{
 		Name:        "nuclei_scan",
-		Description: "Execute Nuclei vulnerability scanner with enhanced logging and real-time progress.",
+		Description: "Execute Nuclei vulnerability scanner with enhanced logging and real-time progress. Prefer tags (e.g. ftp,cve) over hard-coded template paths that may not exist in the image.",
 		Params: []paramSpec{
 			{Name: "target", Kind: "string", Required: true, Default: nil},
 			{Name: "severity", Kind: "string", Required: false, Default: ""},
