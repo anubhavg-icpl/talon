@@ -86,14 +86,22 @@ func applyDecision(ctx context.Context, call llm.ToolCall, decision Decision, ex
 // (final text, no more tool calls requested) or until it hits a HITL-gated
 // tool call.
 //
+// maxTurns caps how many times the model may be asked for a new tool plan
+// (0 → maxSubagentModelTurnsDefault). After the cap, the last assistant text
+// or a budget note is returned so the orchestrator can continue.
+//
 // Pass resume to continue a loop previously paused by an interrupt:
 // resume.gatedCall is executed per resume.decision, then the loop carries on
 // with resume.remainingCalls before asking the model for its next turn.
-func runSubagent(ctx context.Context, model llm.ChatModel, systemPrompt string, tools []llm.ToolSpec, task string, gate func(name string) bool, exec toolExecFunc, resume *subagentResume, tr *tracker) (string, *subagentInterrupt, error) {
+func runSubagent(ctx context.Context, model llm.ChatModel, systemPrompt string, tools []llm.ToolSpec, task string, gate func(name string) bool, exec toolExecFunc, resume *subagentResume, tr *tracker, maxTurns int) (string, *subagentInterrupt, error) {
+	if maxTurns <= 0 {
+		maxTurns = maxSubagentModelTurnsDefault
+	}
 	var messages []llm.Message
 	var pendingResults []llm.ToolResult
 	var pendingCalls []llm.ToolCall
 	skipModelCall := resume != nil
+	turns := 0
 
 	if resume != nil {
 		messages = resume.messages
@@ -109,6 +117,14 @@ func runSubagent(ctx context.Context, model llm.ChatModel, systemPrompt string, 
 
 	for {
 		if !skipModelCall {
+			if turns >= maxTurns {
+				summary := lastAssistantText(messages)
+				if summary == "" || summary == "Workflow stopped: tool call limit reached before a final summary was produced." {
+					summary = "Subagent stop: model-turn budget exhausted; reporting with evidence gathered so far."
+				}
+				return summary + "\n[subagent turn budget reached]", nil, nil
+			}
+			turns++
 			msg, err := model.Converse(ctx, systemPrompt, messages, tools)
 			if err != nil {
 				return "", nil, err

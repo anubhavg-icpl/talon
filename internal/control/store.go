@@ -66,7 +66,12 @@ func (s *Store) SetResult(runID string, result core.RunResult) {
 	if !ok {
 		return
 	}
-	sess.ToolLog = append(sess.ToolLog, result.ToolLog...)
+	// Replace (do not append): the orchestrator tracker already holds the
+	// full run log across HITL resume cycles. Appending duplicated entries
+	// on every interrupt and made tool counts look inflated.
+	if result.ToolLog != nil {
+		sess.ToolLog = append([]core.ToolCallRecord(nil), result.ToolLog...)
+	}
 	if result.Interrupted {
 		sess.Status = "awaiting_approval"
 		sess.PendingInterrupt = result.Interrupt

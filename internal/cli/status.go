@@ -77,11 +77,17 @@ service fails; down if core is unreachable.`,
 			if !skipExtra {
 				// --- arsenal ---
 				if arsenalURL == "" {
+					arsenalURL = opts.Resolved.ArsenalURL
+				}
+				if arsenalURL == "" {
 					arsenalURL = envOr("TALON_ARSENAL_URL", "http://localhost:8888/health")
 				}
 				report.Services = append(report.Services, probeHTTP(ctx, "arsenal-engine", arsenalURL, opts.Flags.Timeout))
 
 				// --- msf ---
+				if msfAddr == "" {
+					msfAddr = opts.Resolved.MSF
+				}
 				if msfAddr == "" {
 					host := envOr("MSF_SERVER", "localhost")
 					port := envOr("MSF_PORT", "5554")
@@ -90,6 +96,9 @@ service fails; down if core is unreachable.`,
 				report.Services = append(report.Services, probeTCP(ctx, "metasploit-rpc", msfAddr, 3*time.Second))
 
 				// --- amqp ---
+				if amqpAddr == "" {
+					amqpAddr = opts.Resolved.AMQP
+				}
 				if amqpAddr == "" {
 					if u := os.Getenv("AMQP_URL"); u != "" {
 						if host, port, ok := amqpHostPort(u); ok {

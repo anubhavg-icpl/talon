@@ -18,6 +18,14 @@ import (
 // across the whole run".
 const maxToolCalls = 30
 
+// maxSubagentModelTurns caps nested subagent model turns (each turn may
+// issue one or more tool calls). Recon is capped tighter so a chatty model
+// cannot burn the whole run budget on nmap/nuclei retries.
+const (
+	maxSubagentModelTurnsDefault = 12
+	maxReconModelTurns           = 4
+)
+
 // contextTrimTrigger/contextTrimKeep bound the running conversation size:
 // once it exceeds contextTrimTrigger characters, all but the last
 // contextTrimKeep tool-result messages are dropped.
@@ -103,6 +111,8 @@ type subagentSpec struct {
 	tools        []llm.ToolSpec
 	gate         func(name string) bool
 	exec         func(tr *tracker) toolExecFunc
+	// maxTurns limits nested model turns; 0 means maxSubagentModelTurnsDefault.
+	maxTurns int
 }
 
 func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) {
@@ -114,6 +124,7 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 			tools:        o.tools.Subset("nmap_scan", "smbmap_scan", "nuclei_scan"),
 			gate:         func(name string) bool { return name == "nmap_scan" },
 			exec:         func(tr *tracker) toolExecFunc { return mcpExec(o.tools, tr) },
+			maxTurns:     maxReconModelTurns,
 		}, true
 	case "delegate_exploit":
 		return subagentSpec{
@@ -384,7 +395,7 @@ func (o *Orchestrator) runDelegateBatch(ctx context.Context, calls []llm.ToolCal
 		if !ok {
 			return nil, nil, fmt.Errorf("agent: unknown delegate %q in resumed session", resume.currentName)
 		}
-		text, subI, err := runSubagent(ctx, sub.model, sub.systemPrompt, sub.tools, "", sub.gate, sub.exec(tr), resume.subResume, tr)
+		text, subI, err := runSubagent(ctx, sub.model, sub.systemPrompt, sub.tools, "", sub.gate, sub.exec(tr), resume.subResume, tr, sub.maxTurns)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -405,7 +416,7 @@ func (o *Orchestrator) runDelegateBatch(ctx context.Context, calls []llm.ToolCal
 			return nil, nil, err
 		}
 		instructions, _ := tc.Args["instructions"].(string)
-		text, subI, err := runSubagent(ctx, sub.model, sub.systemPrompt, sub.tools, instructions, sub.gate, sub.exec(tr), nil, tr)
+		text, subI, err := runSubagent(ctx, sub.model, sub.systemPrompt, sub.tools, instructions, sub.gate, sub.exec(tr), nil, tr, sub.maxTurns)
 		if err != nil {
 			return nil, nil, err
 		}

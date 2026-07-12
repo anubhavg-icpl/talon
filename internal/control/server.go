@@ -28,12 +28,21 @@ func NewServer(orch *core.Orchestrator, store *Store) *Server {
 // router dependency is needed.
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("POST /input/start", s.handleStart)
 	mux.HandleFunc("GET /monitor/traces/{run_id}", s.handleTraces)
 	mux.HandleFunc("GET /monitor/tools", s.handleToolLog)
 	mux.HandleFunc("GET /output/status/{run_id}", s.handleStatus)
 	mux.HandleFunc("POST /output/resume/{run_id}", s.handleResume)
 	return mux
+}
+
+// handleHealth is GET /health — liveness for operators and the talon CLI.
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "ok",
+		"service": "talon-core",
+	})
 }
 
 // targetRequest is the POST /input/start request body.

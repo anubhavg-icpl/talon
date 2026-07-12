@@ -4,6 +4,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -12,17 +13,20 @@ import (
 
 // GlobalFlags are shared across all commands.
 type GlobalFlags struct {
-	CoreURL string
-	Output  string
-	Timeout time.Duration
-	Quiet   bool
+	CoreURL    string
+	Output     string
+	Timeout    time.Duration
+	Quiet      bool
+	ConfigPath string
 }
 
 // RootOptions holds runtime state for command handlers.
 type RootOptions struct {
-	Flags   GlobalFlags
-	Client  *Client
-	Printer *Printer
+	Flags    GlobalFlags
+	Client   *Client
+	Printer  *Printer
+	Resolved ResolvedConfig
+	File     FileConfig
 }
 
 // NewRootCommand builds the root `talon` command and all subcommands.
@@ -34,8 +38,13 @@ func NewRootCommand() *cobra.Command {
 		Short: "Talon operator CLI — manage runs, HITL gates, and stack health",
 		Long: `Talon is the operator surface for the Talon penetration-testing platform.
 
-Talks to talon-core over HTTP (default http://localhost:8000). Configure
-with --core-url or the TALON_CORE_URL environment variable.
+Talks to talon-core over HTTP (default http://localhost:8000).
+
+Configuration precedence (highest wins):
+  1. CLI flags (--core-url, --output, --timeout)
+  2. Environment (TALON_CORE_URL, TALON_OUTPUT, TALON_PROJECT_DIR, …)
+  3. Config file (~/.config/talon/config.yaml or $TALON_CONFIG)
+  4. Built-in defaults
 
 Examples:
   talon status
@@ -43,35 +52,71 @@ Examples:
   talon run status <run_id>
   talon run watch <run_id>
   talon run approve <run_id>
-  talon run tools <run_id> --output json`,
+  talon run tools <run_id> --output json
+  talon logs core --tail 100
+  talon logs arsenal -f`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Skip client wiring for pure-local commands.
-			if cmd.Name() == "version" || cmd.Name() == "help" || cmd.Name() == "completion" {
-				return nil
-			}
-			// completion is nested under root; also skip when generating docs.
+			name := cmd.Name()
+			// Pure-local commands skip remote client setup.
+			localOnly := name == "version" || name == "help" || name == "completion" || name == "logs" || name == "config"
 			if cmd.Parent() != nil && cmd.Parent().Name() == "completion" {
-				return nil
+				localOnly = true
 			}
 
-			format, err := ParseOutputFormat(opts.Flags.Output)
+			cfgPath := opts.Flags.ConfigPath
+			if cfgPath == "" {
+				cfgPath = DefaultConfigPath()
+			}
+			file, err := LoadFileConfig(cfgPath)
+			if err != nil {
+				return err
+			}
+			opts.File = file
+
+			// Detect whether output flag was explicitly changed.
+			outFlag := cmd.Flags().Lookup("output")
+			if outFlag == nil {
+				outFlag = cmd.InheritedFlags().Lookup("output")
+			}
+			flagOutput := opts.Flags.Output
+			if outFlag != nil && !outFlag.Changed {
+				// Prefer file/env default over cobra default "table".
+				flagOutput = ""
+			}
+			flagCore := opts.Flags.CoreURL // empty unless user set --core-url
+
+			timeoutFlag := cmd.Flags().Lookup("timeout")
+			if timeoutFlag == nil {
+				timeoutFlag = cmd.InheritedFlags().Lookup("timeout")
+			}
+			flagTimeout := opts.Flags.Timeout
+			if timeoutFlag != nil && !timeoutFlag.Changed {
+				flagTimeout = 0 // let ResolveConfig use file/env/default
+			}
+
+			opts.Resolved = ResolveConfig(file, flagCore, flagOutput, flagTimeout, cfgPath)
+			// If output still empty, default table
+			if opts.Resolved.Output == "" {
+				opts.Resolved.Output = "table"
+			}
+			// Keep Flags in sync for commands that read them.
+			opts.Flags.CoreURL = opts.Resolved.CoreURL
+			opts.Flags.Output = opts.Resolved.Output
+			opts.Flags.Timeout = opts.Resolved.Timeout
+
+			format, err := ParseOutputFormat(opts.Resolved.Output)
 			if err != nil {
 				return err
 			}
 			opts.Printer = NewPrinter(format)
 
-			coreURL := opts.Flags.CoreURL
-			if coreURL == "" {
-				coreURL = os.Getenv("TALON_CORE_URL")
+			if localOnly {
+				return nil
 			}
-			if coreURL == "" {
-				coreURL = "http://localhost:8000"
-			}
-			opts.Flags.CoreURL = coreURL
 
-			client, err := NewClient(coreURL, opts.Flags.Timeout)
+			client, err := NewClient(opts.Resolved.CoreURL, opts.Resolved.Timeout)
 			if err != nil {
 				return err
 			}
@@ -81,15 +126,18 @@ Examples:
 	}
 
 	pf := root.PersistentFlags()
-	pf.StringVar(&opts.Flags.CoreURL, "core-url", "", "talon-core base URL (env TALON_CORE_URL, default http://localhost:8000)")
+	pf.StringVar(&opts.Flags.CoreURL, "core-url", "", "talon-core base URL (env TALON_CORE_URL)")
 	pf.StringVarP(&opts.Flags.Output, "output", "o", "table", "output format: table|json|raw")
 	pf.DurationVar(&opts.Flags.Timeout, "timeout", 30*time.Second, "HTTP client timeout for control-plane requests")
 	pf.BoolVarP(&opts.Flags.Quiet, "quiet", "q", false, "minimal output (ids and statuses only)")
+	pf.StringVar(&opts.Flags.ConfigPath, "config", "", "config file path (env TALON_CONFIG, default ~/.config/talon/config.yaml)")
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newStatusCmd(opts))
 	root.AddCommand(newRunCmd(opts))
+	root.AddCommand(newLogsCmd(opts))
 	root.AddCommand(newCompletionCmd())
+	root.AddCommand(newConfigCmd(opts))
 
 	return root
 }
@@ -125,4 +173,37 @@ func (e exitError) Error() string {
 
 func withExitCode(code int, format string, args ...any) error {
 	return exitError{Code: code, Msg: fmt.Sprintf(format, args...)}
+}
+
+func newConfigCmd(opts *RootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "config",
+		Short: "Show resolved CLI configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			payload := map[string]any{
+				"config_path":  opts.Resolved.ConfigPath,
+				"core_url":     opts.Resolved.CoreURL,
+				"arsenal_url":  opts.Resolved.ArsenalURL,
+				"msf":          opts.Resolved.MSF,
+				"amqp":         opts.Resolved.AMQP,
+				"timeout":      opts.Resolved.Timeout.String(),
+				"output":       opts.Resolved.Output,
+				"compose_file": opts.Resolved.ComposeFile,
+				"project_dir":  opts.Resolved.ProjectDir,
+			}
+			return opts.Printer.PrintValue(payload, func(w io.Writer) error {
+				return KeyValueTable(w, [][2]string{
+					{"config_path", opts.Resolved.ConfigPath},
+					{"core_url", opts.Resolved.CoreURL},
+					{"arsenal_url", opts.Resolved.ArsenalURL},
+					{"msf", opts.Resolved.MSF},
+					{"amqp", opts.Resolved.AMQP},
+					{"timeout", opts.Resolved.Timeout.String()},
+					{"output", opts.Resolved.Output},
+					{"compose_file", opts.Resolved.ComposeFile},
+					{"project_dir", opts.Resolved.ProjectDir},
+				})
+			})
+		},
+	}
 }

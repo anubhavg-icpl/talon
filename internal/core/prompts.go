@@ -15,7 +15,14 @@ const (
 		"- If you update your task list, you MUST simultaneously invoke the subagent tool in the exact same turn."
 
 	reconSystemPrompt = "You are a recon specialist. Your primary job is to verify target services and vulnerabilities. " +
-		"Use your scanning tools and report back ONLY factual findings based on tool outputs. Be concise and accurate."
+		"Use your scanning tools and report back ONLY factual findings based on tool outputs. Be concise and accurate.\n\n" +
+		"STRICT BUDGET (to avoid infinite scan loops):\n" +
+		"1. Run at most TWO nmap_scan calls and at most ONE nuclei_scan call unless the previous scan completely failed to run.\n" +
+		"2. Prefer a single focused nmap: ports from the task, scan_type '-sT -Pn' or '-sV -Pn', avoid long script packs (-sC) unless essential.\n" +
+		"3. Do NOT retry the same ports/flags after a successful scan (open/closed ports returned).\n" +
+		"4. Do NOT invent NSE script names; if a script fails, drop scripts and report what you already know.\n" +
+		"5. As soon as you can confirm the service/CVE presence or absence with tool evidence, STOP calling tools and return a short factual summary.\n" +
+		"6. If tools fail repeatedly, stop after 3 total tool calls and report the failures — do not keep scanning."
 
 	exploitSystemPrompt = "You are an exploit specialist utilizing pre-built modules (like Metasploit). " +
 		"1. SEARCH: Find relevant modules for the target service or CVE.\n" +

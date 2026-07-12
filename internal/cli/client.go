@@ -132,19 +132,27 @@ func (e *APIError) Error() string {
 }
 
 // ProbeCore checks that something is listening on the control plane.
-// Core has no dedicated /health route; a 404 on GET / is success (server up).
+// Prefers GET /health; falls back to any HTTP response on GET /.
 func (c *Client) ProbeCore(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/", nil)
-	if err != nil {
-		return err
+	for _, path := range []string{"/health", "/"} {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("unreachable: %w", err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if path == "/health" && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return nil
+		}
+		if path == "/" {
+			// Any HTTP response means the process is up.
+			return nil
+		}
 	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	// Any HTTP response means the process is up.
 	return nil
 }
 
