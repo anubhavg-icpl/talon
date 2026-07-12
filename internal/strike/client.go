@@ -112,8 +112,13 @@ func (c *Client) doCall(ctx context.Context, method string, args []any) (map[str
 		return nil, fmt.Errorf("msfrpc: read %s response: %w", method, err)
 	}
 
-	var out map[string]any
-	if err := msgpack.Unmarshal(raw, &out); err != nil {
+	// msfrpcd returns maps with non-string keys for some methods
+	// (session.list / job.list use integer session/job IDs). vmihailenco's
+	// default interface decoder assumes string keys and fails with
+	// "msgpack: invalid code=N decoding string/bytes length", which made
+	// pollForSession miss every real shell session.
+	out, err := decodeMSFMap(raw)
+	if err != nil {
 		return nil, fmt.Errorf("msfrpc: decode %s response (HTTP %d): %w", method, resp.StatusCode, err)
 	}
 
@@ -122,6 +127,94 @@ func (c *Client) doCall(ctx context.Context, method string, args []any) (map[str
 		return out, fmt.Errorf("msfrpc: %s: %s", method, msg)
 	}
 	return out, nil
+}
+
+// decodeMSFMap decodes an msfrpcd msgpack response into map[string]any,
+// accepting integer / bin map keys and normalizing bin string values.
+func decodeMSFMap(raw []byte) (map[string]any, error) {
+	dec := msgpack.NewDecoder(bytes.NewReader(raw))
+	dec.SetMapDecoder(func(d *msgpack.Decoder) (any, error) {
+		n, err := d.DecodeMapLen()
+		if err != nil {
+			return nil, err
+		}
+		if n < 0 {
+			n = 0
+		}
+		m := make(map[string]any, n)
+		for i := 0; i < n; i++ {
+			var key any
+			if err := d.Decode(&key); err != nil {
+				return nil, err
+			}
+			var val any
+			if err := d.Decode(&val); err != nil {
+				return nil, err
+			}
+			m[msgpackKeyString(key)] = normalizeMsgpack(val)
+		}
+		return m, nil
+	})
+
+	var decoded any
+	if err := dec.Decode(&decoded); err != nil {
+		return nil, err
+	}
+	return asStringKeyedMap(decoded)
+}
+
+// asStringKeyedMap normalizes msgpack maps so callers always see
+// map[string]any. Integer keys (session/job IDs) and []byte keys/values
+// (msfrpcd bin encoding) become strings.
+func asStringKeyedMap(v any) (map[string]any, error) {
+	if v == nil {
+		return map[string]any{}, nil
+	}
+	norm := normalizeMsgpack(v)
+	switch t := norm.(type) {
+	case map[string]any:
+		return t, nil
+	default:
+		return nil, fmt.Errorf("expected map, got %T", v)
+	}
+}
+
+func normalizeMsgpack(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, val := range t {
+			out[k] = normalizeMsgpack(val)
+		}
+		return out
+	case map[any]any:
+		out := make(map[string]any, len(t))
+		for k, val := range t {
+			out[msgpackKeyString(k)] = normalizeMsgpack(val)
+		}
+		return out
+	case []any:
+		for i := range t {
+			t[i] = normalizeMsgpack(t[i])
+		}
+		return t
+	case []byte:
+		// msfrpcd commonly encodes strings as msgpack bin.
+		return string(t)
+	default:
+		return v
+	}
+}
+
+func msgpackKeyString(k any) string {
+	switch t := k.(type) {
+	case string:
+		return t
+	case []byte:
+		return string(t)
+	default:
+		return fmt.Sprint(t)
+	}
 }
 
 // CoreVersion mirrors core.version, useful to verify connectivity.

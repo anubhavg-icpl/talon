@@ -5,6 +5,9 @@ import "context"
 // ListSessions mirrors session.list: the response map's own keys ARE the
 // session IDs (no wrapper key), each value a session info map including a
 // "type" field ("shell" or "meterpreter").
+//
+// Session IDs arrive as msgpack integers; Client.doCall normalizes them to
+// string keys so callers can look up strconv.Itoa(id) consistently.
 func (c *Client) ListSessions(ctx context.Context) (map[string]any, error) {
 	return c.Call(ctx, "session.list")
 }

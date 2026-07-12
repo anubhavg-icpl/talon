@@ -6,7 +6,8 @@
 # - Trigger is USER containing ":)" then PASS (str_contains_space backdoor).
 # - The backdoor replaces the vsftpd process with a :6200 shell server, so we
 #   wrap vsftpd in a restart loop for repeated exploit attempts.
-# - Use MSF payload cmd/unix/interact (not reverse meterpreter) for this CVE.
+# - Use MSF payload cmd/unix/reverse_bash with LHOST/LPORT (cmd/unix/interact
+#   is not compatible on current MSF; reverse meterpreter also fails here).
 # Authorized local testing only.
 FROM debian:bullseye-slim
 
