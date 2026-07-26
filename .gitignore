@@ -3,6 +3,10 @@
 /msf_payloads
 /rabbitmq-data
 /ollama-data
+/talon-data
+/.pg-data
 /bin
 .claude*
 arsenal-engine/__pycache__/*
+/web/node_modules
+/web/.next

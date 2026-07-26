@@ -4,5 +4,8 @@
 kali-msf
 msf-data
 msf_payloads
+talon-data
+.pg-data
 database.yml
 docker-compose.yml
+web

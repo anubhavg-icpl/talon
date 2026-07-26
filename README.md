@@ -23,15 +23,16 @@ authorization** to test.
 2. [Components](#components)
 3. [Quick start](#quick-start)
 4. [Operator CLI (`talon`)](#operator-cli-talon)
-5. [Local E2E lab (CVE-2011-2523)](#local-e2e-lab-cve-2011-2523)
-6. [Configuration](#configuration)
-7. [HTTP API](#http-api)
-8. [Architecture notes](#architecture-notes)
-9. [Tools (Arsenal / Strike / Forge)](#tools-arsenal--strike--forge)
-10. [Development](#development)
-11. [Troubleshooting](#troubleshooting)
-12. [Security & responsible use](#security--responsible-use)
-13. [License](#license)
+5. [Web dashboard](#web-dashboard)
+6. [Local E2E lab (CVE-2011-2523)](#local-e2e-lab-cve-2011-2523)
+7. [Configuration](#configuration)
+8. [HTTP API](#http-api)
+9. [Architecture notes](#architecture-notes)
+10. [Tools (Arsenal / Strike / Forge)](#tools-arsenal--strike--forge)
+11. [Development](#development)
+12. [Troubleshooting](#troubleshooting)
+13. [Security & responsible use](#security--responsible-use)
+14. [License](#license)
 
 ---
 
@@ -73,6 +74,9 @@ before the scan runs (CLI: `talon run approve|reject|edit`).
 | **arsenal-engine** | Flask tool runner (Kali-based image) |
 | **msf_rpc** | `msfrpcd` (Kali image) |
 | **rabbitmq** | Broker for relay |
+| **postgres** | Run history + dashboard users/sessions (auth) + runtime config |
+| **redis** | Cache (health probes, AI analysis, sessions) — core runs uncached without it |
+| **dashboard** | Web ops console (`:3000`) — Next.js UI over the core API |
 | **vuln-target** | Lab only (`--profile vuln`) — real vsftpd 2.3.4 by default |
 
 Core and relay spawn arsenal + strike as **local MCP stdio children**
@@ -82,7 +86,7 @@ Core and relay spawn arsenal + strike as **local MCP stdio children**
 
 ## Quick start
 
-### Docker layout (exactly four Dockerfiles)
+### Docker layout (five Dockerfiles)
 
 | Path | Image / service | Notes |
 |------|-----------------|--------|
@@ -90,6 +94,7 @@ Core and relay spawn arsenal + strike as **local MCP stdio children**
 | **`kali-msf/Dockerfile`** | **metasploit** (`msf_rpc`) | `msfrpcd` |
 | **`arsenal-engine/Dockerfile`** | **arsenal-engine** | Kali tool runner |
 | **`vuln-target/Dockerfile`** | **vuln-target** (profile `vuln`) | Targets: **`real`** (default) \| **`mimic`** |
+| **`web/Dockerfile`** | **dashboard** | Next.js standalone build |
 
 One compose file: **`docker-compose.yml`**. No overlays.
 
@@ -106,6 +111,7 @@ One compose file: **`docker-compose.yml`**. No overlays.
 cp .env.example .env
 # Edit at least:
 #   MSF_PASSWORD, RABBITMQ_PASSWORD, AMQP_URL
+#   TALON_PG_PASSWORD, TALON_ADMIN_PASSWORD   (dashboard login + run persistence)
 #   + your LLM keys (OPENAI_API_KEY or AWS_*, etc.)
 ```
 
@@ -216,6 +222,44 @@ talon version
 
 **Exit codes:** `0` ok / completed · non-zero for usage errors, failed runs,
 or unreachable core (`talon run status` maps terminal run status to exit codes).
+
+---
+
+## Web dashboard
+
+A full ops-console UI (**Talon Ops Console**) lives in `web/` — Next.js +
+shadcn/ui, dark hacker theme, real-time everything over the core API.
+
+```bash
+docker compose up -d --build dashboard   # or just: docker compose up -d --build
+# → http://localhost:3100 (or your DASHBOARD_PORT)
+```
+
+Login with `TALON_ADMIN_USERNAME` / `TALON_ADMIN_PASSWORD` from `.env`
+(seeded into Postgres on first boot). The same credentials work for the CLI:
+`talon auth login`.
+
+| Page | What you get |
+|------|--------------|
+| `/overview` | Fleet stats, run-activity chart, verdicts donut, live active operations |
+| `/runs` | Filterable/sortable table of every run (persisted across restarts) |
+| `/runs/new` | Launch a run: target IP, CVE, service, LHOST/LPORT |
+| `/runs/{id}` | Live terminal feed (WebSocket), **HITL approve/reject/edit gate**, report, **AI analysis**, traces |
+| `/settings` | Live service health (7 probes), **config editor** (LLM/attacker/features, DB-backed), **MCP servers** panel |
+
+Architecture: the browser only talks to the dashboard; a server-side proxy
+route (`/api/talon/*`) forwards to `TALON_CORE_URL` (default
+`http://localhost:8000`), so no CORS or exposed-core concerns. Live run
+streams use **WebSocket first**, degrading to SSE then 3s polling. The
+**AI ANALYSIS** tab on a run calls `POST /analyze/{run_id}`, which reuses the
+LLM already configured on talon-core (no extra keys needed). Port override:
+`DASHBOARD_PORT=3100 docker compose up -d dashboard`.
+
+Local dev without Docker:
+
+```bash
+cd web && pnpm install && pnpm dev   # http://localhost:3000, needs core on :8000
+```
 
 ---
 
@@ -343,13 +387,51 @@ Base URL: **`http://localhost:8000`** (host networking).
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/health` | Liveness (`{"status":"ok","service":"talon-core"}`) |
+| `GET` | `/health/services` | Live probes of every dependency (postgres, arsenal, msfrpcd RPC auth, rabbitmq, ollama) with latency |
+| `POST` | `/auth/login` | `{username,password}` → session token + `talon_session` cookie |
+| `POST` | `/auth/logout` | Invalidate session, clear cookie |
+| `GET` | `/auth/me` | Current session user |
 | `POST` | `/input/start` | Start run (body: `ip`, `cve_id`, `service_name`, `description`, `lhost`, `lport`) |
+| `GET` | `/runs` | Paginated run list (`?limit=&offset=` → `{runs,total,limit,offset}`, max 500) |
+| `GET` | `/runs/summary` | Aggregate counts (total/active/compromised/awaiting/completed/errored) |
+| `GET` | `/config` | Effective config (DB overrides → env → default), secrets masked |
+| `PUT` | `/config` | Save whitelisted config keys to Postgres (FEATURE_* hot; LLM applies on restart) |
+| `GET` | `/mcp/servers` | Connected MCP servers + their tool lists |
 | `GET` | `/output/status/{run_id}` | `running` \| `awaiting_approval` \| `completed` \| … + optional `interrupt` / `output` |
 | `POST` | `/output/resume/{run_id}` | HITL: `{"decision":"approve"\|"reject"\|"edit","edited_args":{...}}` |
+| `POST` | `/analyze/{run_id}` | One-shot LLM analyst briefing (report + tool log → summary/kill-chain/findings/remediation) |
 | `GET` | `/monitor/tools?run_id=` | Tool call log |
 | `GET` | `/monitor/traces/{run_id}` | Message history |
+| `GET` | `/monitor/stream/{run_id}` | **SSE** live stream: `tool` + `status` events, closes on terminal state |
+| `GET` | `/monitor/ws/{run_id}` | **WebSocket** live stream: `{"type":"tool"\|"status","data":...}` messages |
 
-Prefer the **CLI** for day-to-day ops; the API is what the CLI wraps.
+The dashboard streams runs over **WebSocket first**, degrading to SSE and
+then 3s polling if a tier is unavailable — a broken stream never breaks the
+view. Override the WS target with `NEXT_PUBLIC_TALON_WS_URL`
+(default `ws://<dashboard-host>:8000`).
+
+CORS is permissive (`*`) for local tooling. **All routes except `/health*` and
+`/auth/login` require a session** (cookie `talon_session` for the dashboard,
+`Authorization: Bearer <token>` for the CLI) whenever Postgres is configured
+and `TALON_ADMIN_PASSWORD` is set; set `TALON_AUTH_DISABLED=true` to run
+without auth (old behavior).
+
+Runs persist to **Postgres** (`TALON_DATABASE_URL`; users/sessions/run history
+with queryable summary columns + indexes, so the registry paginates in SQL at
+any size) and survive restarts; without a database core falls back to
+`TALON_DATA_DIR/runs.json`, importing it into Postgres on first connect.
+Runs interrupted mid-flight by a shutdown are marked `error` on reload.
+
+**Redis** (`REDIS_URL`, compose service on :6380) caches service-health probes
+(5s), AI analyses (24h per run), and session lookups (60s). Every cached
+endpoint falls back to its uncached path when Redis is down.
+
+**Runtime config** (`GET`/`PUT /config`) is editable from the dashboard
+Settings page and stored in Postgres (whitelisted keys, secrets write-only).
+`FEATURE_*` flags apply instantly; LLM/connection changes apply on restart.
+
+Prefer the **CLI** or the **web dashboard** for day-to-day ops; the API is
+what they wrap.
 
 ### AMQP (relay)
 
