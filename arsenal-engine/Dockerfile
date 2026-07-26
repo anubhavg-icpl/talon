@@ -37,15 +37,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ---------------------------------------------------------------------------
 # Go-based recon/fuzzing tools not reliably packaged in Kali's apt repos.
+# Install each tool independently: a single proxy/TLS flake (or yanked
+# module) must not fail the whole image. Core recon still works via apt
+# nmap/nuclei/ffuf/etc. above.
 # ---------------------------------------------------------------------------
-RUN go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest && \
-    go install -v github.com/projectdiscovery/katana/cmd/katana@latest && \
-    go install -v github.com/hahwul/dalfox/v2@latest && \
-    go install -v github.com/lc/gau/v2/cmd/gau@latest && \
-    go install -v github.com/tomnomnom/waybackurls@latest && \
-    go install -v github.com/hakluke/hakrawler@latest && \
-    go install -v github.com/tomnomnom/anew@latest && \
-    go install -v github.com/tomnomnom/qsreplace@latest
+ENV GOPROXY=https://proxy.golang.org,direct
+RUN set -eu; \
+    failed=0; \
+    for pkg in \
+      github.com/projectdiscovery/httpx/cmd/httpx@latest \
+      github.com/projectdiscovery/katana/cmd/katana@latest \
+      github.com/hahwul/dalfox/v2@latest \
+      github.com/lc/gau/v2/cmd/gau@latest \
+      github.com/tomnomnom/waybackurls@latest \
+      github.com/hakluke/hakrawler@latest \
+      github.com/tomnomnom/anew@latest \
+      github.com/tomnomnom/qsreplace@latest \
+    ; do \
+      echo "=== go install $pkg ==="; \
+      if ! go install -v "$pkg"; then \
+        echo "WARN: go install failed for $pkg (continuing)"; \
+        failed=$((failed + 1)); \
+      fi; \
+    done; \
+    echo "go tool install complete (failures=$failed)"
 
 # ---------------------------------------------------------------------------
 # Python dependencies (flask/fastmcp API layer + pwntools/angr binary
