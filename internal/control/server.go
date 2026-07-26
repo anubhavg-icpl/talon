@@ -115,6 +115,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 
 	runID := uuid.NewString()
 	input := core.RunInput{
+		SessionID:   runID,
 		TargetIP:    req.IP,
 		CVEID:       req.CVEID,
 		ServiceName: req.ServiceName,
@@ -199,39 +200,52 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "not_found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	body := map[string]any{
 		"status":    sess.Status,
 		"output":    sess.Output,
 		"interrupt": sess.PendingInterrupt,
-	})
+	}
+	if sess.JudgeSet {
+		body["judge_verdict"] = sess.JudgeVerdict
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
-// handleResume is POST /output/resume/{run_id}. The decision is decoded
-// straight into a core.Decision and fed to orchestrator.Resume in a fresh
-// goroutine, driving the workflow forward from its paused point.
+// handleResume is POST /output/resume/{run_id}. The decision is normalized
+// into a core.Decision and fed to orchestrator.Resume in a fresh goroutine.
 func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 	runID := r.PathValue("run_id")
-	sess, ok := s.store.Get(runID)
-	if !ok || sess.PendingInterrupt == nil {
-		writeError(w, http.StatusBadRequest, "No pending interrupt")
-		return
-	}
 
 	var req resumeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if !isValidDecision(req.Decision) {
-		writeError(w, http.StatusBadRequest, "decision must be one of approve, reject, edit")
+	decision, err := core.NormalizeDecision(core.Decision{
+		Type:       req.Decision,
+		EditedArgs: req.EditedArgs,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "decision must be one of approve, reject, edit (edit requires edited_args)")
 		return
 	}
 
-	decision := core.Decision{Type: req.Decision, EditedArgs: req.EditedArgs}
-	s.store.ClearInterrupt(runID)
-	s.store.SetStatus(runID, "running")
+	// Atomically claim the interrupt so concurrent resume requests cannot
+	// both launch resumeWorkflow (double-execution / lost session race).
+	sess, ok := s.store.ClaimInterrupt(runID)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "No pending interrupt")
+		return
+	}
 
-	go s.resumeWorkflow(runID, sess.RunInput, decision)
+	// Ensure RunInput carries SessionID for orchestrator session lookup.
+	input := sess.RunInput
+	if input.SessionID == "" {
+		input.SessionID = runID
+	}
+	s.store.AppendHistory(runID, "decision=%s", decision.Type)
+
+	go s.resumeWorkflow(runID, input, decision)
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Decision received, resuming orchestrator..."})
 }
@@ -260,11 +274,4 @@ func (s *Server) resumeWorkflow(runID string, input core.RunInput, decision core
 	s.store.SetResult(runID, result)
 }
 
-func isValidDecision(d string) bool {
-	switch strings.ToLower(d) {
-	case "approve", "reject", "edit":
-		return true
-	default:
-		return false
-	}
-}
+
