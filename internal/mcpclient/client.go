@@ -93,11 +93,11 @@ func (m *Multi) Subset(names ...string) []llm.ToolSpec {
 func (m *Multi) Call(ctx context.Context, name string, args map[string]any) (string, error) {
 	m.mu.RLock()
 	serverName, ok := m.owner[name]
+	c := m.clients[serverName]
 	m.mu.RUnlock()
-	if !ok {
+	if !ok || c == nil {
 		return "", fmt.Errorf("mcpclient: unknown tool %q", name)
 	}
-	c := m.clients[serverName]
 
 	req := mcp.CallToolRequest{}
 	req.Params.Name = name
