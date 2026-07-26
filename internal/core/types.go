@@ -6,6 +6,8 @@ package core
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync"
 
 	"github.com/anubhavg-icpl/talon/internal/config"
@@ -15,6 +17,11 @@ import (
 
 // RunInput describes the target and attacker context for one validation run.
 type RunInput struct {
+	// SessionID uniquely identifies this run for interrupt parking/resume.
+	// Prefer setting this (HTTP run_id or AMQP task run_id) so concurrent
+	// runs against identical targets do not collide in the session map.
+	// When empty, a composite of the target fields is used as a fallback.
+	SessionID   string
 	TargetIP    string
 	CVEID       string
 	ServiceName string
@@ -49,8 +56,27 @@ type PendingInterrupt struct {
 
 // Decision resolves a PendingInterrupt.
 type Decision struct {
-	Type       string // "approve", "reject", "edit"
+	// Type is one of "approve", "reject", "edit" (lowercase). Callers should
+	// normalize with NormalizeDecision before Resume.
+	Type       string
 	EditedArgs map[string]any
+}
+
+// NormalizeDecision lowercases Type and validates it is approve|reject|edit.
+// For "edit", EditedArgs must be non-nil.
+func NormalizeDecision(d Decision) (Decision, error) {
+	t := strings.ToLower(strings.TrimSpace(d.Type))
+	switch t {
+	case "approve", "reject":
+		return Decision{Type: t, EditedArgs: d.EditedArgs}, nil
+	case "edit":
+		if d.EditedArgs == nil {
+			return Decision{}, errors.New("agent: decision edit requires edited_args")
+		}
+		return Decision{Type: t, EditedArgs: d.EditedArgs}, nil
+	default:
+		return Decision{}, errors.New("agent: decision must be approve, reject, or edit")
+	}
 }
 
 // CodegenTool is the "custom_exploit" tool the codegen subagent calls when
@@ -103,10 +129,9 @@ type Orchestrator struct {
 
 	// mu/sessions hold state for interrupted runs -- the Orchestrator is
 	// the one place a paused run's state rides between Run() and Resume(),
-	// keyed by the identical RunInput the caller passes to both (see run()
-	// in orchestrator.go for how sessions are parked and resumed).
+	// keyed by sessionKey(input) (prefer SessionID; see parkSession).
 	mu       sync.Mutex
-	sessions map[RunInput]*orchestratorSession
+	sessions map[string]*orchestratorSession
 }
 
 func New(model llm.ChatModel, judge llm.ChatModel, tools *mcpclient.Multi, codegen CodegenTool) *Orchestrator {
@@ -115,7 +140,7 @@ func New(model llm.ChatModel, judge llm.ChatModel, tools *mcpclient.Multi, codeg
 		judge:    judge,
 		tools:    tools,
 		codegen:  codegen,
-		sessions: make(map[RunInput]*orchestratorSession),
+		sessions: make(map[string]*orchestratorSession),
 	}
 }
 
@@ -129,5 +154,9 @@ func (o *Orchestrator) Run(ctx context.Context, input RunInput) (RunResult, erro
 // Resume continues a previously interrupted run, feeding back the human
 // decision for the pending tool call.
 func (o *Orchestrator) Resume(ctx context.Context, input RunInput, decision Decision) (RunResult, error) {
-	return o.run(ctx, input, &decision)
+	norm, err := NormalizeDecision(decision)
+	if err != nil {
+		return RunResult{}, err
+	}
+	return o.run(ctx, input, &norm)
 }

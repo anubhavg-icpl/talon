@@ -29,6 +29,11 @@ func mcpExec(tools *mcpclient.Multi, tr *tracker) toolExecFunc {
 
 func codegenExec(codegen CodegenTool, tr *tracker) toolExecFunc {
 	return func(ctx context.Context, call llm.ToolCall) (string, bool) {
+		if codegen == nil {
+			out := "agent: codegen tool is not configured"
+			tr.record(call.Name, call.Args, out)
+			return out, true
+		}
 		query, _ := call.Args["query"].(string)
 		out, err := codegen.Call(ctx, query)
 		isErr := err != nil

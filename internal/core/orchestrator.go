@@ -68,16 +68,24 @@ func (t *tracker) record(name string, args map[string]any, output string) {
 	t.log = append(t.log, ToolCallRecord{Index: len(t.log), ToolName: name, Args: args, Output: output})
 }
 
+// sessionKey returns the map key used to park/resume interrupted runs.
+// Prefer SessionID (HTTP run_id / AMQP task run_id). Fall back to a composite
+// of target fields so unit tests without an ID still work — that fallback can
+// collide under concurrent identical targets, so production callers must set
+// SessionID.
+func sessionKey(input RunInput) string {
+	if input.SessionID != "" {
+		return input.SessionID
+	}
+	return fmt.Sprintf("%s|%s|%s|%s|%s|%d",
+		input.TargetIP, input.CVEID, input.ServiceName, input.Description,
+		input.Context.LHOST, input.Context.LPORT)
+}
+
 // orchestratorSession is the resumable state for one interrupted run. The
 // Orchestrator itself (mu/sessions in types.go) is the only place state can
 // ride between a Run() that returns Interrupted and the matching Resume()
-// call -- keyed by the caller's RunInput, which the caller is required to
-// pass back unchanged.
-//
-// ponytail: keying sessions by RunInput means two concurrent runs against an
-// identical target (same IP/CVE/service/description/context) collide.
-// Upgrade by adding an explicit session/thread ID field to RunInput if that
-// ever matters (e.g. the HTTP API serving concurrent identical requests).
+// call -- keyed by sessionKey(input).
 type orchestratorSession struct {
 	orchestratorMessages []llm.Message
 	resolvedDelegates    []llm.ToolResult
@@ -159,6 +167,10 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 			maxTurns:     maxPostExploitModelTurns,
 		}, true
 	case "delegate_codegen":
+		if o.codegen == nil {
+			// Avoid panicking on Name()/Call if wiring omitted the tool.
+			return subagentSpec{}, false
+		}
 		return subagentSpec{
 			model:        o.model,
 			systemPrompt: codeGenSystemPrompt,
@@ -308,14 +320,15 @@ func (o *Orchestrator) run(ctx context.Context, input RunInput, resume *Decision
 }
 
 func (o *Orchestrator) resumeRun(ctx context.Context, input RunInput, decision Decision) (RunResult, error) {
+	key := sessionKey(input)
 	o.mu.Lock()
-	sess, ok := o.sessions[input]
+	sess, ok := o.sessions[key]
 	if ok {
-		delete(o.sessions, input)
+		delete(o.sessions, key)
 	}
 	o.mu.Unlock()
 	if !ok {
-		return RunResult{}, errors.New("agent: no pending interrupt to resume for this RunInput")
+		return RunResult{}, errors.New("agent: no pending interrupt to resume for this session")
 	}
 
 	tr := &tracker{count: sess.toolCallCount, log: sess.toolLog}
@@ -492,9 +505,9 @@ func (o *Orchestrator) parkSession(input RunInput, messages []llm.Message, resol
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.sessions == nil {
-		o.sessions = make(map[RunInput]*orchestratorSession)
+		o.sessions = make(map[string]*orchestratorSession)
 	}
-	o.sessions[input] = &orchestratorSession{
+	o.sessions[sessionKey(input)] = &orchestratorSession{
 		orchestratorMessages: messages,
 		resolvedDelegates:    resolved,
 		remainingDelegates:   paused.remaining,
