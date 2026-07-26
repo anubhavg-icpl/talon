@@ -19,6 +19,7 @@ func newConsoleCmd(opts *RootOptions) *cobra.Command {
 		runID       string
 		interval    time.Duration
 		autoApprove bool
+		once        bool
 	)
 	cmd := &cobra.Command{
 		Use:   "console",
@@ -26,22 +27,41 @@ func newConsoleCmd(opts *RootOptions) *cobra.Command {
 		Long: `Live operator surface for Talon — OLED black panels, chatak-laal accents,
 rectangle boxes, monospace layout. Inspired by the Athesis AGORA console.
 
-Polls stack health and an optional run (tools + status). Keys:
+Interactive mode (default) needs a real terminal (not a pipe).
+
+  talon console
+  talon console --run <run_id> --auto-approve
+
+One-shot snapshot (always prints boxes; works without alt-screen):
+
+  talon console --once
+  talon console --once --run <run_id>
+
+Keys (interactive):
   r  refresh now
   a  approve pending HITL (when a run is selected)
   j/k  scroll tool feed
   q  quit`,
 		Example: `  talon console
+  talon console --once
   talon console --run <run_id>
   talon console --run <run_id> --auto-approve`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.Client == nil {
-				return withExitCode(ExitError, "console needs a talon-core client")
+				return withExitCode(ExitError, "console needs a talon-core client (is core-url set?)")
 			}
+			if once {
+				return runConsoleOnce(cmd.Context(), opts, runID, autoApprove)
+			}
+			// Interactive bubbletea UI.
 			m := newConsoleModel(opts, runID, interval, autoApprove)
+			// Default width/height so first frame is never blank if WindowSize is delayed.
+			m.width, m.height = 100, 36
+			m.ready = true
+			m.layoutFeed()
 			p := tea.NewProgram(m, tea.WithAltScreen())
 			if _, err := p.Run(); err != nil {
-				return withExitCode(ExitError, "console: %v", err)
+				return withExitCode(ExitError, "console: %v\n\nTip: use `talon console --once` for a non-interactive snapshot.", err)
 			}
 			return nil
 		},
@@ -49,7 +69,53 @@ Polls stack health and an optional run (tools + status). Keys:
 	cmd.Flags().StringVar(&runID, "run", "", "run_id to follow (optional)")
 	cmd.Flags().DurationVar(&interval, "interval", 2*time.Second, "poll interval")
 	cmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "auto-approve HITL interrupts for the followed run")
+	cmd.Flags().BoolVar(&once, "once", false, "print one snapshot and exit (no interactive TUI)")
 	return cmd
+}
+
+// runConsoleOnce prints a full boxed snapshot without bubbletea (always visible).
+func runConsoleOnce(ctx context.Context, opts *RootOptions, runID string, autoApprove bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	m := newConsoleModel(opts, runID, 0, autoApprove)
+	m.onceMode = true
+	m.width = termWidth()
+	if m.width < 72 {
+		m.width = 72
+	}
+	m.height = 24
+	m.ready = true
+	m.layoutFeed()
+
+	// Reuse the same fetch path synchronously.
+	msg := m.fetchSnapshot()()
+	if snap, ok := msg.(snapshotMsg); ok {
+		if snap.err != nil {
+			m.errMsg = snap.err.Error()
+		}
+		if snap.report != nil {
+			m.report = snap.report
+		}
+		if snap.status != nil {
+			m.status = snap.status
+		}
+		if snap.tools != nil {
+			m.tools = snap.tools
+		}
+		if snap.history != nil {
+			m.history = snap.history
+		}
+		m.lastTick = time.Now()
+		m.refreshFeedContent()
+	}
+
+	fmt.Fprint(opts.Printer.Out, m.View())
+	fmt.Fprintln(opts.Printer.Out)
+	if m.report != nil && m.report.Overall == "down" {
+		return withExitCode(ExitError, "talon-core unreachable at %s", opts.Client.BaseURL())
+	}
+	return nil
 }
 
 type consoleModel struct {
@@ -70,6 +136,9 @@ type consoleModel struct {
 	lastTick time.Time
 	feed     viewport.Model
 	ready    bool
+	// onceMode skips the interactive viewport padding (no empty rows).
+	onceMode  bool
+	feedPlain string
 }
 
 type tickMsg time.Time
@@ -270,23 +339,31 @@ func (m *consoleModel) refreshFeedContent() {
 	var b strings.Builder
 	if len(m.tools) == 0 && len(m.history) == 0 {
 		b.WriteString(m.theme.Mute.Render("waiting for tool activity…"))
-		m.feed.SetContent(b.String())
+		m.feedPlain = b.String()
+		m.feed.SetContent(m.feedPlain)
 		return
 	}
 	// Prefer recent history lines then tool rows.
 	if len(m.history) > 0 {
 		start := 0
-		if len(m.history) > 40 {
-			start = len(m.history) - 40
+		limit := 40
+		if m.onceMode {
+			limit = 12
+		}
+		if len(m.history) > limit {
+			start = len(m.history) - limit
 		}
 		for _, line := range m.history[start:] {
 			b.WriteString(m.theme.Mute.Render(">_ "))
 			b.WriteString(m.theme.Dim.Render(line))
 			b.WriteByte('\n')
 		}
-		b.WriteByte('\n')
 	}
-	for _, t := range m.tools {
+	tools := m.tools
+	if m.onceMode && len(tools) > 12 {
+		tools = tools[len(tools)-12:]
+	}
+	for _, t := range tools {
 		preview := strings.ReplaceAll(t.Output, "\n", " ")
 		if len(preview) > 90 {
 			preview = preview[:87] + "..."
@@ -296,17 +373,20 @@ func (m *consoleModel) refreshFeedContent() {
 		out := m.theme.Dim.Render(preview)
 		b.WriteString(fmt.Sprintf("%s %s  %s\n", idx, name, out))
 	}
-	m.feed.SetContent(b.String())
+	m.feedPlain = strings.TrimRight(b.String(), "\n")
+	m.feed.SetContent(m.feedPlain)
 	m.feed.GotoBottom()
 }
 
 func (m consoleModel) View() string {
-	if !m.ready {
-		return m.theme.Mute.Render(" booting console…")
-	}
 	w := m.width
 	if w < 60 {
 		w = 60
+	}
+	if !m.ready {
+		// Still paint brand + hint so the alt-screen is never empty.
+		return "\n" + m.theme.BrandBar("operator console") + "\n\n" +
+			m.theme.Mute.Render(" booting console… (resize terminal if stuck)") + "\n"
 	}
 	half := (w - 3) / 2
 	if half < 28 {
@@ -378,8 +458,16 @@ func (m consoleModel) View() string {
 
 	top := lipgloss.JoinHorizontal(lipgloss.Top, svcBody, " ", runBody)
 
-	// Feed panel
-	feedTitle := m.theme.BoxTitle("live feed · tools / traces", m.feed.View(), w-2)
+	// Feed panel — plain text in --once (no viewport padding); viewport when live.
+	feedBody := m.feed.View()
+	if m.onceMode {
+		if m.feedPlain != "" {
+			feedBody = m.feedPlain
+		} else {
+			feedBody = m.theme.Mute.Render("waiting for tool activity…")
+		}
+	}
+	feedTitle := m.theme.BoxTitle("live feed · tools / traces", feedBody, w-2)
 
 	// Footer
 	keys := m.theme.Footer.Render(" r refresh · a approve · j/k scroll · g/G top/end · q quit ")
