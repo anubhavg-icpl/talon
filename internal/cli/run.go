@@ -284,6 +284,9 @@ func printStatus(opts *RootOptions, runID string, st *StatusResponse) error {
 		"output":    st.Output,
 		"interrupt": st.Interrupt,
 	}
+	if st.JudgeVerdict != nil {
+		payload["judge_verdict"] = *st.JudgeVerdict
+	}
 	return opts.Printer.PrintValue(payload, func(w io.Writer) error {
 		rows := [][2]string{
 			{"run_id", runID},
@@ -294,6 +297,9 @@ func printStatus(opts *RootOptions, runID string, st *StatusResponse) error {
 			if b, err := json.Marshal(st.Interrupt.Args); err == nil {
 				rows = append(rows, [2]string{"interrupt.args", string(b)})
 			}
+		}
+		if st.JudgeVerdict != nil {
+			rows = append(rows, [2]string{"judge_verdict", fmt.Sprintf("%v", *st.JudgeVerdict)})
 		}
 		if st.Output != "" && !opts.Flags.Quiet {
 			out := st.Output

@@ -79,9 +79,10 @@ type PendingInterrupt struct {
 
 // StatusResponse is GET /output/status/{run_id}.
 type StatusResponse struct {
-	Status    string            `json:"status"`
-	Output    string            `json:"output"`
-	Interrupt *PendingInterrupt `json:"interrupt"`
+	Status       string            `json:"status"`
+	Output       string            `json:"output"`
+	Interrupt    *PendingInterrupt `json:"interrupt"`
+	JudgeVerdict *bool             `json:"judge_verdict,omitempty"`
 }
 
 // ResumeRequest is POST /output/resume/{run_id}.
