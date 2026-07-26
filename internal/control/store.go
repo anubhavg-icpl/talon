@@ -4,7 +4,10 @@
 package control
 
 import (
+	"context"
 	"fmt"
+	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -19,6 +22,8 @@ type Session struct {
 	RunInput         core.RunInput
 	History          []string
 	ToolLog          []core.ToolCallRecord
+	// StartedAt is when the run was created (UTC), used for listing/sorting.
+	StartedAt time.Time
 	// JudgeVerdict is set when a completed run included a judge assessment.
 	// Only meaningful when Status is "completed".
 	JudgeVerdict bool
@@ -28,9 +33,17 @@ type Session struct {
 }
 
 // Store is a thread-safe (RWMutex-protected) in-memory session table.
+// Persistence: Postgres when EnablePostgres succeeded, else JSON file when
+// EnablePersistence was called — every mutation is flushed so runs survive
+// restarts.
 type Store struct {
 	mu       sync.RWMutex
 	sessions map[string]*Session
+	// persistPath, when non-empty, is the JSON file runs are flushed to.
+	persistPath string
+	// pg/pgCtx, when set, flush to Postgres instead of JSON.
+	pg    *DB
+	pgCtx context.Context
 }
 
 func NewStore() *Store {
@@ -42,17 +55,28 @@ func (s *Store) Create(runID string, input core.RunInput) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[runID] = &Session{
-		Status:   "initializing",
-		RunInput: input,
-		History:  []string{historyLine("created target=%s", input.TargetIP)},
+		Status:    "initializing",
+		RunInput:  input,
+		History:   []string{historyLine("created target=%s", input.TargetIP)},
+		StartedAt: time.Now().UTC(),
 	}
+	s.saveLocked(runID)
 }
 
 // Get returns a copy of the session's current fields, or ok=false if unknown.
+// Memory (active runs) first, then Postgres (historical runs) when enabled.
 func (s *Store) Get(runID string) (Session, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	pg := s.pg
+	pgCtx := s.pgCtx
 	sess, ok := s.sessions[runID]
+	s.mu.RUnlock()
+	if !ok && pg != nil {
+		if row, found := pg.getRun(pgCtx, runID); found {
+			sess = row
+			ok = true
+		}
+	}
 	if !ok {
 		return Session{}, false
 	}
@@ -78,6 +102,7 @@ func (s *Store) SetStatus(runID, status string) {
 		if sess.Status != status {
 			sess.Status = status
 			sess.History = append(sess.History, historyLine("status=%s", status))
+			s.saveLocked(runID)
 		}
 	}
 }
@@ -92,6 +117,7 @@ func (s *Store) SetResult(runID string, result core.RunResult) {
 	if !ok {
 		return
 	}
+	defer s.saveLocked(runID)
 	// Replace (do not append): the orchestrator tracker already holds the
 	// full run log across HITL resume cycles. Appending duplicated entries
 	// on every interrupt and made tool counts look inflated.
@@ -125,6 +151,7 @@ func (s *Store) SetError(runID string, err error) {
 		sess.Output = err.Error()
 		sess.PendingInterrupt = nil
 		sess.History = append(sess.History, historyLine("error: %s", err.Error()))
+		s.saveLocked(runID)
 	}
 }
 
@@ -141,6 +168,7 @@ func (s *Store) SetToolLog(runID string, toolLog []core.ToolCallRecord) {
 			rec := sess.ToolLog[i]
 			sess.History = append(sess.History, historyLine("tool[%d]=%s", rec.Index, rec.ToolName))
 		}
+		s.saveLocked(runID)
 	}
 }
 
@@ -169,6 +197,7 @@ func (s *Store) ClaimInterrupt(runID string) (Session, bool) {
 	sess.PendingInterrupt = nil
 	sess.Status = "running"
 	sess.History = append(sess.History, historyLine("resume_claimed"))
+	s.saveLocked(runID)
 	return out, true
 }
 
@@ -178,6 +207,7 @@ func (s *Store) AppendHistory(runID, format string, args ...any) {
 	defer s.mu.Unlock()
 	if sess, ok := s.sessions[runID]; ok {
 		sess.History = append(sess.History, historyLine(format, args...))
+		s.saveLocked(runID)
 	}
 }
 
@@ -196,4 +226,111 @@ func (s *Store) ToolLog(runID string) ([]core.ToolCallRecord, bool) {
 
 func historyLine(format string, args ...any) string {
 	return time.Now().UTC().Format(time.RFC3339) + " " + fmt.Sprintf(format, args...)
+}
+
+// RunSummary is the per-run listing record served by GET /runs.
+type RunSummary struct {
+	RunID        string    `json:"run_id"`
+	Target       string    `json:"target"`
+	CVEID        string    `json:"cve_id,omitempty"`
+	ServiceName  string    `json:"service_name,omitempty"`
+	Status       string    `json:"status"`
+	JudgeVerdict *bool     `json:"judge_verdict,omitempty"`
+	ToolCalls    int       `json:"tool_calls"`
+	StartedAt    time.Time `json:"started_at"`
+}
+
+// List returns one summary per run, newest first.
+func (s *Store) List() []RunSummary {
+	runs, _, _ := s.PaginatedList(0, 0)
+	return runs
+}
+
+// PaginatedList returns one page of summaries plus the total count.
+// With Postgres enabled the page is produced in SQL (scales to any registry
+// size); otherwise it slices the in-memory table. limit <= 0 means "all"
+// (memory mode only; PG mode clamps to a sane page size).
+func (s *Store) PaginatedList(limit, offset int) ([]RunSummary, int, error) {
+	s.mu.RLock()
+	pg := s.pg
+	pgCtx := s.pgCtx
+	s.mu.RUnlock()
+
+	if pg != nil {
+		if limit <= 0 {
+			limit = 500
+		}
+		return pg.listRunsPaginated(pgCtx, limit, offset)
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	all := make([]RunSummary, 0, len(s.sessions))
+	for id, sess := range s.sessions {
+		sum := RunSummary{
+			RunID:       id,
+			Target:      sess.RunInput.TargetIP,
+			CVEID:       sess.RunInput.CVEID,
+			ServiceName: sess.RunInput.ServiceName,
+			Status:      sess.Status,
+			ToolCalls:   len(sess.ToolLog),
+			StartedAt:   sess.StartedAt,
+		}
+		if sess.JudgeSet {
+			v := sess.JudgeVerdict
+			sum.JudgeVerdict = &v
+		}
+		all = append(all, sum)
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].StartedAt.After(all[j].StartedAt) })
+	total := len(all)
+	if limit > 0 {
+		if offset > len(all) {
+			offset = len(all)
+		}
+		end := offset + limit
+		if end > len(all) {
+			end = len(all)
+		}
+		all = all[offset:end]
+	}
+	return all, total, nil
+}
+
+// Summary aggregates registry counts for the overview dashboard.
+func (s *Store) Summary() RunsSummary {
+	s.mu.RLock()
+	pg := s.pg
+	pgCtx := s.pgCtx
+	s.mu.RUnlock()
+
+	if pg != nil {
+		sum, err := pg.runsSummary(pgCtx)
+		if err == nil {
+			return sum
+		}
+		log.Printf("control: pg summary: %v", err)
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var sum RunsSummary
+	for _, sess := range s.sessions {
+		sum.Total++
+		switch sess.Status {
+		case "initializing", "running", "awaiting_approval":
+			sum.Active++
+		case "completed":
+			sum.Completed++
+		case "error":
+			sum.Errored++
+		}
+		if sess.Status == "awaiting_approval" {
+			sum.AwaitingApproval++
+		}
+		if sess.JudgeSet && sess.JudgeVerdict {
+			sum.Compromised++
+		}
+	}
+	return sum
 }
