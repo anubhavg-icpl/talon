@@ -22,6 +22,8 @@ type FileConfig struct {
 	ComposeFile string `yaml:"compose_file"`
 	// ProjectDir is the Talon repo / compose project root for logs.
 	ProjectDir string `yaml:"project_dir"`
+	// Token is the session bearer token written by `talon auth login`.
+	Token string `yaml:"token"`
 }
 
 // DefaultConfigPath returns $XDG_CONFIG_HOME/talon/config.yaml or ~/.config/talon/config.yaml.
@@ -94,6 +96,8 @@ func parseSimpleYAML(s string) FileConfig {
 			cfg.ComposeFile = val
 		case "project_dir":
 			cfg.ProjectDir = val
+		case "token":
+			cfg.Token = val
 		}
 	}
 	return cfg
@@ -110,6 +114,7 @@ type ResolvedConfig struct {
 	ComposeFile string
 	ProjectDir  string
 	ConfigPath  string
+	Token       string
 }
 
 // ResolveConfig merges file + env + flag overrides into a ResolvedConfig.
@@ -127,6 +132,9 @@ func ResolveConfig(file FileConfig, flagCoreURL, flagOutput string, flagTimeout 
 	}
 
 	// File layer
+	if file.Token != "" {
+		r.Token = file.Token
+	}
 	if file.CoreURL != "" {
 		r.CoreURL = file.CoreURL
 	}
@@ -155,6 +163,9 @@ func ResolveConfig(file FileConfig, flagCoreURL, flagOutput string, flagTimeout 
 	}
 
 	// Env layer
+	if v := os.Getenv("TALON_TOKEN"); v != "" {
+		r.Token = v
+	}
 	if v := os.Getenv("TALON_CORE_URL"); v != "" {
 		r.CoreURL = v
 	}
@@ -204,4 +215,42 @@ func ResolveConfig(file FileConfig, flagCoreURL, flagOutput string, flagTimeout 
 	}
 
 	return r
+}
+
+// SaveConfigToken writes (or removes, when empty) the `token:` line in the
+// simple key: value config file, preserving all other lines. Creates the
+// file (0600 — it carries a credential) when missing.
+func SaveConfigToken(path, token string) error {
+	if path == "" {
+		return fmt.Errorf("no config path")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+	out := make([]string, 0, len(lines)+1)
+	wrote := false
+	for _, line := range lines {
+		key := strings.TrimSpace(strings.SplitN(line, ":", 2)[0])
+		if key == "token" {
+			if token != "" {
+				out = append(out, "token: "+token)
+			}
+			wrote = true
+			continue
+		}
+		if line == "" && len(lines) == 1 {
+			continue // fresh file
+		}
+		out = append(out, line)
+	}
+	if !wrote && token != "" {
+		out = append(out, "token: "+token)
+	}
+	content := strings.Join(out, "\n") + "\n"
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(content), 0o600)
 }

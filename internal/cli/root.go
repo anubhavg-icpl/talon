@@ -122,6 +122,7 @@ Examples:
 			if err != nil {
 				return err
 			}
+			client.SetToken(opts.Resolved.Token)
 			opts.Client = client
 			return nil
 		},
@@ -141,6 +142,7 @@ Examples:
 	root.AddCommand(newLogsCmd(opts))
 	root.AddCommand(newCompletionCmd())
 	root.AddCommand(newConfigCmd(opts))
+	root.AddCommand(newAuthCmd(opts))
 
 	return root
 }

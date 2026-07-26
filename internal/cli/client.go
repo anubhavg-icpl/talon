@@ -16,6 +16,7 @@ import (
 // Client is an HTTP client for the talon-core control plane.
 type Client struct {
 	baseURL    string
+	token      string
 	httpClient *http.Client
 }
 
@@ -52,6 +53,9 @@ func NewClient(coreBase string, timeout time.Duration) (*Client, error) {
 
 // BaseURL returns the configured core URL.
 func (c *Client) BaseURL() string { return c.baseURL }
+
+// SetToken configures the session bearer token (from `talon auth login`).
+func (c *Client) SetToken(token string) { c.token = token }
 
 // StartRequest is POST /input/start.
 type StartRequest struct {
@@ -224,6 +228,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any, out 
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "talon-cli/"+Version)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -241,6 +248,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any, out 
 			Detail string `json:"detail"`
 		}
 		_ = json.Unmarshal(raw, &detail)
+		if resp.StatusCode == http.StatusUnauthorized {
+			detail.Detail = "unauthorized — run `talon auth login` (or set TALON_TOKEN)"
+		}
 		return &APIError{
 			StatusCode: resp.StatusCode,
 			Detail:     detail.Detail,

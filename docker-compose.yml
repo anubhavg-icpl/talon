@@ -13,6 +13,12 @@ x-talon-env: &talon-env
   LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1000}
   OPENAI_HTTP_TIMEOUT: ${OPENAI_HTTP_TIMEOUT:-120s}
   OLLAMA_URL: http://localhost:${OLLAMA_PORT:-11434}
+  AMQP_URL: ${AMQP_URL:?AMQP_URL must be set}
+  TALON_DATABASE_URL: postgres://talon:${TALON_PG_PASSWORD:?TALON_PG_PASSWORD must be set}@localhost:5432/talon?sslmode=disable
+  TALON_ADMIN_USERNAME: ${TALON_ADMIN_USERNAME:-admin}
+  TALON_ADMIN_PASSWORD: ${TALON_ADMIN_PASSWORD:?TALON_ADMIN_PASSWORD must be set}
+  TALON_AUTH_DISABLED: ${TALON_AUTH_DISABLED:-false}
+  REDIS_URL: redis://localhost:${REDIS_PORT:-6380}
   OLLAMA_MAIN_MODEL: ${OLLAMA_MAIN_MODEL:-talon}
   OLLAMA_JUDGE_MODEL: ${OLLAMA_JUDGE_MODEL:-talon}
   OLLAMA_CODE_MODEL: ${OLLAMA_CODE_MODEL:-talon}
@@ -82,6 +88,30 @@ services:
     restart: unless-stopped
     network_mode: host
 
+  # 3b. Postgres -- persistence for run history, dashboard users and auth
+  # sessions. Replaces the runs.json fallback when TALON_DATABASE_URL is set.
+  postgres:
+    image: postgres:17-alpine
+    container_name: talon_postgres
+    environment:
+      POSTGRES_USER: talon
+      POSTGRES_PASSWORD: ${TALON_PG_PASSWORD:?TALON_PG_PASSWORD must be set}
+      POSTGRES_DB: talon
+    volumes:
+      - ./.pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    network_mode: host
+
+  # 3c. Redis -- cache layer (health probes, AI analysis, session lookups).
+  # Port 6380 because 6379 is commonly taken on dev boxes. Pure cache: no
+  # persistence; core runs uncached if it's down.
+  redis:
+    image: redis:7-alpine
+    container_name: talon_redis
+    command: ["redis-server", "--port", "6380", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+    network_mode: host
+
   # 4. Ollama -- optional local LLM runtime. Only needed when LLM_PROVIDER=ollama
   # (or LLM_CODE_PROVIDER=ollama). Gated behind the "ollama" profile so a plain
   # `docker compose up -d` does NOT pull the ~3.2GB ollama image when you're
@@ -109,11 +139,14 @@ services:
     command: ["/app/talon-core"]
     environment:
       <<: *talon-env
+      TALON_DATA_DIR: /data
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./talon-data:/data
     depends_on:
       - metasploit
       - arsenal-engine
+      - postgres
     restart: unless-stopped
     network_mode: host
 
@@ -127,12 +160,27 @@ services:
     command: ["/app/talon-relay"]
     environment:
       <<: *talon-env
-      AMQP_URL: ${AMQP_URL:?AMQP_URL must be set}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - metasploit
       - arsenal-engine
       - rabbitmq
+    restart: unless-stopped
+    network_mode: host
+
+  # 7. Web dashboard (web/Dockerfile): Next.js ops console on :3000.
+  # Browser → dashboard → /api/talon/* proxy → talon-core :8000.
+  dashboard:
+    build:
+      context: ./web
+    image: ${DASHBOARD_IMAGE:-talon-dashboard}
+    container_name: talon_dashboard
+    environment:
+      TALON_CORE_URL: http://localhost:8000
+      PORT: ${DASHBOARD_PORT:-3000}
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      - talon-core
     restart: unless-stopped
     network_mode: host

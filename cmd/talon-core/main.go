@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/anubhavg-icpl/talon/internal/config"
 	"github.com/anubhavg-icpl/talon/internal/control"
@@ -66,10 +67,83 @@ func main() {
 	orch := core.New(model, judge, tools, forge.NewCustomExploitTool(codeModel))
 
 	store := control.NewStore()
-	srv := control.NewServer(orch, store)
+	dataDir := os.Getenv("TALON_DATA_DIR")
+	if dataDir == "" {
+		dataDir = "talon-data"
+	}
+
+	// Persistence: Postgres when TALON_DATABASE_URL works, else JSON file.
+	var db *control.DB
+	if url := os.Getenv("TALON_DATABASE_URL"); url != "" {
+		pgCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		d, err := control.ConnectDB(pgCtx, url)
+		cancel()
+		if err != nil {
+			log.Printf("talon-core: postgres unavailable (%v) — falling back to JSON persistence", err)
+		} else {
+			db = d
+			defer db.Close()
+			log.Println("talon-core: postgres connected")
+		}
+	}
+	if db != nil {
+		if err := store.EnablePostgres(ctx, db, dataDir); err != nil {
+			log.Printf("talon-core: pg load failed (%v) — falling back to JSON persistence", err)
+			db.Close()
+			db = nil
+		}
+	}
+	if db == nil {
+		if err := store.EnablePersistence(dataDir); err != nil {
+			log.Printf("talon-core: persistence disabled: %v", err)
+		}
+	}
+
+	opts := []control.ServerOption{control.WithAnalyzer(model), control.WithTools(tools), control.WithSettings(control.NewSettings(db))}
+	if db != nil {
+		opts = append(opts, control.WithDB(db))
+	}
+
+	// Cache: Redis when REDIS_URL works, else endpoints run uncached.
+	var cache control.Cache
+	if url := os.Getenv("REDIS_URL"); url != "" {
+		cacheCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		c, err := control.ConnectCache(cacheCtx, url)
+		cancel()
+		if err != nil {
+			log.Printf("talon-core: redis unavailable (%v) — running uncached", err)
+		} else {
+			cache = c
+			opts = append(opts, control.WithCache(cache))
+			log.Println("talon-core: redis connected")
+		}
+	}
+	authDisabled := os.Getenv("TALON_AUTH_DISABLED") == "true"
+	switch {
+	case authDisabled:
+		log.Println("talon-core: warning: auth DISABLED (TALON_AUTH_DISABLED=true)")
+	case db == nil:
+		log.Println("talon-core: warning: auth disabled — no postgres (set TALON_DATABASE_URL)")
+	case os.Getenv("TALON_ADMIN_PASSWORD") == "":
+		log.Println("talon-core: warning: auth disabled — TALON_ADMIN_PASSWORD not set")
+	default:
+		adminUser := os.Getenv("TALON_ADMIN_USERNAME")
+		if adminUser == "" {
+			adminUser = "admin"
+		}
+		a, err := control.NewAuth(ctx, db, adminUser, os.Getenv("TALON_ADMIN_PASSWORD"))
+		if err != nil {
+			log.Fatalf("talon-core: init auth: %v", err)
+		}
+		if cache != nil {
+			a.SetCache(cache)
+		}
+		opts = append(opts, control.WithAuth(a))
+	}
+	srv := control.NewServer(orch, store, opts...)
 
 	log.Println("talon-core: listening on :8000")
-	if err := http.ListenAndServe(":8000", srv.Mux()); err != nil {
+	if err := http.ListenAndServe(":8000", srv.Handler()); err != nil {
 		log.Fatalf("talon-core: %v", err)
 	}
 }

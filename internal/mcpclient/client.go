@@ -6,6 +6,7 @@ package mcpclient
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/anubhavg-icpl/talon/internal/llm"
@@ -86,6 +87,28 @@ func (m *Multi) Subset(names ...string) []llm.ToolSpec {
 			out = append(out, t)
 		}
 	}
+	return out
+}
+
+// ServerInfo describes one connected MCP server for the dashboard.
+type ServerInfo struct {
+	Name  string   `json:"name"`
+	Tools []string `json:"tools"`
+}
+
+// Servers returns the connected MCP servers with their tool names.
+func (m *Multi) Servers() []ServerInfo {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	byServer := map[string][]string{}
+	for _, t := range m.tools {
+		byServer[m.owner[t.Name]] = append(byServer[m.owner[t.Name]], t.Name)
+	}
+	out := make([]ServerInfo, 0, len(m.clients))
+	for name := range m.clients {
+		out = append(out, ServerInfo{Name: name, Tools: byServer[name]})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
