@@ -115,21 +115,24 @@ service fails; down if core is unreachable.`,
 			report.Overall = overallFrom(report.Services)
 
 			err := opts.Printer.PrintValue(report, func(w io.Writer) error {
-				if !opts.Flags.Quiet {
-					fmt.Fprintf(w, "Talon stack status  overall=%s  core=%s\n\n", report.Overall, report.CoreURL)
+				th := NewTheme(w)
+				width := termWidth()
+				if width > 96 {
+					width = 96
 				}
-				rows := make([][2]string, 0, len(report.Services)+1)
-				for _, s := range report.Services {
-					val := s.Status
-					if s.Latency != "" {
-						val += " (" + s.Latency + ")"
-					}
-					if s.Detail != "" {
-						val += " — " + s.Detail
-					}
-					rows = append(rows, [2]string{s.Name, val})
+				if opts.Flags.Quiet {
+					fmt.Fprintln(w, report.Overall)
+					return nil
 				}
-				return KeyValueTable(w, rows)
+				fmt.Fprintln(w, th.BrandBar("stack status"))
+				fmt.Fprintln(w)
+				// Overall strip
+				overall := th.StatusDot(report.Overall) + " " + th.StatusLabel(report.Overall) +
+					th.Mute.Render("  core="+report.CoreURL)
+				fmt.Fprintln(w, th.BoxTitle("overview", overall, width))
+				fmt.Fprintln(w)
+				fmt.Fprintln(w, th.ServiceRowsBox("services", report.Services, width))
+				return nil
 			})
 			if err != nil {
 				return err

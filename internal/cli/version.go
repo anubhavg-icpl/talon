@@ -35,17 +35,25 @@ func newVersionCmd() *cobra.Command {
 			format, _ := ParseOutputFormat(cmd.Flag("output").Value.String())
 			p := NewPrinter(format)
 			return p.PrintValue(info, func(w io.Writer) error {
-				fmt.Fprintf(w, "talon %s", Version)
+				th := NewTheme(w)
+				fmt.Fprintln(w, th.BrandBar("cli"))
+				rows := [][2]string{
+					{"version", Version},
+					{"go", runtime.Version()},
+					{"os/arch", runtime.GOOS + "/" + runtime.GOARCH},
+				}
 				if Commit != "" {
-					fmt.Fprintf(w, " (%s)", Commit)
+					rows = [][2]string{
+						{"version", Version},
+						{"commit", Commit},
+						{"go", runtime.Version()},
+						{"os/arch", runtime.GOOS + "/" + runtime.GOARCH},
+					}
 				}
-				fmt.Fprintln(w)
 				if BuildDate != "" {
-					fmt.Fprintf(w, "built:  %s\n", BuildDate)
+					rows = append(rows, [2]string{"built", BuildDate})
 				}
-				fmt.Fprintf(w, "go:     %s\n", runtime.Version())
-				fmt.Fprintf(w, "os/arch: %s/%s\n", runtime.GOOS, runtime.GOARCH)
-				return nil
+				return KeyValueTable(w, rows)
 			})
 		},
 	}

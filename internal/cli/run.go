@@ -288,6 +288,17 @@ func printStatus(opts *RootOptions, runID string, st *StatusResponse) error {
 		payload["judge_verdict"] = *st.JudgeVerdict
 	}
 	return opts.Printer.PrintValue(payload, func(w io.Writer) error {
+		th := NewTheme(w)
+		width := termWidth()
+		if width > 96 {
+			width = 96
+		}
+		if opts.Flags.Quiet {
+			fmt.Fprintln(w, st.Status)
+			return nil
+		}
+		fmt.Fprintln(w, th.BrandBar("run status"))
+		fmt.Fprintln(w)
 		rows := [][2]string{
 			{"run_id", runID},
 			{"status", st.Status},
@@ -301,12 +312,36 @@ func printStatus(opts *RootOptions, runID string, st *StatusResponse) error {
 		if st.JudgeVerdict != nil {
 			rows = append(rows, [2]string{"judge_verdict", fmt.Sprintf("%v", *st.JudgeVerdict)})
 		}
-		if st.Output != "" && !opts.Flags.Quiet {
+		if st.Output != "" {
 			out := st.Output
 			if len(out) > 400 {
 				out = out[:397] + "..."
 			}
 			rows = append(rows, [2]string{"output", strings.ReplaceAll(out, "\n", " ")})
+		}
+		// Prefer boxed layout when color is available.
+		if th.Enabled {
+			var body strings.Builder
+			for i, r := range rows {
+				if i > 0 {
+					body.WriteByte('\n')
+				}
+				if r[0] == "status" {
+					body.WriteString(th.Label.Render(padRight("status", 14)))
+					body.WriteString("  ")
+					body.WriteString(th.StatusDot(r[1]) + " " + th.StatusLabel(r[1]))
+					continue
+				}
+				body.WriteString(th.Label.Render(padRight(r[0], 14)))
+				body.WriteString("  ")
+				if r[0] == "judge_verdict" {
+					body.WriteString(th.Accent.Render(r[1]))
+				} else {
+					body.WriteString(th.Value.Render(r[1]))
+				}
+			}
+			fmt.Fprintln(w, th.BoxTitle("run", body.String(), width))
+			return nil
 		}
 		return KeyValueTable(w, rows)
 	})
@@ -360,9 +395,12 @@ func pollOnce(ctx context.Context, opts *RootOptions, runID string, autoApprove 
 
 	// Human-readable progress on stderr so stdout stays clean for JSON pipes.
 	if opts.Printer.Format == OutputTable && !opts.Flags.Quiet {
-		line := fmt.Sprintf("%s  status=%s", time.Now().Format("15:04:05"), st.Status)
+		th := NewTheme(opts.Printer.Err)
+		ts := th.Mute.Render(time.Now().Format("15:04:05"))
+		stLabel := th.StatusDot(st.Status) + " " + th.StatusLabel(st.Status)
+		line := ts + "  " + stLabel
 		if st.Interrupt != nil {
-			line += "  interrupt=" + st.Interrupt.ToolName
+			line += "  " + th.Warn.Render("hitl="+st.Interrupt.ToolName)
 		}
 		fmt.Fprintln(opts.Printer.Err, line)
 	}

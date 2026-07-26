@@ -48,6 +48,8 @@ Configuration precedence (highest wins):
 
 Examples:
   talon status
+  talon console
+  talon console --run <run_id> --auto-approve
   talon run start --ip 127.0.0.1 --cve CVE-2011-2523 --lhost 192.168.0.176
   talon run status <run_id>
   talon run watch <run_id>
@@ -134,6 +136,7 @@ Examples:
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newStatusCmd(opts))
+	root.AddCommand(newConsoleCmd(opts))
 	root.AddCommand(newRunCmd(opts))
 	root.AddCommand(newLogsCmd(opts))
 	root.AddCommand(newCompletionCmd())

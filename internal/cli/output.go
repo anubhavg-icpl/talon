@@ -66,8 +66,17 @@ func (p *Printer) PrintValue(v any, tableFn func(io.Writer) error) error {
 	}
 }
 
-// KeyValueTable writes key/value pairs as a simple two-column table.
+// KeyValueTable writes key/value pairs as a boxed panel (TTY) or tab table.
 func KeyValueTable(w io.Writer, rows [][2]string) error {
+	th := NewTheme(w)
+	if th.Enabled {
+		width := termWidth()
+		if width > 96 {
+			width = 96
+		}
+		fmt.Fprintln(w, th.KeyValueBox("detail", rows, width))
+		return nil
+	}
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	for _, r := range rows {
 		if _, err := fmt.Fprintf(tw, "%s\t%s\n", r[0], r[1]); err != nil {
@@ -77,8 +86,33 @@ func KeyValueTable(w io.Writer, rows [][2]string) error {
 	return tw.Flush()
 }
 
-// ToolsTable prints a compact tool log.
+// ToolsTable prints a compact tool log as a red/black box when on a TTY.
 func ToolsTable(w io.Writer, tools []ToolCallRecord) error {
+	th := NewTheme(w)
+	if th.Enabled {
+		width := termWidth()
+		if width > 100 {
+			width = 100
+		}
+		var b strings.Builder
+		b.WriteString(th.Label.Render("IDX  TOOL                  PREVIEW"))
+		b.WriteByte('\n')
+		for _, t := range tools {
+			preview := strings.ReplaceAll(t.Output, "\n", " ")
+			if len(preview) > 70 {
+				preview = preview[:67] + "..."
+			}
+			b.WriteString(th.Mute.Render(fmt.Sprintf("%-4d", t.Index)))
+			b.WriteString(th.Accent.Render(fmt.Sprintf("%-20s", t.ToolName)))
+			b.WriteString(th.Dim.Render(" " + preview))
+			b.WriteByte('\n')
+		}
+		if len(tools) == 0 {
+			b.WriteString(th.Mute.Render("(no tool calls recorded yet)"))
+		}
+		fmt.Fprintln(w, th.BoxTitle("tool log", strings.TrimRight(b.String(), "\n"), width))
+		return nil
+	}
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if _, err := fmt.Fprintln(tw, "INDEX\tTOOL\tOUTPUT_PREVIEW"); err != nil {
 		return err
