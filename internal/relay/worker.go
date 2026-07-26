@@ -173,6 +173,7 @@ func (w *Worker) handle(ctx context.Context, orchestrator *core.Orchestrator, d 
 // approval protocol is ever needed here too.
 func runToCompletion(ctx context.Context, orchestrator *core.Orchestrator, task AgentTask) (core.RunResult, error) {
 	input := core.RunInput{
+		SessionID:   task.RunID,
 		TargetIP:    task.AgentInputs.TargetIP,
 		CVEID:       task.AgentInputs.CVEID,
 		Description: task.AgentInputs.Description,
@@ -185,6 +186,9 @@ func runToCompletion(ctx context.Context, orchestrator *core.Orchestrator, task 
 	result, err := orchestrator.Run(ctx, input)
 	for i := 0; err == nil && result.Interrupted && i < maxAutoApprovals; i++ {
 		result, err = orchestrator.Resume(ctx, input, core.Decision{Type: "approve"})
+	}
+	if err == nil && result.Interrupted {
+		return result, fmt.Errorf("queue: exceeded max auto-approvals (%d) still interrupted", maxAutoApprovals)
 	}
 	return result, err
 }
