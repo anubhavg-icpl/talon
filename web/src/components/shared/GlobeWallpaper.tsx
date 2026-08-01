@@ -11,7 +11,9 @@ import { Box, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-const VIDEO_SRC = '/globe/dark-planet.mp4'
+/** Prefer WebM (VP9); MP4 kept as fallback for older engines */
+const VIDEO_SRC_WEBM = '/globe/dark-planet.webm'
+const VIDEO_SRC_MP4 = '/globe/dark-planet.mp4'
 const POSTER_SRC = '/globe/operator-globe-hud.webp'
 
 type GlobeWallpaperProps = {
@@ -58,7 +60,6 @@ const GlobeWallpaper = ({
             <video
               ref={videoRef}
               className='absolute inset-0 size-full object-cover'
-              src={VIDEO_SRC}
               poster={POSTER_SRC}
               autoPlay
               muted
@@ -66,7 +67,10 @@ const GlobeWallpaper = ({
               playsInline
               preload='metadata'
               onError={() => setVideoOk(false)}
-            />
+            >
+              <source src={VIDEO_SRC_WEBM} type='video/webm' />
+              <source src={VIDEO_SRC_MP4} type='video/mp4' />
+            </video>
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={POSTER_SRC} alt='' className='absolute inset-0 size-full object-cover' />
