@@ -118,9 +118,10 @@ ENV API_PORT=8888 \
 
 EXPOSE 8888 7681
 
-# Run the ttyd web terminal (full interactive PTY) alongside the tool API so
-# operators get a live Kali shell inside the console. It binds LOOPBACK only
-# (127.0.0.1) with NO basic-auth and base-path /shell: it is unreachable from
-# the network and is exposed solely through talon-core's session-authenticated
-# /shell reverse proxy (SSO — same console login, no second credential prompt).
-CMD sh -c 'ttyd -p "${TTYD_PORT}" -i 127.0.0.1 -b /shell -W bash & exec python3 arsenal_engine.py --port "${API_PORT}"'
+# ttyd launcher + carbon-black/electric-red xterm index (not default gray).
+# Loopback-only; SSO via talon-core session-authenticated /shell proxy.
+COPY start-ttyd.sh /usr/local/bin/start-ttyd.sh
+COPY ttyd-index.html /usr/local/share/ttyd-index.html
+RUN chmod +x /usr/local/bin/start-ttyd.sh
+
+CMD sh -c '/usr/local/bin/start-ttyd.sh & exec python3 arsenal_engine.py --port "${API_PORT}"'
