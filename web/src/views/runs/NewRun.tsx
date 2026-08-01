@@ -243,9 +243,11 @@ const NewRun = () => {
           <CardDescription className='font-mono text-[10px]'>Three.js · compact globe</CardDescription>
         </CardHeader>
         <CardContent className='flex justify-center p-2 pb-4'>
-          <Lazy3D className='aspect-square w-full max-w-[220px]' label='TARGET HUD' compact>
-            <TalonGlobe className='h-full w-full' variant='compact' state='thinking' activityLevel={0.5} />
-          </Lazy3D>
+          <div className='aspect-square w-full max-w-[240px]'>
+            <Lazy3D className='h-full w-full' label='TARGET HUD' poster='/showcase/operator-globe-hud.webp'>
+              <TalonGlobe className='h-full w-full' variant='compact' state='thinking' activityLevel={0.45} interactive />
+            </Lazy3D>
+          </div>
         </CardContent>
       </Card>
       </div>

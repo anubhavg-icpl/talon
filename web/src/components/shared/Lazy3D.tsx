@@ -67,7 +67,11 @@ const Lazy3D = ({
   const [on, setOn] = usePrefer3D(remember)
 
   if (on) {
-    return <div className={cn('relative size-full min-h-[80px]', className)}>{children}</div>
+    return (
+      <div className={cn('relative size-full min-h-[120px] min-w-[120px]', className)} style={{ minHeight: 120 }}>
+        {children}
+      </div>
+    )
   }
 
   if (compact) {
