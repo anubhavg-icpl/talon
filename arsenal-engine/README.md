@@ -1,96 +1,77 @@
-# Talon Arsenal Engine (Kali)
+# Talon Arsenal Engine (BlackArch)
 
-Self-built tool-execution backend for Talon (`cmd/talon-arsenal` / dashboard Kali shell).
+Self-built tool-execution backend for Talon. **Base distro: BlackArch (Arch + strap), not Kali.**
 
-## Why Kali (not BlackArch)?
+## Contracts (do not break)
 
-| | **Kali rolling** (this image) | BlackArch |
-|--|------------------------------|-----------|
-| Docker base | Official, well-maintained | Community, heavier |
-| Package names | Match `arsenal_engine.py` | Often different |
-| Reproducibility | Better for CI / compose | More churn |
-| Size | Large but controllable | Typically larger |
-| Tool coverage | Apt + Go + pip layers | “Everything” but fragile |
+| Surface | Value |
+|---------|--------|
+| Container name | `arsenal_engine` |
+| HTTP API | `API_PORT` default **8888** → `arsenal_engine.py` |
+| Web shell | `TTYD_PORT` default **7681**, loopback, path `/shell` |
+| SSO | talon-core reverse-proxies `/shell` |
+| Compose | `network_mode: host`, `privileged: true` |
+| Health | `GET /health` |
 
-**Verdict:** Kali + explicit installs of missing tools is the better production default. BlackArch is fine on bare metal for research, not ideal as a compose service base.
+## Why BlackArch
+
+| | BlackArch (this image) | Kali |
+|--|------------------------|------|
+| Tool catalog | Very large pacman set | Large apt set |
+| Base | Arch + blackarch.org strap | Debian rolling |
+| Request | User-selected for arsenal | Still used by `kali-msf` / msf_rpc only |
+
+Metasploit RPC remains the separate **`msf_rpc`** service (`kali-msf/`). This image does **not** replace it.
 
 ## Build
 
 ```bash
-# Default production profile (cloud scanners + pwntools/angr + chromium)
 docker compose build arsenal-engine
+docker compose up -d --force-recreate arsenal-engine
 
-# Leaner (skip cloud binaries + heavy binary Python stack)
-docker build \
-  --build-arg INSTALL_CLOUD=0 \
-  --build-arg INSTALL_BINARY_HEAVY=0 \
-  -t talon-arsenal-engine \
-  ./arsenal-engine
-
-# With wireless suite
-docker build --build-arg INSTALL_WIRELESS=1 -t talon-arsenal-engine ./arsenal-engine
+curl -s http://127.0.0.1:8888/health | head
+docker exec arsenal_engine arsenal-tool-check
+docker exec arsenal_engine cat /etc/os-release
+# expect Arch / BlackArch lineage
 ```
 
-## Build args
+### Build args
 
 | Arg | Default | Meaning |
 |-----|---------|---------|
-| `INSTALL_CLOUD` | `1` | trivy, terrascan, kube-bench, prowler, scoutsuite, pacu, docker-bench |
-| `INSTALL_BINARY_HEAVY` | `1` | pwntools, angr, ropgadget, one-gadget, ropper |
-| `INSTALL_BROWSER` | `1` | Chromium + chromedriver for browser-agent |
-| `INSTALL_WIRELESS` | `0` | aircrack-ng, kismet, reaver, … |
+| `INSTALL_CLOUD` | `1` | trivy, terrascan, kube-bench, prowler, scoutsuite, pacu |
+| `INSTALL_BINARY_HEAVY` | `1` | pwntools, angr, ropgadget, one-gadget |
+| `INSTALL_BROWSER` | `1` | Chromium + chromedriver |
+| `INSTALL_WIRELESS` | `0` | aircrack-ng suite |
 
-## Run (compose)
+Lean:
 
 ```bash
-docker compose up -d arsenal-engine
-curl -s http://127.0.0.1:8888/health | jq .
-docker exec arsenal_engine arsenal-tool-check
+docker build \
+  --build-arg INSTALL_CLOUD=0 \
+  --build-arg INSTALL_BINARY_HEAVY=0 \
+  -t talon-arsenal-engine ./arsenal-engine
 ```
 
-## Tool layout (how tools get in)
+## Tool sources
 
-1. **Kali apt** — nmap, masscan, nuclei (also Go), gobuster, sqlmap, hydra, john, hashcat, netexec, responder, gdb, radare2, …
-2. **Go install** — httpx, katana, dalfox, gau, waybackurls, hakrawler, jaeles, ffuf/gobuster/nuclei/subfinder (latest upstream)
-3. **GitHub releases** — rustscan, ttyd, trivy, terrascan, kube-bench
-4. **pip** — flask/fastmcp stack, volatility3, checkov, kube-hunter, prowler, scoutsuite, paramspider, uro, …
+1. **pacman / BlackArch** — nmap, masscan, amass, nuclei, gobuster, sqlmap, hydra, john, hashcat, netexec, responder, gdb, radare2, rustscan, …
+2. **go install** — httpx, katana, dalfox, gau, waybackurls, hakrawler, jaeles, …
+3. **GitHub releases** — ttyd, trivy, terrascan, kube-bench, docker-bench-security
+4. **pip** — Flask/fastmcp stack + volatility3, checkov, kube-hunter, prowler, …
 5. **gem** — evil-winrm, zsteg
 
-## Intentionally not in the image
+Missing packages are **skipped** (`pac-opt`) so one rename does not fail the whole image. `arsenal-tool-check` reports OK/MISS.
 
-| Tool | Why |
-|------|-----|
-| Metasploit full | Separate `msf_rpc` service (`kali-msf/`) |
-| Ghidra | Multi-GB + JDK; mount or install manually if needed |
-| Burp Suite | Commercial license |
-| IDA / Binary Ninja | Commercial |
-| Maltego | License + GUI |
-| Hashcat GPU drivers | Host NVIDIA stack; install on GPU nodes |
-| OSINT API CLIs needing keys | Optional; install + inject keys per engagement |
+## Intentionally external
 
-## Health categories (`GET /health`)
+| Tool | Where |
+|------|--------|
+| Metasploit full | `msf_rpc` / `kali-msf` |
+| Ghidra / Burp / IDA | Manual / licensed |
+| Hashcat GPU drivers | Host NVIDIA stack |
 
-`arsenal_engine.py` probes `which <tool>` for essential / network / web / password / binary / forensics / cloud / osint groups. Missing optional tools return `"success": false` for that name without crashing the API.
+## Shell
 
-## MCP / HexStrike notes
-
-This container runs **`arsenal_engine.py`** (HTTP API on `:8888`), not the separate `hexstrike_mcp.py` stdio bridge. Point MCP clients at:
-
-```json
-{
-  "mcpServers": {
-    "talon-arsenal": {
-      "command": "python3",
-      "args": ["hexstrike_mcp.py", "--server", "http://127.0.0.1:8888"]
-    }
-  }
-}
-```
-
-(only if you vendor the MCP client script separately).
-
-## Shell (ttyd)
-
-- Loopback `127.0.0.1:7681`, base path `/shell`
-- SSO via talon-core reverse proxy
-- Theme: carbon black + electric red (`ttyd-index.html`)
+- ttyd theme: carbon black + electric red (`ttyd-index.html`)
+- `start-ttyd.sh` unchanged contract

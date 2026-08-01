@@ -1,25 +1,23 @@
 # =============================================================================
-# Talon Arsenal Engine — production Kali tool image
+# Talon Arsenal Engine — BlackArch tool image (not Kali)
 # =============================================================================
-# Base: kalilinux/kali-rolling (preferred over BlackArch for Docker)
-#   • Stable, well-maintained packages matching arsenal_engine.py names
-#   • Smaller/more reproducible than blackarch/blackarch
-#   • Same role as kali-msf/ for Metasploit — Python engine + CLI arsenal
+# Base: Arch Linux + BlackArch strap (blackarch.org)
+# Same contracts as before so nothing breaks for Talon:
+#   • HTTP API  :${API_PORT:-8888}  → arsenal_engine.py
+#   • ttyd PTY  :127.0.0.1:${TTYD_PORT:-7681}/shell  (SSO via talon-core)
+#   • health    GET /health
+#   • compose   service arsenal-engine, network_mode: host, privileged
 #
 # Build:
 #   docker compose build arsenal-engine
-#   # or full extras (cloud + heavy binary Python deps):
 #   docker build --build-arg INSTALL_CLOUD=1 --build-arg INSTALL_BINARY_HEAVY=1 \
 #     -t talon-arsenal-engine ./arsenal-engine
-#
-# Health: curl -s http://127.0.0.1:8888/health
-# Shell:  ttyd on 127.0.0.1:7681 (SSO via talon-core /shell)
 # =============================================================================
 
-FROM kalilinux/kali-rolling
+FROM archlinux:base-devel
 
 LABEL org.opencontainers.image.title="talon-arsenal-engine" \
-      org.opencontainers.image.description="Kali tool-execution backend for Talon (HexStrike-class arsenal + MCP HTTP API)" \
+      org.opencontainers.image.description="BlackArch tool-execution backend for Talon (HexStrike-class arsenal + MCP HTTP API)" \
       org.opencontainers.image.source="https://github.com/anubhavg-icpl/talon"
 
 ARG INSTALL_CLOUD=1
@@ -33,8 +31,7 @@ ARG KUBE_BENCH_VERSION=0.9.2
 ARG TTYD_VERSION=1.7.7
 ARG GO_VERSION=1.23.6
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    GOPATH=/root/go \
+ENV GOPATH=/root/go \
     GOBIN=/root/go/bin \
     PATH="/root/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     LANG=C.UTF-8 \
@@ -42,31 +39,35 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1
 
 # ---------------------------------------------------------------------------
-# 0) Base OS + build toolchain + shell utilities (must succeed)
+# 0) Arch base + BlackArch strap (official)
 # ---------------------------------------------------------------------------
 RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-      ca-certificates gnupg apt-transport-https \
-      python3 python3-pip python3-venv python3-dev python3-setuptools python3-wheel \
-      build-essential gcc g++ make cmake pkg-config \
-      git curl wget unzip tar xz-utils jq file procps \
-      iproute2 iputils-ping net-tools dnsutils netcat-openbsd \
-      libpcap-dev libssl-dev libffi-dev libxml2-dev libxslt1-dev \
-      zlib1g-dev libjpeg-dev libpng-dev \
-      ruby ruby-dev \
-      default-jre-headless \
-      sudo less vim-tiny \
-      pciutils usbutils \
-    ; \
-    rm -rf /var/lib/apt/lists/*
+    pacman -Syu --noconfirm --needed \
+      base base-devel git curl wget unzip tar xz jq which \
+      python python-pip python-setuptools python-wheel \
+      gcc clang make cmake pkgconf \
+      openssl libpcap libffi libxml2 libxslt zlib libjpeg-turbo libpng \
+      ruby \
+      jre-openjdk-headless \
+      sudo iproute2 iputils net-tools bind-tools gnu-netcat \
+      procps-ng file less vim nano \
+      ca-certificates; \
+    # BlackArch keyring + mirrorlist
+    curl -fsSL -o /tmp/strap.sh https://blackarch.org/strap.sh; \
+    chmod +x /tmp/strap.sh; \
+    /tmp/strap.sh; \
+    rm -f /tmp/strap.sh; \
+    pacman -Syu --noconfirm; \
+    # Parallel downloads, no confirm prompts
+    sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf || true; \
+    pacman -Scc --noconfirm || true
 
-# Official Go (Kali's golang-go lags; go install needs a recent toolchain)
+# Official Go (newer than some Arch mirrors for reproducible go install)
 RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
+    arch="$(uname -m)"; \
     case "$arch" in \
-      amd64) goarch=amd64 ;; \
-      arm64) goarch=arm64 ;; \
+      x86_64) goarch=amd64 ;; \
+      aarch64|arm64) goarch=arm64 ;; \
       *) goarch=amd64 ;; \
     esac; \
     curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${goarch}.tar.gz" \
@@ -74,103 +75,96 @@ RUN set -eux; \
     go version
 
 # ---------------------------------------------------------------------------
-# 1) Helper: install apt packages without aborting the layer on missing names
-#    (Kali rolling renames packages occasionally)
+# 1) pacman helper — install each package independently (BlackArch renames often)
 # ---------------------------------------------------------------------------
 RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -eu' \
   'ok=0; fail=0' \
   'for p in "$@"; do' \
-  '  if apt-get install -y --no-install-recommends "$p"; then ok=$((ok+1));' \
-  '  else echo "WARN: apt package unavailable: $p"; fail=$((fail+1)); fi' \
+  '  if pacman -S --noconfirm --needed "$p"; then ok=$((ok+1));' \
+  '  else echo "WARN: pacman package unavailable: $p"; fail=$((fail+1)); fi' \
   'done' \
-  'echo "apt-opt: ok=$ok fail=$fail"' \
+  'echo "pac-opt: ok=$ok fail=$fail"' \
   'exit 0' \
-  > /usr/local/bin/apt-opt && chmod +x /usr/local/bin/apt-opt
+  > /usr/local/bin/pac-opt && chmod +x /usr/local/bin/pac-opt
 
 # ---------------------------------------------------------------------------
-# 2) Core security tools (network, web, password, binary, forensics, wireless)
-#    Split into groups so a flaky mirror can be retried per layer.
+# 2) Core BlackArch / Arch security tools (grouped)
 # ---------------------------------------------------------------------------
 
 # 2a Network & recon
 RUN set -eux; \
-    apt-get update; \
-    /usr/local/bin/apt-opt \
+    pacman -Sy --noconfirm; \
+    /usr/local/bin/pac-opt \
       nmap masscan amass subfinder fierce dnsenum theharvester \
-      netexec enum4linux-ng enum4linux smbmap nbtscan arp-scan responder \
-      autorecon rpcbind samba-common-bin \
-      whatweb sslscan testssl.sh; \
-    rm -rf /var/lib/apt/lists/*
+      netexec crackmapexec enum4linux enum4linux-ng smbmap nbtscan arp-scan \
+      responder autorecon rpcbind samba \
+      whatweb sslscan testssl.sh rustscan; \
+    pacman -Scc --noconfirm || true
 
 # 2b Web application
 RUN set -eux; \
-    apt-get update; \
-    /usr/local/bin/apt-opt \
+    pacman -Sy --noconfirm; \
+    /usr/local/bin/pac-opt \
       gobuster feroxbuster ffuf dirb dirsearch nuclei nikto sqlmap wpscan \
-      wafw00f arjun wfuzz commix nosqlmap \
-      zaproxy; \
-    rm -rf /var/lib/apt/lists/*
+      wafw00f arjun wfuzz commix; \
+    pacman -Scc --noconfirm || true
 
 # 2c Password & auth
 RUN set -eux; \
-    apt-get update; \
-    /usr/local/bin/apt-opt \
-      hydra john hashcat medusa patator hash-identifier hashcat-utils \
-      ophcrack seclists wordlists; \
-    rm -rf /var/lib/apt/lists/*
+    pacman -Sy --noconfirm; \
+    /usr/local/bin/pac-opt \
+      hydra john hashcat medusa patator hash-identifier \
+      seclists wordlists; \
+    pacman -Scc --noconfirm || true
 
 # 2d Binary / RE / forensics
 RUN set -eux; \
-    apt-get update; \
-    /usr/local/bin/apt-opt \
-      gdb gdb-peda radare2 binwalk checksec foremost steghide exiftool \
+    pacman -Sy --noconfirm; \
+    /usr/local/bin/pac-opt \
+      gdb radare2 binwalk checksec foremost steghide perl-image-exiftool \
       binutils strace ltrace \
-      testdisk sleuthkit scalpel bulk-extractor autopsy \
-      stegsnow outguess; \
-    rm -rf /var/lib/apt/lists/*
+      testdisk sleuthkit scalpel bulk_extractor \
+      outguess; \
+    pacman -Scc --noconfirm || true
 
-# 2e Wireless (optional — large; off by default)
+# 2e Wireless (optional)
 RUN set -eux; \
     if [ "${INSTALL_WIRELESS}" = "1" ]; then \
-      apt-get update; \
-      /usr/local/bin/apt-opt aircrack-ng reaver bully kismet wireshark-common tshark tcpdump; \
-      rm -rf /var/lib/apt/lists/*; \
+      pacman -Sy --noconfirm; \
+      /usr/local/bin/pac-opt aircrack-ng reaver bully kismet wireshark-cli tcpdump; \
+      pacman -Scc --noconfirm || true; \
     else \
-      apt-get update; \
-      /usr/local/bin/apt-opt tshark tcpdump; \
-      rm -rf /var/lib/apt/lists/*; \
+      pacman -Sy --noconfirm; \
+      /usr/local/bin/pac-opt tcpdump wireshark-cli; \
+      pacman -Scc --noconfirm || true; \
     fi
 
-# 2f Metasploit client utils (full RPC is separate msf_rpc service)
+# 2f Exploit-DB searchsploit
 RUN set -eux; \
-    apt-get update; \
-    /usr/local/bin/apt-opt exploitdb; \
-    rm -rf /var/lib/apt/lists/*; \
-    command -v searchsploit >/dev/null 2>&1 || true
+    pacman -Sy --noconfirm; \
+    /usr/local/bin/pac-opt exploitdb; \
+    pacman -Scc --noconfirm || true
 
 # ---------------------------------------------------------------------------
-# 3) Browser agent (Chromium + chromedriver for Selenium)
+# 3) Browser agent (Chromium)
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     if [ "${INSTALL_BROWSER}" = "1" ]; then \
-      apt-get update; \
-      /usr/local/bin/apt-opt \
-        chromium chromium-driver \
-        fonts-liberation fonts-dejavu-core; \
-      # Symlinks Selenium / arsenal often expect
+      pacman -Sy --noconfirm; \
+      /usr/local/bin/pac-opt chromium chromedriver ttf-liberation ttf-dejavu; \
       if [ -x /usr/bin/chromium ] && [ ! -e /usr/bin/google-chrome ]; then \
         ln -sf /usr/bin/chromium /usr/bin/google-chrome; \
       fi; \
       if [ -x /usr/bin/chromium ] && [ ! -e /usr/bin/chromium-browser ]; then \
         ln -sf /usr/bin/chromium /usr/bin/chromium-browser; \
       fi; \
-      rm -rf /var/lib/apt/lists/*; \
+      pacman -Scc --noconfirm || true; \
     fi
 
 # ---------------------------------------------------------------------------
-# 4) Go-based recon / fuzzers (not always in Kali apt, or newer upstream)
+# 4) Go-based recon / fuzzers (latest upstream; complements BlackArch)
 # ---------------------------------------------------------------------------
 ENV GOPROXY=https://proxy.golang.org,direct
 RUN set -eu; \
@@ -189,7 +183,6 @@ RUN set -eu; \
       github.com/ffuf/ffuf/v2@latest \
       github.com/OJ/gobuster/v3@latest \
       github.com/jaeles-project/jaeles@latest \
-      github.com/dwisiswant0/crlfuzz/cmd/crlfuzz@latest \
     ; do \
       echo "=== go install $pkg ==="; \
       if ! go install -v "$pkg"; then \
@@ -198,27 +191,27 @@ RUN set -eu; \
       fi; \
     done; \
     echo "go install complete (failures=$failed)"; \
-    # Ensure nuclei templates available for first scan
     if command -v nuclei >/dev/null 2>&1; then \
       nuclei -update-templates -silent || true; \
     fi
 
 # ---------------------------------------------------------------------------
-# 5) Release binaries (rustscan, trivy, terrascan, kube-bench, ttyd)
+# 5) Release binaries (ttyd, trivy, terrascan, kube-bench; rustscan if missing)
 # ---------------------------------------------------------------------------
 RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
-    case "$arch" in arm64) ra=aarch64 ;; *) ra=x86_64 ;; esac; \
+    arch="$(uname -m)"; \
+    case "$arch" in aarch64|arm64) ra=aarch64; goa=arm64; ta=ARM64 ;; *) ra=x86_64; goa=amd64; ta=64bit ;; esac; \
     \
-    # rustscan (amd64 deb; skip quietly on other arches)
-    if [ "$arch" = "amd64" ]; then \
+    # rustscan fallback if not from BlackArch
+    if ! command -v rustscan >/dev/null 2>&1 && [ "$goa" = "amd64" ]; then \
       curl -fsSL -o /tmp/rustscan.deb \
-        "https://github.com/RustScan/RustScan/releases/download/${RUSTSCAN_VERSION}/rustscan_${RUSTSCAN_VERSION}_amd64.deb" \
-        || curl -fsSL -o /tmp/rustscan.deb \
-        "https://github.com/bee-san/RustScan/releases/download/${RUSTSCAN_VERSION}/rustscan_${RUSTSCAN_VERSION}_amd64.deb" \
-        || true; \
-      if [ -f /tmp/rustscan.deb ]; then dpkg -i /tmp/rustscan.deb || apt-get -f install -y || true; fi; \
-      rm -f /tmp/rustscan.deb; \
+        "https://github.com/RustScan/RustScan/releases/download/${RUSTSCAN_VERSION}/rustscan_${RUSTSCAN_VERSION}_amd64.deb" || true; \
+      if [ -f /tmp/rustscan.deb ]; then \
+        # extract deb without dpkg on Arch
+        cd /tmp && ar x rustscan.deb && tar -xf data.tar.* -C / && \
+        command -v rustscan || true; \
+      fi; \
+      rm -rf /tmp/rustscan.deb /tmp/data.tar.* /tmp/control.tar.* /tmp/debian-binary 2>/dev/null || true; \
     fi; \
     \
     # ttyd
@@ -228,19 +221,18 @@ RUN set -eux; \
       && /usr/local/bin/ttyd --version \
       || echo "WARN: ttyd install skipped"
 
-# Cloud / container scanners (optional but default ON)
 RUN set -eux; \
-    if [ "${INSTALL_CLOUD}" != "1" ]; then echo "INSTALL_CLOUD=0 — skipping cloud binaries"; exit 0; fi; \
-    arch="$(dpkg --print-architecture)"; \
-    case "$arch" in arm64) goa=arm64; ta=ARM64 ;; *) goa=amd64; ta=64bit ;; esac; \
+    if [ "${INSTALL_CLOUD}" != "1" ]; then echo "INSTALL_CLOUD=0 — skip cloud binaries"; exit 0; fi; \
+    arch="$(uname -m)"; \
+    case "$arch" in aarch64|arm64) goa=arm64; ta=ARM64 ;; *) goa=amd64; ta=64bit ;; esac; \
     \
-    # trivy
-    curl -fsSL -o /tmp/trivy.deb \
-      "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${ta}.deb" \
-      && dpkg -i /tmp/trivy.deb || true; \
-    rm -f /tmp/trivy.deb; \
+    curl -fsSL -o /tmp/trivy.tar.gz \
+      "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-${ta}.tar.gz" \
+      && tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy \
+      && chmod +x /usr/local/bin/trivy \
+      || true; \
+    rm -f /tmp/trivy.tar.gz; \
     \
-    # terrascan
     curl -fsSL -o /tmp/terrascan.tar.gz \
       "https://github.com/tenable/terrascan/releases/download/v${TERRASCAN_VERSION}/terrascan_${TERRASCAN_VERSION}_Linux_x86_64.tar.gz" \
       && tar -xzf /tmp/terrascan.tar.gz -C /usr/local/bin terrascan \
@@ -248,7 +240,6 @@ RUN set -eux; \
       || true; \
     rm -f /tmp/terrascan.tar.gz; \
     \
-    # kube-bench
     curl -fsSL -o /tmp/kube-bench.tar.gz \
       "https://github.com/aquasecurity/kube-bench/releases/download/v${KUBE_BENCH_VERSION}/kube-bench_${KUBE_BENCH_VERSION}_linux_${goa}.tar.gz" \
       && tar -xzf /tmp/kube-bench.tar.gz -C /usr/local/bin kube-bench \
@@ -256,7 +247,6 @@ RUN set -eux; \
       || true; \
     rm -f /tmp/kube-bench.tar.gz; \
     \
-    # kube-hunter via pip later; docker-bench is a script clone
     git clone --depth 1 https://github.com/docker/docker-bench-security.git /opt/docker-bench-security \
       && printf '%s\n' '#!/bin/sh' 'cd /opt/docker-bench-security && exec sh docker-bench-security.sh "$@"' \
          > /usr/local/bin/docker-bench-security \
@@ -264,7 +254,7 @@ RUN set -eux; \
       || true
 
 # ---------------------------------------------------------------------------
-# 6) Ruby gems (evil-winrm, zsteg)
+# 6) Ruby gems
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     gem install --no-document evil-winrm zsteg || \
@@ -276,46 +266,38 @@ RUN set -eux; \
 WORKDIR /opt/arsenal-engine
 COPY requirements.txt /opt/arsenal-engine/requirements.txt
 
-# Core API deps always
+# Arch: system packages may conflict; --break-system-packages is supported on pip 23+
 RUN pip3 install --break-system-packages --no-cache-dir --ignore-installed \
+      -r /opt/arsenal-engine/requirements.txt \
+    || pip install --break-system-packages --no-cache-dir --ignore-installed \
       -r /opt/arsenal-engine/requirements.txt
 
-# Extra Python security tools used by health-check /api routes
 RUN set -eux; \
-    pip3 install --break-system-packages --no-cache-dir --ignore-installed \
-      httpie \
-      uro \
-      paramspider \
-      checkov \
-      kube-hunter \
-      shodan \
-      censys \
-      recon-ng \
+    PIP="pip3"; command -v pip3 >/dev/null || PIP="pip"; \
+    $PIP install --break-system-packages --no-cache-dir --ignore-installed \
+      httpie uro paramspider checkov kube-hunter shodan censys \
       || true; \
     if [ "${INSTALL_CLOUD}" = "1" ]; then \
-      pip3 install --break-system-packages --no-cache-dir --ignore-installed \
-        prowler \
-        scoutsuite \
-        pacu \
+      $PIP install --break-system-packages --no-cache-dir --ignore-installed \
+        prowler scoutsuite pacu \
         || true; \
     fi; \
-    pip3 install --break-system-packages --no-cache-dir --ignore-installed \
+    $PIP install --break-system-packages --no-cache-dir --ignore-installed \
       volatility3 \
       || true
 
-# Heavy binary-exploitation Python stack (optional — large native wheels)
 RUN set -eux; \
     if [ "${INSTALL_BINARY_HEAVY}" = "1" ]; then \
-      pip3 install --break-system-packages --no-cache-dir --ignore-installed \
+      PIP="pip3"; command -v pip3 >/dev/null || PIP="pip"; \
+      $PIP install --break-system-packages --no-cache-dir --ignore-installed \
         'pwntools>=4.10.0,<5.0.0' \
         'angr>=9.2.0,<10.0.0' \
-        ropgadget \
-        one-gadget \
+        ropgadget one-gadget \
         || true; \
-      pip3 install --break-system-packages --no-cache-dir --ignore-installed ropper || true; \
+      $PIP install --break-system-packages --no-cache-dir --ignore-installed ropper || true; \
     fi
 
-# Convenience wrappers so `which` finds common aliases arsenal health probes for
+# Aliases arsenal_engine health probes expect
 RUN set -eux; \
     if command -v nxc >/dev/null 2>&1 && [ ! -e /usr/local/bin/netexec ]; then \
       ln -sf "$(command -v nxc)" /usr/local/bin/netexec; \
@@ -323,14 +305,23 @@ RUN set -eux; \
     if command -v netexec >/dev/null 2>&1 && [ ! -e /usr/local/bin/nxc ]; then \
       ln -sf "$(command -v netexec)" /usr/local/bin/nxc; \
     fi; \
+    if command -v crackmapexec >/dev/null 2>&1; then \
+      [ -e /usr/local/bin/netexec ] || ln -sf "$(command -v crackmapexec)" /usr/local/bin/netexec; \
+      [ -e /usr/local/bin/nxc ] || ln -sf "$(command -v crackmapexec)" /usr/local/bin/nxc; \
+    fi; \
     if command -v volatility3 >/dev/null 2>&1 && [ ! -e /usr/local/bin/vol ]; then \
       ln -sf "$(command -v volatility3)" /usr/local/bin/vol; \
     fi; \
-    # pwninit / one-gadget may install as scripts
+    # exiftool path
+    if command -v exiftool >/dev/null 2>&1; then true; \
+    elif command -v perl-image-exiftool >/dev/null 2>&1; then true; \
+    elif [ -x /usr/bin/vendor_perl/exiftool ]; then \
+      ln -sf /usr/bin/vendor_perl/exiftool /usr/local/bin/exiftool; \
+    fi; \
     true
 
 # ---------------------------------------------------------------------------
-# 8) Application + ttyd theme
+# 8) Application + ttyd theme (unchanged contracts)
 # ---------------------------------------------------------------------------
 COPY arsenal_engine.py /opt/arsenal-engine/arsenal_engine.py
 COPY LICENSE.upstream /opt/arsenal-engine/LICENSE.upstream
@@ -338,7 +329,6 @@ COPY start-ttyd.sh /usr/local/bin/start-ttyd.sh
 COPY ttyd-index.html /usr/local/share/ttyd-index.html
 RUN chmod +x /usr/local/bin/start-ttyd.sh
 
-# Tool inventory helper (used in health / docs; does not fail build)
 RUN set -eu; \
     printf '%s\n' \
       '#!/bin/sh' \
@@ -348,27 +338,21 @@ RUN set -eu; \
       '  if command -v "$t" >/dev/null 2>&1; then echo "OK  $t"; ok=$((ok+1));' \
       '  else echo "MISS $t"; miss=$((miss+1)); fi' \
       'done' \
-      'echo "summary ok=$ok miss=$miss"' \
+      'echo "summary ok=$ok miss=$miss distro=blackarch"' \
       > /usr/local/bin/arsenal-tool-check && chmod +x /usr/local/bin/arsenal-tool-check; \
     /usr/local/bin/arsenal-tool-check || true
 
 ENV API_PORT=8888 \
     TTYD_PORT=7681 \
-    # Chromium headless defaults for browser-agent
     CHROME_BIN=/usr/bin/chromium \
     CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --headless=new"
 
 WORKDIR /opt/arsenal-engine
 EXPOSE 8888 7681
 
-# Document intentionally not installed (license / multi-GB / needs external keys):
-#   ghidra, burpsuite, ida-free, binary-ninja, maltego, autopsy-gui, falco full,
-#   metasploit-framework (use talon msf_rpc service), hashcat GPU drivers
-#
-# BlackArch alternative: larger package set, less stable Docker base, different
-# package names — Kali remains the recommended production base for this engine.
+# Still not in image (same as before): Ghidra, Burp, IDA, full MSF (use msf_rpc), Maltego
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null || exit 1
 
 CMD sh -c '/usr/local/bin/start-ttyd.sh & exec python3 arsenal_engine.py --port "${API_PORT}"'
