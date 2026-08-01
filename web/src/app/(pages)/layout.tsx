@@ -15,8 +15,8 @@ import { Toaster } from '@/components/ui/sonner'
 const PagesLayout = ({ children }: Readonly<{ children: ReactNode }>) => {
   return (
     <div className='relative flex h-full w-full min-w-0'>
-      {/* Light ambient stars — paused when tab hidden; client-only chunk */}
-      <Starfield className='fixed inset-0 z-0 opacity-30' count={380} opacity={0.32} speed={0.00022} />
+      {/* Light ambient stars — fewer particles to avoid GPU/tab OOM on tight hosts */}
+      <Starfield className='fixed inset-0 z-0 opacity-25' count={160} opacity={0.28} speed={0.00018} />
       <div className='relative z-10 flex h-full w-full min-w-0'>
         <Suspense fallback={null}>
           <Sidebar />

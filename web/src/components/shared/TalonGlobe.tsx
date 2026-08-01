@@ -141,17 +141,44 @@ const TalonGlobe = ({
     const mount = mountRef.current
     if (!mount) return
 
+    // WebGL can kill the tab (Aw Snap) on low-RAM hosts — fail soft.
+    try {
+      const probe = document.createElement('canvas')
+      const gl = probe.getContext('webgl') || probe.getContext('experimental-webgl')
+      if (!gl) {
+        mount.innerHTML =
+          '<div class="flex h-full min-h-[120px] items-center justify-center font-mono text-[10px] text-muted-foreground tracking-widest">WEBGL UNAVAILABLE</div>'
+        return
+      }
+    } catch {
+      return
+    }
+
     let width = mount.clientWidth || 300
     let height = mount.clientHeight || 300
     const isBg = variant === 'background'
     const canOrbit = interactive ?? (variant === 'hero' || isBg)
 
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: !isBg,
+        alpha: !isBg,
+        powerPreference: 'low-power',
+        failIfMajorPerformanceCaveat: false
+      })
+    } catch (err) {
+      console.warn('[TalonGlobe] WebGLRenderer failed', err)
+      mount.innerHTML =
+        '<div class="flex h-full min-h-[120px] items-center justify-center font-mono text-[10px] text-muted-foreground tracking-widest">WEBGL INIT FAILED</div>'
+      return
+    }
+
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 4000)
     camera.position.set(0, 0, isBg ? 380 : 240)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: !isBg })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
     renderer.setSize(width, height)
     mount.appendChild(renderer.domElement)
 
