@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 
 import TalonGlobe from '@/components/shared/TalonGlobe'
+import ExamplesStage from '@/components/shared/three/ExamplesStage'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -112,7 +113,9 @@ const ShowcaseView = () => {
       <div className='flex flex-wrap items-end justify-between gap-3'>
         <div>
           <h1 className='font-mono text-xl font-semibold tracking-widest'>SHOWCASE</h1>
-          <p className='micro-label mt-1'>THREE.JS LIVE · PRODUCT REEL · PIPELINE · SKILLS — E2E DEMO</p>
+          <p className='micro-label mt-1'>
+            SKELETONUTILS + GLTF · OPERATOR GLOBE · PRODUCT REEL — YOUR THREE.JS EXAMPLES E2E
+          </p>
         </div>
         <div className='flex flex-wrap gap-2'>
           <Link href='/runs/new' className={cn(buttonVariants(), 'font-mono text-xs tracking-widest uppercase')}>
@@ -127,32 +130,8 @@ const ShowcaseView = () => {
         </div>
       </div>
 
-      {/* Full-width interactive Three.js hero */}
-      <Card className='hud-corners relative overflow-hidden border-primary/25'>
-        <CardHeader className='pb-2'>
-          <CardTitle className='micro-label text-primary'>LIVE WEBGL · DRAG TO ORBIT</CardTitle>
-          <CardDescription className='font-mono text-[11px]'>
-            TalonGlobe hero variant — OrbitControls · starfield · atmosphere · recon arcs
-          </CardDescription>
-        </CardHeader>
-        <CardContent className='p-0'>
-          <div className='relative h-[min(52vh,420px)] w-full bg-black'>
-            <TalonGlobe className='h-full w-full' variant='hero' state='running' activityLevel={0.65} interactive />
-            <div className='pointer-events-none absolute bottom-3 left-3 right-3 flex flex-wrap gap-2'>
-              <Badge className='font-mono text-[10px]'>THREE.JS</Badge>
-              <Badge variant='outline' className='font-mono text-[10px]'>
-                ORBIT
-              </Badge>
-              <Badge variant='outline' className='font-mono text-[10px]'>
-                BEACONS
-              </Badge>
-              <Badge variant='outline' className='font-mono text-[10px]'>
-                ARCS
-              </Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Exact patterns from the Three.js examples you shared */}
+      <ExamplesStage />
 
       {/* Main stage + side globe */}
       <div className='grid gap-4 lg:grid-cols-[1fr_280px]'>
