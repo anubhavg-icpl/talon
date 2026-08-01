@@ -1,0 +1,14 @@
+# Slim runtime for local SLMs (SmolLM2 + friends) with OpenAI-compatible SSE.
+# torch CPU wheel is pulled from the official index in the Dockerfile.
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+pydantic==2.11.3
+huggingface-hub==0.30.2
+transformers==4.51.3
+accelerate==1.6.0
+sentencepiece==0.2.0
+protobuf==5.29.4
+onnxruntime==1.21.1
+numpy==2.2.5
+httpx==0.28.1
+sse-starlette==2.2.1

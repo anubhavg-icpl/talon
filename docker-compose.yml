@@ -30,6 +30,12 @@ x-talon-env: &talon-env
   OPENAI_MAIN_MODEL: ${OPENAI_MAIN_MODEL:-glm-5.2}
   OPENAI_JUDGE_MODEL: ${OPENAI_JUDGE_MODEL:-glm-5.2}
   OPENAI_CODE_MODEL: ${OPENAI_CODE_MODEL:-glm-5.2}
+  # Local SmolLM / ONNX Runtime (compose profile "slm", LLM_PROVIDER=onnx)
+  ONNX_BASE_URL: ${ONNX_BASE_URL:-http://localhost:8090/v1}
+  ONNX_API_KEY: ${ONNX_API_KEY:-talon-local}
+  ONNX_MAIN_MODEL: ${ONNX_MAIN_MODEL:-smollm}
+  ONNX_JUDGE_MODEL: ${ONNX_JUDGE_MODEL:-smollm}
+  ONNX_CODE_MODEL: ${ONNX_CODE_MODEL:-smollm}
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -132,6 +138,38 @@ services:
     volumes:
       - ./ollama-data:/root/.ollama
       - ./models:/models:ro          # so `ollama create talon -f /models/Modelfile` works in-container
+    restart: unless-stopped
+    network_mode: host
+
+  # 4b. ONNX / SmolLM SLM runtime — ultra-fast local chat with OpenAI-compatible
+  # SSE streaming (millisecond tokens → Go /llm/stream → dashboard).
+  # Profile "slm" keeps the image off the default path.
+  #   docker compose --profile slm up -d --build onnx-slm
+  #   LLM_PROVIDER=onnx  ONNX_BASE_URL=http://localhost:8090/v1
+  # See docs/slm-onnx.md.
+  onnx-slm:
+    build:
+      context: ./onnx-slm
+      dockerfile: Dockerfile
+    image: ${ONNX_SLM_IMAGE:-talon-onnx-slm:latest}
+    container_name: talon_onnx_slm
+    profiles: ["slm"]
+    environment:
+      SLM_PORT: ${SLM_PORT:-8090}
+      SLM_MODEL_ID: ${SLM_MODEL_ID:-HuggingFaceTB/SmolLM2-360M-Instruct}
+      SLM_FALLBACK_MODEL_ID: ${SLM_FALLBACK_MODEL_ID:-HuggingFaceTB/SmolLM2-135M-Instruct}
+      SLM_BACKEND: ${SLM_BACKEND:-auto}
+      SLM_MAX_NEW_TOKENS: ${SLM_MAX_NEW_TOKENS:-256}
+      SLM_TEMPERATURE: ${SLM_TEMPERATURE:-0.3}
+      SLM_LAZY: ${SLM_LAZY:-0}
+      MODEL_DIR: /models/smollm
+      HF_HOME: /models/hf-cache
+      TRANSFORMERS_CACHE: /models/hf-cache
+      ORT_INTRA_THREADS: ${ORT_INTRA_THREADS:-4}
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-4}
+    volumes:
+      - ./models/smollm:/models/smollm
+      - ./models/hf-cache:/models/hf-cache
     restart: unless-stopped
     network_mode: host
 
