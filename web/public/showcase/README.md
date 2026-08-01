@@ -5,7 +5,6 @@ used on the page where it belongs:
 
 | Still | Where it appears |
 |-------|------------------|
-| `operator-globe-hud.webp` | Login backdrop (also `/globe/` copy for posters) |
 | `talon-hero-raptor.webp` | Overview hero wash |
 | `talon-dashboard-product.webp` | Settings header strip |
 | `talon-pipeline-agents.webp` | Agents + Playbooks banners |

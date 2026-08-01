@@ -59,7 +59,7 @@ export function usePrefer3D(remember = true): [boolean, (v: boolean) => void] {
 const Lazy3D = ({
   children,
   className,
-  poster = '/globe/operator-globe-hud.webp',
+  poster = '',
   label = 'OPERATOR GLOBE',
   remember = true,
   compact = false

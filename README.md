@@ -288,7 +288,7 @@ cd web && pnpm install && pnpm dev   # http://localhost:3000, needs core on :800
   <tr>
     <td width="33%" align="center"><img src="assets/talon-hero-raptor.webp" alt="Talon hero"/><br/><sub>Operator hero</sub></td>
     <td width="33%" align="center"><img src="assets/talon-dashboard-product.webp" alt="Dashboard"/><br/><sub>Ops console</sub></td>
-    <td width="33%" align="center"><img src="assets/operator-globe-hud.webp" alt="Globe"/><br/><sub>Live C2 globe</sub></td>
+    <td width="33%" align="center"><svg width="200" height="130" viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Live C2 globe"><rect width="200" height="130" fill="#060a0e"/><circle cx="100" cy="72" r="42" fill="#0a0a0b" stroke="#ef4444" stroke-width="3"/><circle cx="100" cy="60" r="3" fill="#ef4444"/></svg><br/><sub>Live C2 globe</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="assets/talon-pipeline-agents.webp" alt="Pipeline"/><br/><sub>Multi-agent pipeline</sub></td>

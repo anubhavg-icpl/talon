@@ -60,6 +60,7 @@ import {
 } from '@/lib/api'
 import type { OperatorNote, TimelineEvent } from '@/lib/api'
 import { shortId } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import RunReportView from '@/views/runs/RunReportView'
 import RunTimelineView from '@/views/runs/RunTimelineView'
 
@@ -77,18 +78,86 @@ const severityVariant = (sev: string): 'destructive' | 'default' | 'secondary' |
   }
 }
 
+// Severity edge rail — world-class issue cards carry a colored severity rail
+// (Burp / Cobalt Strike / Wiz all key findings by a colored edge or dot).
+const severityEdge = (sev: string): string => {
+  switch (sev.toLowerCase()) {
+    case 'critical':
+      return 'border-l-2 border-l-red-500'
+    case 'high':
+      return 'border-l-2 border-l-orange-400'
+    case 'medium':
+      return 'border-l-2 border-l-amber-400'
+    case 'low':
+      return 'border-l-2 border-l-red-300'
+    default:
+      return 'border-l-2 border-l-muted-foreground'
+  }
+}
+
+// Compact 3-gate evidence chain (baseline -> attack -> diff) with per-gate
+// presence + overall verification flag: evidence you can scan in one glance,
+// matching how Burp / Wiz surface evidence-backed findings.
+const GateChain = ({ evidence }: { evidence?: Finding['evidence'] }) => {
+  const gates = [
+    { name: 'BASELINE', value: evidence?.baseline },
+    { name: 'ATTACK', value: evidence?.attack },
+    { name: 'DIFF', value: evidence?.diff }
+  ]
+  if (!gates.some(g => g.value) && !evidence?.passed) return null
+  return (
+    <div className='border-border/40 bg-muted/20 mt-2 space-y-2 rounded border p-2 text-[11px]'>
+      <div className='flex items-center justify-between'>
+        <div className='flex items-center gap-1.5'>
+          {gates.map((g, i) => (
+            <>
+              <span
+                className={cn(
+                  'flex h-4 w-4 items-center justify-center rounded-full font-mono text-[9px] font-bold',
+                  g.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground/40'
+                )}
+                aria-label={g.value ? `${g.name}: present` : `${g.name}: absent`}
+              >
+                {i + 1}
+              </span>
+              <span
+                className={cn(
+                  'text-[9px] font-mono tracking-widest uppercase',
+                  g.value ? 'text-foreground' : 'text-muted-foreground/40'
+                )}
+              >
+                {g.name}
+              </span>
+              {i < gates.length - 1 && <span className='text-muted-foreground/40'>›</span>}
+            </>
+          ))}
+        </div>
+        {evidence?.passed && (
+          <Badge variant='outline' className='border-primary/50 text-primary font-mono text-[9px]'>
+            VERIFIED
+          </Badge>
+        )}
+      </div>
+      <div className='space-y-0.5'>
+        {gates.map(g =>
+          g.value ? (
+            <p key={g.name}>
+              <span className='text-primary'>{g.name}:</span> {g.value}
+            </p>
+          ) : null
+        )}
+      </div>
+    </div>
+  )
+}
+
 const FindingCard = ({ finding }: { finding: Finding }) => (
-  <Card className='border-border/60'>
+  <Card className={cn('border-border/60', severityEdge(finding.severity))}>
     <CardHeader className='pb-2'>
       <div className='flex flex-wrap items-center gap-2'>
         <Badge variant={severityVariant(finding.severity)} className='font-mono text-[10px] tracking-widest uppercase'>
           {finding.severity}
         </Badge>
-        {finding.evidence?.passed && (
-          <Badge variant='outline' className='border-primary/50 text-primary font-mono text-[10px] tracking-widest uppercase'>
-            3-GATE PASS
-          </Badge>
-        )}
         {finding.stage && (
           <span className='text-muted-foreground font-mono text-[10px] tracking-widest uppercase'>{finding.stage}</span>
         )}
@@ -103,26 +172,7 @@ const FindingCard = ({ finding }: { finding: Finding }) => (
         {finding.cwe_id && <span>REF: {finding.cwe_id}</span>}
         {finding.source && <span>SRC: {finding.source}</span>}
       </div>
-      {(finding.evidence?.baseline || finding.evidence?.attack || finding.evidence?.diff) && (
-        <div className='border-border/40 bg-muted/20 mt-2 space-y-1 rounded border p-2 text-[11px]'>
-          <p className='micro-label'>3-GATE EVIDENCE</p>
-          {finding.evidence.baseline && (
-            <p>
-              <span className='text-primary'>1. BASELINE:</span> {finding.evidence.baseline}
-            </p>
-          )}
-          {finding.evidence.attack && (
-            <p>
-              <span className='text-primary'>2. ATTACK:</span> {finding.evidence.attack}
-            </p>
-          )}
-          {finding.evidence.diff && (
-            <p>
-              <span className='text-primary'>3. DIFF:</span> {finding.evidence.diff}
-            </p>
-          )}
-        </div>
-      )}
+      {finding.evidence && <GateChain evidence={finding.evidence} />}
       {finding.recommendation && (
         <p className='text-muted-foreground'>
           <span className='text-foreground'>REMEDY:</span> {finding.recommendation}

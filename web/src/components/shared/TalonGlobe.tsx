@@ -43,9 +43,8 @@ const C = {
 const TEX = {
   earth: 'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-dark.jpg',
   bump: 'https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png',
-  // Local overrides when present (public/globe/*)
-  earthLocal: '/globe/earth-dark.jpg',
-  bumpLocal: '/globe/earth-topology.png'
+  // Local earth texture override when present (public/globe/*).
+  earthLocal: '/globe/earth-dark.jpg'
 }
 
 const OPS: [number, number] = [38.9, -77.0]
@@ -242,7 +241,7 @@ const TalonGlobe = ({
       // Prefer local textures; fall back to CDN (always works in prod).
       const globe = new ThreeGlobe({ animateIn: variant !== 'compact', waitForGlobeReady: true })
         .globeImageUrl(TEX.earthLocal)
-        .bumpImageUrl(TEX.bumpLocal)
+        .bumpImageUrl(TEX.bump)
         .showAtmosphere(true)
         .atmosphereColor(C.atmosphere)
         .atmosphereAltitude(0.2)

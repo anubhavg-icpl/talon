@@ -52,7 +52,8 @@ const Login = () => {
         className='pointer-events-none absolute inset-0 opacity-80'
         aria-hidden
         style={{
-          backgroundImage: 'url(/globe/operator-globe-hud.webp)',
+          backgroundImage:
+            'radial-gradient(ellipse at 50% 30%, oklch(0.62 0.22 25 / 0.08), oklch(0.06 0 0) 70%)',
           backgroundSize: 'cover',
           backgroundPosition: 'center'
         }}
@@ -60,7 +61,7 @@ const Login = () => {
       <div className='scanlines pointer-events-none absolute inset-0' />
       <div className='pointer-events-none absolute inset-0 bg-gradient-to-b from-background/50 via-background/65 to-background/90' />
 
-      <div className='hud-corners bg-card/90 relative z-10 w-full max-w-md rounded-sm border border-primary/20 p-8 shadow-[0_0_48px_oklch(0.84_0.14_205/0.08)] backdrop-blur-md'>
+      <div className='hud-corners bg-card/90 relative z-10 w-full max-w-md rounded-sm border border-primary/20 p-8 shadow-[0_0_48px_oklch(0.84_0.14_25/0.08)] backdrop-blur-md'>
         <div className='mb-8 flex flex-col items-center gap-3'>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
