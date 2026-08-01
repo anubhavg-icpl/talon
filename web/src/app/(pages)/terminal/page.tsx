@@ -2,7 +2,7 @@
 import Terminal from '@/views/terminal/Terminal'
 
 export const metadata = {
-  title: 'Talon Ops Console — Kali Shell'
+  title: 'Talon Ops Console — Arsenal Shell'
 }
 
 const TerminalPage = () => <Terminal />

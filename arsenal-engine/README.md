@@ -71,7 +71,24 @@ Missing packages are **skipped** (`pac-opt`) so one rename does not fail the who
 | Ghidra / Burp / IDA | Manual / licensed |
 | Hashcat GPU drivers | Host NVIDIA stack |
 
-## Shell
+## Operator shell (Talon-themed BlackArch)
 
-- ttyd theme: carbon black + electric red (`ttyd-index.html`)
-- `start-ttyd.sh` unchanged contract
+Login PTY (`bash -l` via ttyd) loads:
+
+| File | Role |
+|------|------|
+| `/etc/talon/motd` | ASCII TALON banner (red) |
+| `/etc/talon/fastfetch.jsonc` | **fastfetch** system card |
+| `/etc/talon/bashrc` | Red PS1, aliases (`ff`, `tools`, `health`) |
+| `/etc/profile.d/talon-arsenal.sh` | Login hook |
+| `ttyd-index.html` | xterm carbon + electric red |
+
+Aliases inside the shell:
+
+```bash
+ff       # fastfetch (Talon config)
+tools    # arsenal-tool-check
+health   # curl API /health
+```
+
+Dashboard route: **Arsenal Shell** (`/terminal`) — not “Kali”.

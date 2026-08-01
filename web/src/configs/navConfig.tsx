@@ -71,7 +71,7 @@ export const navItems: NavItem[] = [
       },
       {
         icon: 'SquareTerminal',
-        label: 'Kali Shell',
+        label: 'Arsenal Shell',
         href: '/terminal'
       },
       {

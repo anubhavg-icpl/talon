@@ -50,8 +50,9 @@ RUN set -eux; \
       ruby \
       jre-openjdk-headless \
       sudo iproute2 iputils net-tools bind-tools gnu-netcat \
-      procps-ng file less vim nano \
-      ca-certificates; \
+      procps-ng file less vim nano bash \
+      ca-certificates \
+      fastfetch; \
     # BlackArch keyring + mirrorlist
     curl -fsSL -o /tmp/strap.sh https://blackarch.org/strap.sh; \
     chmod +x /tmp/strap.sh; \
@@ -321,7 +322,36 @@ RUN set -eux; \
     true
 
 # ---------------------------------------------------------------------------
-# 8) Application + ttyd theme (unchanged contracts)
+# 8) Talon BlackArch operator shell (fastfetch + MOTD + red prompt)
+# ---------------------------------------------------------------------------
+COPY shell/fastfetch.jsonc /etc/talon/fastfetch.jsonc
+COPY shell/talon-bashrc.sh /etc/talon/bashrc
+COPY shell/motd /etc/talon/motd
+COPY shell/profile.d-talon.sh /etc/profile.d/talon-arsenal.sh
+RUN set -eux; \
+    chmod 644 /etc/talon/fastfetch.jsonc /etc/talon/bashrc /etc/talon/motd /etc/profile.d/talon-arsenal.sh; \
+    # root interactive defaults
+    printf '%s\n' \
+      '# Talon BlackArch arsenal' \
+      '[[ -f /etc/talon/bashrc ]] && . /etc/talon/bashrc' \
+      > /root/.bashrc; \
+    # ensure login shells pick up profile.d
+    if ! grep -q 'profile.d' /root/.bash_profile 2>/dev/null; then \
+      printf '%s\n' \
+        '[[ -f /etc/profile ]] && . /etc/profile' \
+        '[[ -f ~/.bashrc ]] && . ~/.bashrc' \
+        > /root/.bash_profile; \
+    fi; \
+    # hostname for prompt / fastfetch
+    echo 'talon-blackarch' > /etc/hostname || true; \
+    # fallback if fastfetch package name differs
+    if ! command -v fastfetch >/dev/null 2>&1; then \
+      pacman -Sy --noconfirm --needed fastfetch || \
+      pacman -Sy --noconfirm --needed neofetch || true; \
+    fi
+
+# ---------------------------------------------------------------------------
+# 9) Application + ttyd theme (API + shell contracts unchanged)
 # ---------------------------------------------------------------------------
 COPY arsenal_engine.py /opt/arsenal-engine/arsenal_engine.py
 COPY LICENSE.upstream /opt/arsenal-engine/LICENSE.upstream
@@ -332,25 +362,27 @@ RUN chmod +x /usr/local/bin/start-ttyd.sh
 RUN set -eu; \
     printf '%s\n' \
       '#!/bin/sh' \
-      'tools="nmap masscan rustscan amass subfinder nuclei gobuster feroxbuster ffuf dirb dirsearch nikto sqlmap wpscan httpx katana dalfox wafw00f hydra john hashcat medusa netexec nxc enum4linux-ng responder smbmap gdb radare2 binwalk trivy prowler checkov kube-hunter curl python3 ttyd chromium chromium-browser google-chrome"' \
+      'tools="nmap masscan rustscan amass subfinder nuclei gobuster feroxbuster ffuf dirb dirsearch nikto sqlmap wpscan httpx katana dalfox wafw00f hydra john hashcat medusa netexec nxc enum4linux-ng responder smbmap gdb radare2 binwalk trivy prowler checkov kube-hunter curl python3 ttyd chromium chromium-browser google-chrome fastfetch"' \
       'ok=0; miss=0' \
       'for t in $tools; do' \
       '  if command -v "$t" >/dev/null 2>&1; then echo "OK  $t"; ok=$((ok+1));' \
       '  else echo "MISS $t"; miss=$((miss+1)); fi' \
       'done' \
-      'echo "summary ok=$ok miss=$miss distro=blackarch"' \
+      'echo "summary ok=$ok miss=$miss distro=blackarch talon-shell=1"' \
       > /usr/local/bin/arsenal-tool-check && chmod +x /usr/local/bin/arsenal-tool-check; \
     /usr/local/bin/arsenal-tool-check || true
 
 ENV API_PORT=8888 \
     TTYD_PORT=7681 \
     CHROME_BIN=/usr/bin/chromium \
-    CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --headless=new"
+    CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --disable-gpu --headless=new" \
+    TALON_ARSENAL=1 \
+    TALON_DISTRO=blackarch
 
 WORKDIR /opt/arsenal-engine
 EXPOSE 8888 7681
 
-# Still not in image (same as before): Ghidra, Burp, IDA, full MSF (use msf_rpc), Maltego
+# Still not in image: Ghidra, Burp, IDA, full MSF (use msf_rpc), Maltego
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null || exit 1
