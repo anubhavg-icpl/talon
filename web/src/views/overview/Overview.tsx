@@ -157,6 +157,12 @@ const Overview = () => {
                 <LiveDot tone='green' /> {stats.active} ACTIVE · GLOBE LIVE
               </p>
             )}
+            <Link
+              href='/showcase'
+              className='text-primary micro-label mt-3 inline-flex w-fit tracking-widest underline-offset-4 hover:underline'
+            >
+              OPEN PRODUCT SHOWCASE →
+            </Link>
           </div>
           <div className='relative mx-auto aspect-square w-full max-w-[280px] lg:max-w-[320px]'>
             <TalonGlobe

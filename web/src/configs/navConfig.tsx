@@ -52,6 +52,11 @@ export const navItems: NavItem[] = [
         icon: 'Radar',
         label: 'Overview',
         href: '/overview'
+      },
+      {
+        icon: 'Clapperboard',
+        label: 'Showcase',
+        href: '/showcase'
       }
     ]
   },
