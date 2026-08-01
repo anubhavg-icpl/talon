@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 // Component Imports
+import TalonGlobe from '@/components/shared/TalonGlobe'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -130,12 +131,13 @@ const NewRun = () => {
   }
 
   return (
-    <div className='mx-auto flex max-w-2xl flex-col gap-6'>
+    <div className='mx-auto flex max-w-5xl flex-col gap-6'>
       <div>
         <h1 className='font-mono text-xl font-semibold tracking-widest'>NEW OPERATION</h1>
-        <p className='micro-label mt-1'>PROVISION A PENTEST RUN</p>
+        <p className='micro-label mt-1'>PROVISION A PENTEST RUN · THREE.JS TARGET HUD</p>
       </div>
 
+      <div className='grid gap-6 lg:grid-cols-[1fr_240px]'>
       <Card className='hud-corners scanlines relative overflow-hidden'>
         <CardHeader>
           <CardTitle className='text-primary font-mono text-sm tracking-widest'>$ talon run start</CardTitle>
@@ -233,6 +235,17 @@ const NewRun = () => {
           </form>
         </CardContent>
       </Card>
+
+      <Card className='hud-corners hidden overflow-hidden lg:block'>
+        <CardHeader className='pb-2'>
+          <CardTitle className='micro-label'>TARGET HUD</CardTitle>
+          <CardDescription className='font-mono text-[10px]'>Three.js · compact globe</CardDescription>
+        </CardHeader>
+        <CardContent className='flex justify-center p-2 pb-4'>
+          <TalonGlobe className='aspect-square w-full max-w-[220px]' variant='compact' state='thinking' activityLevel={0.5} />
+        </CardContent>
+      </Card>
+      </div>
     </div>
   )
 }

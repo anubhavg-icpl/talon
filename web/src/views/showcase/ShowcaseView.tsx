@@ -4,24 +4,32 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import Link from 'next/link'
 
+import TalonGlobe from '@/components/shared/TalonGlobe'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import TalonGlobe from '@/components/shared/TalonGlobe'
 import { cn } from '@/lib/utils'
 
 type ReelItem = {
   id: string
   title: string
   blurb: string
-  /** Poster / still (always works) */
   poster: string
-  /** Optional product video path under /showcase/*.mp4 */
   video?: string
+  /** Live interactive Three.js stage instead of still/video */
+  live3d?: boolean
   tags: string[]
 }
 
 const REEL: ReelItem[] = [
+  {
+    id: 'live-globe',
+    title: 'Operator globe — live Three.js',
+    blurb: 'Drag to orbit · starfield · atmosphere · beacons · great-circle arcs · multi-axis rings. Pure WebGL.',
+    poster: '/showcase/operator-globe-hud.webp',
+    live3d: true,
+    tags: ['three.js', 'webgl', 'live']
+  },
   {
     id: 'hero',
     title: 'Talon AI — Offensive orchestration',
@@ -55,6 +63,13 @@ const REEL: ReelItem[] = [
     tags: ['skills', 'cyberstrike']
   },
   {
+    id: 'globe-still',
+    title: 'C2 HUD still',
+    blurb: 'Marketing still of the operator globe — same cyan wire aesthetic as the live scene.',
+    poster: '/showcase/operator-globe-hud.webp',
+    tags: ['three.js', 'hud']
+  },
+  {
     id: 'filmstrip',
     title: 'Agent filmstrip',
     blurb: 'Specialist modes: COMMANDER, GHOST, STRIKER, PHANTOM, CIPHER.',
@@ -64,7 +79,7 @@ const REEL: ReelItem[] = [
   {
     id: 'mark',
     title: 'Brand mark',
-    blurb: 'Talon raptor identity for the red/black ops console.',
+    blurb: 'Talon raptor identity for the operator shell.',
     poster: '/showcase/talon-brand-mark.webp',
     tags: ['brand']
   }
@@ -77,14 +92,14 @@ const ShowcaseView = () => {
 
   const item = REEL[active]
 
-  // Auto-advance reel when no video is playing through
   useEffect(() => {
     if (!playing) return
+    if (item.live3d) return // keep live 3d on stage while selected; manual next
     const hasVideo = videoOk[item.id]
-    if (hasVideo) return // let video onEnded advance
+    if (hasVideo) return
     const t = setTimeout(() => setActive(i => (i + 1) % REEL.length), 4500)
     return () => clearTimeout(t)
-  }, [active, playing, item.id, videoOk])
+  }, [active, playing, item.id, item.live3d, videoOk])
 
   const onVideoMeta = useCallback((id: string, ok: boolean) => {
     setVideoOk(prev => (prev[id] === ok ? prev : { ...prev, [id]: ok }))
@@ -97,7 +112,7 @@ const ShowcaseView = () => {
       <div className='flex flex-wrap items-end justify-between gap-3'>
         <div>
           <h1 className='font-mono text-xl font-semibold tracking-widest'>SHOWCASE</h1>
-          <p className='micro-label mt-1'>PRODUCT REEL · GLOBE · PIPELINE · SKILLS — ALIGNED E2E DEMO SURFACE</p>
+          <p className='micro-label mt-1'>THREE.JS LIVE · PRODUCT REEL · PIPELINE · SKILLS — E2E DEMO</p>
         </div>
         <div className='flex flex-wrap gap-2'>
           <Link href='/runs/new' className={cn(buttonVariants(), 'font-mono text-xs tracking-widest uppercase')}>
@@ -112,12 +127,47 @@ const ShowcaseView = () => {
         </div>
       </div>
 
-      {/* Main stage */}
+      {/* Full-width interactive Three.js hero */}
+      <Card className='hud-corners relative overflow-hidden border-primary/25'>
+        <CardHeader className='pb-2'>
+          <CardTitle className='micro-label text-primary'>LIVE WEBGL · DRAG TO ORBIT</CardTitle>
+          <CardDescription className='font-mono text-[11px]'>
+            TalonGlobe hero variant — OrbitControls · starfield · atmosphere · recon arcs
+          </CardDescription>
+        </CardHeader>
+        <CardContent className='p-0'>
+          <div className='relative h-[min(52vh,420px)] w-full bg-black'>
+            <TalonGlobe className='h-full w-full' variant='hero' state='running' activityLevel={0.65} interactive />
+            <div className='pointer-events-none absolute bottom-3 left-3 right-3 flex flex-wrap gap-2'>
+              <Badge className='font-mono text-[10px]'>THREE.JS</Badge>
+              <Badge variant='outline' className='font-mono text-[10px]'>
+                ORBIT
+              </Badge>
+              <Badge variant='outline' className='font-mono text-[10px]'>
+                BEACONS
+              </Badge>
+              <Badge variant='outline' className='font-mono text-[10px]'>
+                ARCS
+              </Badge>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Main stage + side globe */}
       <div className='grid gap-4 lg:grid-cols-[1fr_280px]'>
         <Card className='hud-corners scanlines relative overflow-hidden'>
           <CardContent className='p-0'>
             <div className='relative aspect-video w-full bg-black'>
-              {videoOk[item.id] ? (
+              {item.live3d ? (
+                <TalonGlobe
+                  className='h-full w-full'
+                  variant='hero'
+                  state='running'
+                  activityLevel={0.7}
+                  interactive
+                />
+              ) : videoOk[item.id] ? (
                 <video
                   key={item.id}
                   className='h-full w-full object-cover'
@@ -132,14 +182,12 @@ const ShowcaseView = () => {
                 />
               ) : (
                 <>
-                  {/* Cinematic still with slow ken-burns via CSS */}
                   <img
                     key={item.poster}
                     src={item.poster}
                     alt={item.title}
                     className='showcase-kenburns h-full w-full object-cover'
                   />
-                  {/* Probe optional mp4 once */}
                   {item.video && videoOk[item.id] === undefined && (
                     <video
                       className='hidden'
@@ -158,7 +206,9 @@ const ShowcaseView = () => {
                       {t}
                     </Badge>
                   ))}
-                  {videoOk[item.id] ? (
+                  {item.live3d ? (
+                    <Badge className='font-mono text-[10px]'>LIVE 3D</Badge>
+                  ) : videoOk[item.id] ? (
                     <Badge className='font-mono text-[10px]'>VIDEO</Badge>
                   ) : (
                     <Badge variant='secondary' className='font-mono text-[10px]'>
@@ -176,14 +226,13 @@ const ShowcaseView = () => {
         <div className='flex flex-col gap-4'>
           <Card className='hud-corners flex flex-1 flex-col overflow-hidden'>
             <CardHeader className='pb-2'>
-              <CardTitle className='micro-label'>OPERATOR GLOBE</CardTitle>
-              <CardDescription className='font-mono text-[11px]'>
-                Three.js · arcs · beacons · click to engage
-              </CardDescription>
+              <CardTitle className='micro-label'>COMPACT GLOBE</CardTitle>
+              <CardDescription className='font-mono text-[11px]'>Click → new engagement</CardDescription>
             </CardHeader>
             <CardContent className='flex flex-1 items-center justify-center p-2'>
               <TalonGlobe
                 className='aspect-square w-full max-w-[260px]'
+                variant='compact'
                 state='running'
                 activityLevel={0.55}
                 onClick={() => {
@@ -213,8 +262,7 @@ const ShowcaseView = () => {
         </div>
       </div>
 
-      {/* Thumbnails */}
-      <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
+      <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8'>
         {REEL.map((r, i) => (
           <button
             key={r.id}
@@ -230,22 +278,23 @@ const ShowcaseView = () => {
         ))}
       </div>
 
-      {/* Capability grid */}
       <div className='grid gap-4 md:grid-cols-3'>
         <Card>
           <CardHeader>
-            <CardTitle className='micro-label'>PIPELINE</CardTitle>
+            <CardTitle className='micro-label'>THREE.JS STACK</CardTitle>
           </CardHeader>
           <CardContent className='text-muted-foreground font-mono text-xs leading-relaxed'>
-            recon → exploit → post-exploit → codegen → judge · HITL on nmap · MCP arsenal + Metasploit strike
+            WebGLRenderer · MeshStandardMaterial · Points · Line / LineLoop · OrbitControls · fog · lights ·
+            Fibonacci beacons · great-circle arcs · starfield
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className='micro-label'>INTELLIGENCE</CardTitle>
+            <CardTitle className='micro-label'>WHERE IT RUNS</CardTitle>
           </CardHeader>
           <CardContent className='text-muted-foreground font-mono text-xs leading-relaxed'>
-            CyberStrike skill pack · skill_search / skill_get · 3-gate findings · kill chain · methodology coverage
+            Login (background globe) · all pages (ambient starfield) · Overview hero · Showcase hero + reel · New run ·
+            Engagements
           </CardContent>
         </Card>
         <Card>
@@ -253,35 +302,10 @@ const ShowcaseView = () => {
             <CardTitle className='micro-label'>OPERATOR SURFACES</CardTitle>
           </CardHeader>
           <CardContent className='text-muted-foreground font-mono text-xs leading-relaxed'>
-            Dashboard · CLI · live SSE/WS · globe ops hero · agent modes (full / web / network / post)
+            Dashboard · CLI · live SSE/WS · agent modes · 3-gate findings · CyberStrike skills
           </CardContent>
         </Card>
       </div>
-
-      <Card className='border-primary/20'>
-        <CardHeader>
-          <CardTitle className='micro-label'>ADD REAL MP4 SHOWCASE VIDEOS</CardTitle>
-          <CardDescription className='font-mono text-xs'>
-            Drop files into <code className='text-primary'>web/public/showcase/</code> — auto-detected:
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className='text-muted-foreground space-y-1 font-mono text-[11px]'>
-            <li>▸ talon-hero.mp4</li>
-            <li>▸ talon-dashboard.mp4</li>
-            <li>▸ talon-pipeline.mp4</li>
-            <li>▸ talon-skills.mp4</li>
-          </ul>
-          <p className='micro-label mt-3'>Until then the reel uses cinematic product stills with Ken Burns motion.</p>
-          <div className='mt-3 flex flex-wrap gap-1'>
-            {tags.map(t => (
-              <Badge key={t} variant='outline' className='font-mono text-[9px] uppercase'>
-                {t}
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

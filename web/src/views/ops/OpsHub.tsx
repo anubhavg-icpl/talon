@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 
 import type { BudgetStats, Credential, NotifyConfig, Schedule, ScopePolicy, Target } from '@/lib/api'
+import TalonGlobe from '@/components/shared/TalonGlobe'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -71,11 +72,16 @@ const OpsHub = () => {
 
   return (
     <div className='flex flex-col gap-8'>
-      <div>
-        <h1 className='font-mono text-xl font-semibold tracking-widest'>OPS CONTROL</h1>
-        <p className='micro-label mt-1'>
-          BATCH · TARGETS · SCOPE/ROE · SCHEDULES · WEBHOOKS · CREDENTIALS · BUDGET
-        </p>
+      <div className='flex flex-wrap items-end justify-between gap-4'>
+        <div>
+          <h1 className='font-mono text-xl font-semibold tracking-widest'>ENGAGEMENTS</h1>
+          <p className='micro-label mt-1'>
+            BATCH · TARGETS · SCOPE/ROE · SCHEDULES · WEBHOOKS · CREDENTIALS · BUDGET
+          </p>
+        </div>
+        <div className='hud-corners hidden h-28 w-28 shrink-0 overflow-hidden sm:block'>
+          <TalonGlobe className='h-full w-full' variant='compact' state='running' activityLevel={0.4} />
+        </div>
       </div>
 
       {budget && (

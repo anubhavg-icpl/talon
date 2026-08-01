@@ -168,6 +168,8 @@ const Overview = () => {
           <div className='hud-corners relative mx-auto aspect-square w-full max-w-[280px] lg:max-w-[320px]'>
             <TalonGlobe
               className='h-full w-full'
+              variant='hero'
+              interactive
               state={globeState}
               activityLevel={globeLevel}
               onClick={() => {
