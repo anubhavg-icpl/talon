@@ -202,16 +202,24 @@ const TalonGlobe = ({
       .atmosphereAltitude(0.18)
     scene.add(globe)
 
-    // Empty layers first; refreshed when live runs resolve. three-globe's .d.ts
-    // is incomplete for several accessors (pointLabel, string-arg color/size),
-    // so the data-layer surface is cast loose; the texture/atmosphere methods
-    // above stay typed.
+    // Empty layers first; refreshed when live runs resolve.
+    // three-globe ≥2.45 has no pointLabel() — use labelsData for text, or skip labels.
     const g = globe as any
     g.pointsData([])
+      .pointLat('lat')
+      .pointLng('lng')
       .pointColor('color')
       .pointAltitude(0.01)
       .pointRadius('size')
-      .pointLabel('label')
+    // Optional HTML-style labels (separate layer — not chained off points)
+    g.labelsData([])
+      .labelLat('lat')
+      .labelLng('lng')
+      .labelText('label')
+      .labelColor('color')
+      .labelSize(0.4)
+      .labelDotRadius(0)
+      .labelAltitude(0.02)
     g.arcsData([])
       .arcColor('color')
       .arcDashLength(0.4)
@@ -245,7 +253,9 @@ const TalonGlobe = ({
       .then(res => {
         if (!alive || !res?.runs) return
         const d = runsToGlobe(res.runs)
-        g.pointsData(d.points).arcsData(d.arcs).ringsData(d.rings)
+        // Labels only for ops + active targets (keep GPU light)
+        const labels = d.points.filter(p => p.label === 'OPS CENTER' || p.size > 0.35).slice(0, 12)
+        g.pointsData(d.points).arcsData(d.arcs).ringsData(d.rings).labelsData(labels)
       })
       .catch(() => {
         /* globe still renders the earth without overlays */
