@@ -1,18 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  Activity,
-  Bot,
-  CheckCircle2,
-  CircleDashed,
-  Loader2,
-  Send,
-  Sparkles,
-  Square,
-  Wrench,
-  XCircle
-} from 'lucide-react'
+import { Activity, Bot, Loader2, Send, Sparkles, Square, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 
 import PageHeader from '@/components/shared/PageHeader'
@@ -26,6 +15,8 @@ import type { LLMStreamMessage, SLMToolDef } from '@/lib/api'
 import { listLLMTools, llmInfo, streamLLMAssist } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
+import { AssistantMarkdown, ToolResultViz } from './ToolResultViz'
+
 type ChatRole = 'user' | 'assistant' | 'tool'
 
 type ChatItem = {
@@ -38,14 +29,6 @@ type ChatItem = {
   streaming?: boolean
   /** tool lifecycle: running | done | error */
   toolState?: 'running' | 'done' | 'error'
-}
-
-type HealthRow = {
-  name: string
-  status: string
-  detail: string
-  latency_ms?: number
-  endpoint?: string
 }
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -67,67 +50,12 @@ const insertBeforeAssistant = (prev: ChatItem[], asstId: string, item: ChatItem)
   return next
 }
 
-const tryParseHealth = (raw: string): HealthRow[] | null => {
-  try {
-    const j = JSON.parse(raw) as { services?: HealthRow[] }
-    if (Array.isArray(j.services) && j.services.length > 0) return j.services
-  } catch {
-    /* not health JSON */
-  }
-  return null
-}
-
-const StatusIcon = ({ status }: { status: string }) => {
-  const s = status.toLowerCase()
-  if (s === 'online') return <CheckCircle2 className='size-3.5 shrink-0 text-emerald-500' />
-  if (s === 'offline') return <XCircle className='size-3.5 shrink-0 text-red-400' />
-  return <CircleDashed className='text-muted-foreground size-3.5 shrink-0' />
-}
-
-const HealthTable = ({ rows }: { rows: HealthRow[] }) => (
-  <div className='mt-1 overflow-hidden rounded border border-border/70'>
-    <table className='w-full text-left font-mono text-[11px]'>
-      <thead className='bg-muted/50 text-muted-foreground'>
-        <tr>
-          <th className='px-2 py-1.5 font-medium tracking-wider uppercase'>Service</th>
-          <th className='px-2 py-1.5 font-medium tracking-wider uppercase'>Status</th>
-          <th className='hidden px-2 py-1.5 font-medium tracking-wider uppercase sm:table-cell'>ms</th>
-          <th className='px-2 py-1.5 font-medium tracking-wider uppercase'>Detail</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(r => (
-          <tr key={r.name} className='border-t border-border/50'>
-            <td className='px-2 py-1.5 font-semibold'>{r.name}</td>
-            <td className='px-2 py-1.5'>
-              <span className='inline-flex items-center gap-1'>
-                <StatusIcon status={r.status} />
-                <span
-                  className={cn(
-                    'uppercase',
-                    r.status === 'online' && 'text-emerald-500',
-                    r.status === 'offline' && 'text-red-400',
-                    r.status === 'unconfigured' && 'text-muted-foreground'
-                  )}
-                >
-                  {r.status}
-                </span>
-              </span>
-            </td>
-            <td className='text-muted-foreground hidden px-2 py-1.5 sm:table-cell'>{r.latency_ms ?? '—'}</td>
-            <td className='text-muted-foreground max-w-[220px] truncate px-2 py-1.5' title={r.detail}>
-              {r.detail}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-)
-
 const ToolCard = ({ m }: { m: ChatItem }) => {
-  const health = m.toolState === 'done' ? tryParseHealth(m.content) : null
   const [open, setOpen] = useState(true)
+  const viz =
+    m.toolState === 'done' && m.content ? (
+      <ToolResultViz toolName={m.toolName} content={m.content} />
+    ) : null
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className='mr-4'>
@@ -154,13 +82,13 @@ const ToolCard = ({ m }: { m: ChatItem }) => {
           {m.toolState === 'done' && m.ms != null && (
             <span className='text-muted-foreground text-[10px]'>{m.ms}ms</span>
           )}
-          {m.toolArgs && <span className='text-muted-foreground truncate text-[10px]'>{m.toolArgs}</span>}
+          {m.toolArgs && m.toolArgs !== '{}' && (
+            <span className='text-muted-foreground truncate text-[10px]'>{m.toolArgs}</span>
+          )}
           <span className='text-muted-foreground ml-auto text-[10px]'>{open ? '▾' : '▸'}</span>
         </CollapsibleTrigger>
         <CollapsibleContent className='mt-2'>
-          {health ? (
-            <HealthTable rows={health} />
-          ) : (
+          {viz || (
             <pre className='bg-background/60 max-h-48 overflow-auto rounded border border-border/50 p-2 text-[10px] leading-relaxed whitespace-pre-wrap'>
               {m.content || (m.toolState === 'running' ? 'awaiting result…' : '')}
             </pre>
@@ -448,10 +376,10 @@ const AssistView = () => {
                         <p className='text-muted-foreground font-mono text-xs'>
                           {phase ? `⏳ ${phase}` : '⏳ waiting on tools + model…'}
                         </p>
+                      ) : m.role === 'assistant' ? (
+                        <AssistantMarkdown text={m.content} />
                       ) : (
-                        <div className='prose prose-sm dark:prose-invert max-w-none font-sans text-sm leading-relaxed whitespace-pre-wrap'>
-                          {m.content}
-                        </div>
+                        <div className='text-sm leading-relaxed whitespace-pre-wrap'>{m.content}</div>
                       )}
                     </div>
                   )
