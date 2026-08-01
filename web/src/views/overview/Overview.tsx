@@ -52,14 +52,15 @@ const Overview = () => {
         listRuns(10),
         runsSummary(),
         getGlobalFindings({ limit: 200 }).catch(() => ({ findings: [], count: 0 })),
-        getSkills({ brief: true }).catch(() => ({ skills: [], count: 0 }))
+        getSkills({ brief: true, limit: 1 }).catch(() => ({ skills: [], count: 0, total: 0 }))
       ])
         .then(([runsRes, summaryRes, findingsRes, skillsRes]) => {
           if (!mounted) return
           setRuns(runsRes.runs ?? [])
           setSummary(summaryRes)
           setFindingsTotal(findingsRes.count ?? findingsRes.findings?.length ?? 0)
-          setSkillsTotal(skillsRes.count ?? 0)
+          // API: total = catalog size; count = page size only
+          setSkillsTotal(skillsRes.total ?? skillsRes.count ?? 0)
           setError(null)
         })
         .catch(err => mounted && setError(err instanceof Error ? err.message : String(err)))
@@ -171,7 +172,7 @@ const Overview = () => {
               activityLevel={globeLevel}
               onClick={() => {
                 // Jump to new operation — same spirit as agentic-os globe click
-                window.location.href = '/runs/new'
+                window.location.assign('/runs/new')
               }}
             />
           </div>

@@ -408,8 +408,8 @@ const IntelligencePanel = () => {
   const [agentsCount, setAgentsCount] = useState<number | null>(null)
 
   useEffect(() => {
-    getSkills({ brief: true })
-      .then(r => setSkillsCount(r.count ?? 0))
+    getSkills({ brief: true, limit: 1 })
+      .then(r => setSkillsCount(r.total ?? r.count ?? 0))
       .catch(() => setSkillsCount(0))
     getAgents()
       .then(r => setAgentsCount(r.count ?? 0))
