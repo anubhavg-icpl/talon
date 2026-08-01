@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,6 +51,7 @@ func (s *Server) handleServiceHealth(w http.ResponseWriter, r *http.Request) {
 		checkMSF,
 		checkRabbitMQ,
 		checkOllama,
+		checkONNXSLM,
 	}
 	out := make([]ServiceHealth, len(checks))
 	var wg sync.WaitGroup
@@ -237,5 +239,54 @@ func checkOllama() ServiceHealth {
 		return h
 	}
 	h.Status, h.Detail = "online", "GET /api/version → 200"+optional
+	return h
+}
+
+// checkONNXSLM probes the local SmolLM / ONNX Runtime OpenAI-compatible
+// service (compose profile "slm", default :8090). Optional unless
+// LLM_PROVIDER=onnx.
+func checkONNXSLM() ServiceHealth {
+	llmCfg := config.LoadLLMConfig()
+	// ONNXBaseURL is like http://localhost:8090/v1 — health lives at /health.
+	base := strings.TrimRight(llmCfg.ONNXBaseURL, "/")
+	endpoint := strings.TrimSuffix(base, "/v1")
+	if endpoint == "" {
+		endpoint = "http://localhost:8090"
+	}
+	h := ServiceHealth{Name: "onnx-slm", Endpoint: endpoint}
+	optional := ""
+	if llmCfg.Provider != "onnx" {
+		optional = fmt.Sprintf(" (optional — LLM_PROVIDER=%s)", llmCfg.Provider)
+	}
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/health", nil)
+	if err != nil {
+		h.Status, h.Detail = "offline", err.Error()
+		return h
+	}
+	resp, err := http.DefaultClient.Do(req)
+	h.LatencyMS = time.Since(start).Milliseconds()
+	if err != nil {
+		h.Status, h.Detail = "offline", "unreachable"+optional
+		return h
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.Status, h.Detail = "offline", fmt.Sprintf("GET /health → %d%s", resp.StatusCode, optional)
+		return h
+	}
+	var body struct {
+		Backend string `json:"backend"`
+		ModelID string `json:"model_id"`
+		Ready   bool   `json:"ready"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	detail := "GET /health → 200" + optional
+	if body.Backend != "" {
+		detail = fmt.Sprintf("%s backend=%s model=%s", detail, body.Backend, body.ModelID)
+	}
+	h.Status, h.Detail = "online", detail
 	return h
 }

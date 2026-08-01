@@ -83,8 +83,8 @@ func TestServiceHealthShape(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body.Services) != 7 {
-		t.Fatalf("expected 7 services, got %d", len(body.Services))
+	if len(body.Services) != 8 {
+		t.Fatalf("expected 8 services, got %d", len(body.Services))
 	}
 	names := map[string]string{}
 	for _, svc := range body.Services {
@@ -99,7 +99,7 @@ func TestServiceHealthShape(t *testing.T) {
 	if names["redis"] != "unconfigured" {
 		t.Fatalf("redis status=%q want unconfigured (no cache in test)", names["redis"])
 	}
-	for _, want := range []string{"arsenal-engine", "msfrpcd", "rabbitmq", "ollama"} {
+	for _, want := range []string{"arsenal-engine", "msfrpcd", "rabbitmq", "ollama", "onnx-slm"} {
 		if _, ok := names[want]; !ok {
 			t.Fatalf("missing service %s", want)
 		}

@@ -132,6 +132,11 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /config", s.handleGetConfig)
 	mux.HandleFunc("PUT /config", s.handlePutConfig)
 	mux.HandleFunc("GET /mcp/servers", s.handleMCPServers)
+	// Local SLM / any provider: token SSE + tool-using assist for the dashboard.
+	mux.HandleFunc("POST /llm/stream", s.handleLLMStream)
+	mux.HandleFunc("POST /llm/assist", s.handleLLMAssist)
+	mux.HandleFunc("GET /llm/info", s.handleLLMInfo)
+	mux.HandleFunc("GET /llm/tools", s.handleLLMTools)
 
 	// /shell/* — SSO reverse-proxy to the ttyd web terminal inside
 	// arsenal_engine. ttyd runs no-auth bound to loopback; this route is gated
