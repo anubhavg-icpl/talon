@@ -60,6 +60,7 @@ import {
 } from '@/lib/api'
 import type { OperatorNote, TimelineEvent } from '@/lib/api'
 import { shortId } from '@/lib/format'
+import RunReportView from '@/views/runs/RunReportView'
 
 const severityVariant = (sev: string): 'destructive' | 'default' | 'secondary' | 'outline' => {
   switch (sev.toLowerCase()) {
@@ -953,14 +954,16 @@ const RunDetail = ({ runId }: { runId: string }) => {
             <CardContent>
               {!loaded ? (
                 <Skeleton className='h-48 w-full' />
-              ) : report?.markdown ? (
-                <pre className='max-h-[32rem] overflow-auto font-mono text-xs leading-relaxed whitespace-pre-wrap'>
-                  {report.markdown}
-                </pre>
-              ) : status?.output ? (
-                <pre className='max-h-[32rem] overflow-auto font-mono text-xs leading-relaxed whitespace-pre-wrap'>
-                  {status.output}
-                </pre>
+              ) : report || findings.length > 0 || status?.output ? (
+                <RunReportView
+                  report={report}
+                  findings={findings}
+                  tools={tools}
+                  methodology={methodology}
+                  killChain={killchain}
+                  agentMode={status?.agent_mode}
+                  fallbackMarkdown={status?.output}
+                />
               ) : (
                 <p className='micro-label py-8 text-center'>
                   {isActive(status?.status) ? 'REPORT PENDING — OPERATION IN PROGRESS' : 'NO REPORT AVAILABLE'}
