@@ -61,6 +61,7 @@ import {
 import type { OperatorNote, TimelineEvent } from '@/lib/api'
 import { shortId } from '@/lib/format'
 import RunReportView from '@/views/runs/RunReportView'
+import RunTimelineView from '@/views/runs/RunTimelineView'
 
 const severityVariant = (sev: string): 'destructive' | 'default' | 'secondary' | 'outline' => {
   switch (sev.toLowerCase()) {
@@ -820,29 +821,10 @@ const RunDetail = ({ runId }: { runId: string }) => {
         </TabsContent>
 
         <TabsContent value='timeline' className='flex flex-col gap-3 pt-4'>
-          {timeline.length === 0 ? (
-            <p className='micro-label py-8 text-center'>NO TIMELINE EVENTS YET</p>
+          {!loaded ? (
+            <Skeleton className='h-48 w-full' />
           ) : (
-            timeline.map(ev => (
-              <div key={`${ev.kind}-${ev.index}`} className='border-border/50 rounded border px-3 py-2 font-mono text-xs'>
-                <div className='flex flex-wrap gap-2'>
-                  <Badge variant={ev.kind === 'finding' ? 'destructive' : 'outline'} className='text-[9px] uppercase'>
-                    {ev.kind}
-                  </Badge>
-                  {ev.stage && (
-                    <Badge variant='secondary' className='text-[9px]'>
-                      {ev.stage}
-                    </Badge>
-                  )}
-                  {ev.severity && (
-                    <Badge className='text-[9px] uppercase'>{ev.severity}</Badge>
-                  )}
-                  <span className='text-muted-foreground ml-auto text-[10px]'>#{ev.index}</span>
-                </div>
-                <p className='mt-1 font-medium'>{ev.label}</p>
-                {ev.detail && <p className='text-muted-foreground mt-0.5 line-clamp-3 text-[11px]'>{ev.detail}</p>}
-              </div>
-            ))
+            <RunTimelineView timeline={timeline} tools={tools} findings={findings} />
           )}
         </TabsContent>
 
