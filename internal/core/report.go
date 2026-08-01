@@ -161,7 +161,16 @@ func writeFindingsSection(b *strings.Builder, findings []Finding, summary Findin
 				}
 			}
 			if f.StepsToReproduce != "" {
-				fmt.Fprintf(b, "\n**Steps to reproduce:**\n%s\n", f.StepsToReproduce)
+				b.WriteString("\n**Steps to reproduce:**\n")
+				// Normalize literal \n from models into real line breaks / list items
+				steps := strings.ReplaceAll(f.StepsToReproduce, `\n`, "\n")
+				for _, ln := range strings.Split(steps, "\n") {
+					ln = strings.TrimSpace(ln)
+					if ln == "" {
+						continue
+					}
+					fmt.Fprintf(b, "%s\n", ln)
+				}
 			}
 			if f.Recommendation != "" {
 				fmt.Fprintf(b, "\n**Recommendation:** %s\n", f.Recommendation)

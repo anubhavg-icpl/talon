@@ -181,6 +181,25 @@ const RunReportView = ({
 
   return (
     <div className='flex flex-col gap-5'>
+      {/* Brand strip */}
+      <div className='hud-corners flex flex-wrap items-center gap-4 border border-primary/20 bg-gradient-to-r from-primary/10 via-card to-card px-4 py-3'>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src='/showcase/talon-brand-mark.webp'
+          alt='Talon'
+          className='size-12 rounded-md border border-primary/30 object-cover shadow-[0_0_24px_oklch(0.62_0.22_25/0.25)]'
+          width={48}
+          height={48}
+        />
+        <div className='min-w-0 flex-1'>
+          <p className='text-primary font-mono text-[10px] font-semibold tracking-[0.28em] uppercase'>Talon AI</p>
+          <p className='font-mono text-sm font-semibold tracking-wide'>Engagement Validation Report</p>
+          <p className='text-muted-foreground font-mono text-[10px] tracking-wide'>
+            Authorized red-team artifact · 3-gate evidence · print via HTML export
+          </p>
+        </div>
+      </div>
+
       {/* Executive header */}
       <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
         <Card className='border-border/60 py-3'>

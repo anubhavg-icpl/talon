@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/anubhavg-icpl/talon/internal/config"
 	"github.com/anubhavg-icpl/talon/internal/core"
@@ -226,34 +225,29 @@ func (s *Server) handleReportHTML(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "run not found")
 		return
 	}
-	md := ""
-	if sess.Report != nil {
-		md = sess.Report.Markdown
+	final := sess.Output
+	if sess.Report != nil && sess.Report.Markdown != "" {
+		// Prefer short agent note if present in Output; full narrative is structured HTML.
+		final = sess.Output
 	}
-	if md == "" {
-		md = sess.Output
-	}
-	// Minimal HTML with print CSS — open in browser and Print → PDF
-	html := fmt.Sprintf(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Talon Report %s</title>
-<style>
-body{font-family:ui-monospace,Menlo,monospace;background:#0a0608;color:#f2e8ea;padding:2rem;max-width:900px;margin:0 auto;line-height:1.5}
-h1,h2,h3{color:#ff2b2b} pre{white-space:pre-wrap;background:#140c10;padding:1rem;border:1px solid #3a1a22}
-.meta{color:#a8989c;font-size:12px;margin-bottom:2rem}
-@media print{body{background:#fff;color:#111} h1,h2,h3{color:#b00} pre{border-color:#ccc}}
-</style></head><body>
-<div class="meta">Talon AI · Authorized engagement report · Run %s · Target %s</div>
-<pre>%s</pre>
-<script>/* optional: window.print() */</script>
-</body></html>`, runID[:8], runID, htmlEscape(sess.RunInput.TargetIP), htmlEscape(md))
+	htmlDoc := core.RenderReportHTML(core.ReportHTMLInput{
+		RunID:       runID,
+		Input:       sess.RunInput,
+		Report:      sess.Report,
+		Findings:    sess.Findings,
+		ToolLog:     sess.ToolLog,
+		KillChain:   sess.KillChain,
+		Methodology: sess.Methodology,
+		AgentMode:   sess.RunInput.AgentMode,
+		Status:      sess.Status,
+		StartedAt:   sess.StartedAt,
+		EndedAt:     sess.EndedAt,
+		FinalMsg:    final,
+	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(html))
-}
-
-func htmlEscape(s string) string {
-	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
-	return r.Replace(s)
+	_, _ = w.Write([]byte(htmlDoc))
 }
 
 // handleOpenAPI serves a minimal OpenAPI 3 document for the control plane.
