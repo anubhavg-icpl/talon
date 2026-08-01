@@ -3,9 +3,15 @@
 // React Imports
 import { Fragment, useEffect, useState } from 'react'
 
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
+// Third-party Imports
+import { ChevronDownIcon, LogOutIcon, SettingsIcon } from 'lucide-react'
+
 // Component Imports
+import CommandPalette from '@/components/layout/CommandPalette'
+import ThemeSettings from '@/components/layout/ThemeSettings'
 import LiveDot from '@/components/shared/LiveDot'
 import {
   Breadcrumb,
@@ -15,6 +21,14 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator
 } from '@/components/ui/breadcrumb'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 
@@ -85,25 +99,45 @@ const Header = () => {
             </BreadcrumbList>
           </Breadcrumb>
         </div>
-        <div className='flex items-center gap-4 font-mono text-[10px] tracking-widest uppercase'>
+        <div className='flex items-center gap-3 font-mono text-[10px] tracking-widest uppercase'>
+          <CommandPalette />
+          <ThemeSettings />
+          <Separator orientation='vertical' className='hidden h-4! data-vertical:self-center sm:block' />
           {coreUp === null ? (
             <span className='text-muted-foreground'>CORE …</span>
           ) : coreUp ? (
             <span className='text-primary flex items-center gap-2'>
-              <LiveDot tone='green' /> CORE ONLINE
+              <LiveDot tone='green' /> <span className='hidden sm:inline'>CORE ONLINE</span>
             </span>
           ) : (
             <span className='text-destructive flex items-center gap-2'>
-              <LiveDot tone='red' /> CORE OFFLINE
+              <LiveDot tone='red' /> <span className='hidden sm:inline'>CORE OFFLINE</span>
             </span>
           )}
           {username && (
-            <span className='text-muted-foreground hidden items-center gap-3 sm:flex'>
-              <span className='text-foreground'>@{username}</span>
-              <button onClick={handleLogout} className='hover:text-destructive cursor-pointer transition-colors'>
-                [ LOGOUT ]
-              </button>
-            </span>
+            <DropdownMenu>
+              <DropdownMenuTrigger className='text-muted-foreground hover:text-foreground flex items-center gap-1.5 font-mono text-[10px] tracking-widest uppercase transition-colors'>
+                <span className='text-foreground'>@{username}</span>
+                <ChevronDownIcon className='size-3' />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end' className='min-w-44'>
+                <DropdownMenuLabel className='micro-label'>OPERATOR</DropdownMenuLabel>
+                <DropdownMenuItem
+                  render={<Link href='/settings' />}
+                  className='font-mono text-xs tracking-widest uppercase'
+                >
+                  <SettingsIcon /> SYSTEM
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant='destructive'
+                  onClick={handleLogout}
+                  className='font-mono text-xs tracking-widest uppercase'
+                >
+                  <LogOutIcon /> LOGOUT
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>

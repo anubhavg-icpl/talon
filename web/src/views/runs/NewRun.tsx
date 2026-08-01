@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 // Component Imports
+import PageHeader from '@/components/shared/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -87,10 +88,7 @@ const NewRun = () => {
 
   return (
     <div className='mx-auto flex max-w-2xl flex-col gap-6'>
-      <div>
-        <h1 className='font-mono text-xl font-semibold tracking-widest'>NEW OPERATION</h1>
-        <p className='micro-label mt-1'>PROVISION A PENTEST RUN</p>
-      </div>
+      <PageHeader title='NEW OPERATION' subtitle='PROVISION A PENTEST RUN' />
 
       <Card className='hud-corners scanlines relative overflow-hidden'>
         <CardHeader>

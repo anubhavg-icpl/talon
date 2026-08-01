@@ -78,6 +78,44 @@ const formatToolOutput = (raw: string): string => {
   return stripAnsi(raw)
 }
 
+// Trigger a client-side file download of text content.
+const downloadText = (filename: string, content: string, mime = 'text/plain') => {
+  const url = URL.createObjectURL(new Blob([content], { type: mime }))
+  const a = document.createElement('a')
+
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** Copy + Save actions for a text artifact (report / analysis / raw JSON). */
+const ExportButtons = ({ filename, content, mime = 'text/plain' }: { filename: string; content: string; mime?: string }) => (
+  <div className='flex shrink-0 gap-2'>
+    <Button
+      variant='outline'
+      size='sm'
+      className='font-mono text-[10px] tracking-widest uppercase'
+      onClick={() =>
+        navigator.clipboard
+          .writeText(content)
+          .then(() => toast.success('Copied to clipboard'))
+          .catch(() => toast.error('Copy failed'))
+      }
+    >
+      [ COPY ]
+    </Button>
+    <Button
+      variant='outline'
+      size='sm'
+      className='font-mono text-[10px] tracking-widest uppercase'
+      onClick={() => downloadText(filename, content, mime)}
+    >
+      [ ↓ SAVE ]
+    </Button>
+  </div>
+)
+
 const HitlGate = ({
   interrupt,
   onDecision,
@@ -203,7 +241,9 @@ const Terminal = ({ tools, active }: { tools: ToolCallRecord[]; active: boolean 
     <div className='scanlines relative overflow-hidden rounded-md border bg-black/80'>
       <div ref={scrollRef} className='h-[32rem] overflow-y-auto p-3 font-mono text-[11px] leading-relaxed sm:p-4 sm:text-xs'>
         {tools.length === 0 ? (
-          <p className='text-muted-foreground'>{'// awaiting tool activity…'}</p>
+          <p className='text-muted-foreground'>
+            {active ? '// awaiting tool activity…' : '// no tool activity recorded'}
+          </p>
         ) : (
           tools.map(tool => (
             <div key={tool.Index} className='mb-3'>
@@ -380,7 +420,11 @@ const RunDetail = ({ runId }: { runId: string }) => {
         {summary && (
           <div className='text-right'>
             <p className='micro-label'>ELAPSED</p>
-            <Elapsed since={summary.started_at} className='text-primary font-mono text-lg tracking-widest' />
+            <Elapsed
+              since={summary.started_at}
+              until={summary.ended_at}
+              className='text-primary font-mono text-lg tracking-widest'
+            />
           </div>
         )}
       </div>
@@ -425,8 +469,15 @@ const RunDetail = ({ runId }: { runId: string }) => {
             </div>
           )}
           <Card>
-            <CardHeader>
+            <CardHeader className='flex flex-row items-center justify-between gap-3'>
               <CardTitle className='micro-label'>FINAL REPORT</CardTitle>
+              {status?.output && (
+                <ExportButtons
+                  filename={`talon-${shortId(runId, 8)}-report.md`}
+                  content={status.output}
+                  mime='text/markdown'
+                />
+              )}
             </CardHeader>
             <CardContent>
               {!loaded ? (
@@ -450,15 +501,20 @@ const RunDetail = ({ runId }: { runId: string }) => {
               <div className='flex flex-wrap items-center justify-between gap-3'>
                 <div>
                   <CardTitle className='micro-label'>AI ANALYST BRIEFING</CardTitle>
-                  <p className='micro-label mt-1'>ONE-SHOT LLM ANALYSIS — REPORT + TOOL LOG, SERVER-SIDE MODEL</p>
+                  <p className='micro-label mt-1'>ONE-SHOT LLM ANALYSIS — REPORT + TOOL LOG, SERVER-SIDE MODEL — NOT PERSISTED</p>
                 </div>
-                <Button
-                  onClick={handleAnalyze}
-                  disabled={analysisBusy || !loaded}
-                  className='font-mono text-xs font-semibold tracking-widest uppercase'
-                >
-                  {analysisBusy ? '[ ⟳ ANALYZING… ]' : analysis ? '[ ✦ RE-ANALYZE ]' : '[ ✦ ANALYZE RUN ]'}
-                </Button>
+                <div className='flex shrink-0 items-center gap-2'>
+                  {analysis && (
+                    <ExportButtons filename={`talon-${shortId(runId, 8)}-analysis.txt`} content={analysis} />
+                  )}
+                  <Button
+                    onClick={handleAnalyze}
+                    disabled={analysisBusy || !loaded}
+                    className='font-mono text-xs font-semibold tracking-widest uppercase'
+                  >
+                    {analysisBusy ? '[ ⟳ ANALYZING… ]' : analysis ? '[ ✦ RE-ANALYZE ]' : '[ ✦ ANALYZE RUN ]'}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -514,10 +570,17 @@ const RunDetail = ({ runId }: { runId: string }) => {
         <TabsContent value='raw' className='pt-4'>
           <Collapsible defaultOpen>
             <Card>
-              <CardHeader>
-                <CollapsibleTrigger className='w-full text-left'>
+              <CardHeader className='flex flex-row items-center justify-between gap-3'>
+                <CollapsibleTrigger className='flex-1 text-left'>
                   <CardTitle className='micro-label hover:text-foreground'>STATUS + TOOL LOG (JSON) ▾</CardTitle>
                 </CollapsibleTrigger>
+                {loaded && (
+                  <ExportButtons
+                    filename={`talon-${shortId(runId, 8)}-raw.json`}
+                    content={rawJson}
+                    mime='application/json'
+                  />
+                )}
               </CardHeader>
               <CollapsibleContent>
                 <CardContent>

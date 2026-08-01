@@ -22,6 +22,7 @@ import { ArrowUpDownIcon } from 'lucide-react'
 import type { RunStatus, RunSummary } from '@/lib/api'
 
 // Component Imports
+import PageHeader from '@/components/shared/PageHeader'
 import StatusBadge from '@/components/shared/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -150,6 +151,7 @@ const RunsList = () => {
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   // Server-side pagination — sorting/filtering below applies to the current page only.
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table returns non-memoizable fns; safe for this table
   const table = useReactTable({
     data,
     columns,
@@ -167,19 +169,19 @@ const RunsList = () => {
 
   return (
     <div className='flex flex-col gap-6'>
-      <div className='flex flex-wrap items-center justify-between gap-4'>
-        <div>
-          <h1 className='font-mono text-xl font-semibold tracking-widest'>OPERATIONS</h1>
-          <p className='micro-label mt-1'>ALL PENTEST RUNS</p>
-        </div>
-        <Button
-          className='font-mono text-xs font-semibold tracking-widest uppercase'
-          render={<Link href='/runs/new' />}
-          nativeButton={false}
-        >
-          [ + NEW OPERATION ]
-        </Button>
-      </div>
+      <PageHeader
+        title='OPERATIONS'
+        subtitle='ALL PENTEST RUNS'
+        action={
+          <Button
+            className='font-mono text-xs font-semibold tracking-widest uppercase'
+            render={<Link href='/runs/new' />}
+            nativeButton={false}
+          >
+            [ + NEW OPERATION ]
+          </Button>
+        }
+      />
 
       {error && (
         <div className='border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-4 py-3 font-mono text-xs tracking-widest uppercase'>

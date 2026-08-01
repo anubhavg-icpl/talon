@@ -120,27 +120,32 @@
 }
 
 :root {
+  /* Accent hue triple — one knob drives primary, ring, charts, sidebar and
+     every glow/HUD/grid effect. Theme presets override just these three. */
+  --talon-l: 0.87;
+  --talon-c: 0.2;
+  --talon-h: 145;
   --background: oklch(0.13 0.005 260);
   --foreground: oklch(0.93 0.01 160);
   --card: oklch(0.17 0.005 260);
   --card-foreground: oklch(0.93 0.01 160);
   --popover: oklch(0.17 0.005 260);
   --popover-foreground: oklch(0.93 0.01 160);
-  --primary: oklch(0.87 0.2 145);
+  --primary: oklch(var(--talon-l) var(--talon-c) var(--talon-h));
   --primary-foreground: oklch(0.13 0.02 145);
   --secondary: oklch(0.22 0.006 260);
   --secondary-foreground: oklch(0.93 0.01 160);
   --muted: oklch(0.22 0.006 260);
   --muted-foreground: oklch(0.6 0.01 220);
   --accent: oklch(0.24 0.01 160);
-  --accent-foreground: oklch(0.87 0.2 145);
+  --accent-foreground: oklch(var(--talon-l) var(--talon-c) var(--talon-h));
   --destructive: oklch(0.65 0.22 25);
   --warning: oklch(0.8 0.15 85);
   --info: oklch(0.82 0.12 200);
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.87 0.2 145 / 60%);
-  --chart-1: oklch(0.87 0.2 145);
+  --ring: oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 60%);
+  --chart-1: oklch(var(--talon-l) var(--talon-c) var(--talon-h));
   --chart-2: oklch(0.65 0.22 25);
   --chart-3: oklch(0.8 0.15 85);
   --chart-4: oklch(0.82 0.12 200);
@@ -148,48 +153,77 @@
   --radius: 0.375rem;
   --sidebar: oklch(0.15 0.005 260);
   --sidebar-foreground: oklch(0.93 0.01 160);
-  --sidebar-primary: oklch(0.87 0.2 145);
+  --sidebar-primary: oklch(var(--talon-l) var(--talon-c) var(--talon-h));
   --sidebar-primary-foreground: oklch(0.13 0.02 145);
   --sidebar-accent: oklch(0.22 0.008 160);
-  --sidebar-accent-foreground: oklch(0.87 0.2 145);
+  --sidebar-accent-foreground: oklch(var(--talon-l) var(--talon-c) var(--talon-h));
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.87 0.2 145 / 60%);
+  --sidebar-ring: oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 60%);
 }
 
 .dark {
+  --talon-l: 0.87;
+  --talon-c: 0.2;
+  --talon-h: 145;
   --background: oklch(0.13 0.005 260);
   --foreground: oklch(0.93 0.01 160);
   --card: oklch(0.17 0.005 260);
   --card-foreground: oklch(0.93 0.01 160);
   --popover: oklch(0.17 0.005 260);
   --popover-foreground: oklch(0.93 0.01 160);
-  --primary: oklch(0.87 0.2 145);
+  --primary: oklch(var(--talon-l) var(--talon-c) var(--talon-h));
   --primary-foreground: oklch(0.13 0.02 145);
   --secondary: oklch(0.22 0.006 260);
   --secondary-foreground: oklch(0.93 0.01 160);
   --muted: oklch(0.22 0.006 260);
   --muted-foreground: oklch(0.6 0.01 220);
   --accent: oklch(0.24 0.01 160);
-  --accent-foreground: oklch(0.87 0.2 145);
+  --accent-foreground: oklch(var(--talon-l) var(--talon-c) var(--talon-h));
   --destructive: oklch(0.65 0.22 25);
   --warning: oklch(0.8 0.15 85);
   --info: oklch(0.82 0.12 200);
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.87 0.2 145 / 60%);
-  --chart-1: oklch(0.87 0.2 145);
+  --ring: oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 60%);
+  --chart-1: oklch(var(--talon-l) var(--talon-c) var(--talon-h));
   --chart-2: oklch(0.65 0.22 25);
   --chart-3: oklch(0.8 0.15 85);
   --chart-4: oklch(0.82 0.12 200);
   --chart-5: oklch(0.7 0.18 300);
   --sidebar: oklch(0.15 0.005 260);
   --sidebar-foreground: oklch(0.93 0.01 160);
-  --sidebar-primary: oklch(0.87 0.2 145);
+  --sidebar-primary: oklch(var(--talon-l) var(--talon-c) var(--talon-h));
   --sidebar-primary-foreground: oklch(0.13 0.02 145);
   --sidebar-accent: oklch(0.22 0.008 160);
-  --sidebar-accent-foreground: oklch(0.87 0.2 145);
+  --sidebar-accent-foreground: oklch(var(--talon-l) var(--talon-c) var(--talon-h));
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.87 0.2 145 / 60%);
+  --sidebar-ring: oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 60%);
+}
+
+/* ---------- Theme presets (accent only; Talon green is the default) -------- */
+:root[data-theme-preset='amber'],
+.dark[data-theme-preset='amber'] {
+  --talon-l: 0.8;
+  --talon-c: 0.15;
+  --talon-h: 85;
+}
+:root[data-theme-preset='cyan'],
+.dark[data-theme-preset='cyan'] {
+  --talon-l: 0.82;
+  --talon-c: 0.12;
+  --talon-h: 200;
+}
+:root[data-theme-preset='violet'],
+.dark[data-theme-preset='violet'] {
+  --talon-l: 0.72;
+  --talon-c: 0.18;
+  --talon-h: 300;
+}
+:root[data-theme-preset='crimson'],
+.dark[data-theme-preset='crimson'] {
+  --talon-l: 0.7;
+  --talon-c: 0.2;
+  --talon-h: 20;
 }
 
 .input-default {
@@ -332,7 +366,7 @@ input[type='number']::-webkit-outer-spin-button {
 
 /* Targeting-HUD corner brackets */
 .hud-corners {
-  --hud-color: oklch(0.87 0.2 145 / 45%);
+  --hud-color: oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 45%);
   --hud-size: 10px;
   --hud-thickness: 1px;
   background-image:
@@ -372,21 +406,21 @@ input[type='number']::-webkit-outer-spin-button {
 /* Terminal-green glow */
 .glow-green {
   box-shadow:
-    0 0 12px oklch(0.87 0.2 145 / 18%),
-    inset 0 0 8px oklch(0.87 0.2 145 / 6%);
+    0 0 12px oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 18%),
+    inset 0 0 8px oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 6%);
 }
 
 .text-glow {
   text-shadow:
-    0 0 6px oklch(0.87 0.2 145 / 55%),
-    0 0 18px oklch(0.87 0.2 145 / 25%);
+    0 0 6px oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 55%),
+    0 0 18px oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 25%);
 }
 
 /* Faint blueprint grid background */
 .grid-bg {
   background-image:
-    linear-gradient(oklch(0.87 0.2 145 / 4%) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(0.87 0.2 145 / 4%) 1px, transparent 1px);
+    linear-gradient(oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 4%) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(var(--talon-l) var(--talon-c) var(--talon-h) / 4%) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 
@@ -421,7 +455,23 @@ input[type='number']::-webkit-outer-spin-button {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Neutralize all motion when the operator asks for reduced motion:
+     LiveDot ping, heartbeat glow, scanline wash, terminal cursor, component
+     transitions. MatrixRain opts out in its own effect. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
   .terminal-cursor {
     animation: none;
+  }
+
+  .app-scanlines::after {
+    display: none;
   }
 }

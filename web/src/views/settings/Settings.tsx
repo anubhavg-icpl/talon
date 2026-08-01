@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 
 // Third-party Imports
+import { version as nextVersion } from 'next/package.json'
 import { toast } from 'sonner'
 
 // Type Imports
@@ -11,6 +12,7 @@ import type { ConfigEntry, MCPServerInfo, ServiceHealth } from '@/lib/api'
 
 // Component Imports
 import LiveDot from '@/components/shared/LiveDot'
+import PageHeader from '@/components/shared/PageHeader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -404,17 +406,15 @@ const Settings = () => {
 
   return (
     <div className='flex flex-col gap-6'>
-      <div className='flex flex-wrap items-end justify-between gap-2'>
-        <div>
-          <h1 className='font-mono text-xl font-semibold tracking-widest'>SYSTEM</h1>
-          <p className='micro-label mt-1'>LIVE SERVICE HEALTH — PROBED SERVER-SIDE EVERY 10S</p>
-        </div>
-        {lastProbe && (
-          <p className='micro-label'>
-            LAST PROBE {lastProbe.toLocaleTimeString('en-GB', { hour12: false })}
-          </p>
-        )}
-      </div>
+      <PageHeader
+        title='SYSTEM'
+        subtitle='LIVE SERVICE HEALTH — PROBED SERVER-SIDE EVERY 10S'
+        action={
+          lastProbe && (
+            <p className='micro-label'>LAST PROBE {lastProbe.toLocaleTimeString('en-GB', { hour12: false })}</p>
+          )
+        }
+      />
 
       {probeError && (
         <div className='border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-4 py-3 font-mono text-xs tracking-widest uppercase'>
@@ -451,7 +451,7 @@ const Settings = () => {
           </CardHeader>
           <CardContent className='flex flex-col gap-2 font-mono text-xs'>
             <p>
-              <span className='text-muted-foreground'>console:</span> talon-console (Next.js 16.2.12 / standalone)
+              <span className='text-muted-foreground'>console:</span> talon-console (Next.js {nextVersion} / standalone)
             </p>
             <p>
               <span className='text-muted-foreground'>core:</span>{' '}

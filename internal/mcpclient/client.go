@@ -6,12 +6,23 @@ package mcpclient
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/anubhavg-icpl/talon/internal/llm"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
+)
+
+// Connect retry: a required server (e.g. metasploit → msfrpcd) may not be
+// reachable the instant core boots. Retry initialize/list so core waits for it
+// to come up instead of crashing and relying on a docker restart loop.
+// ~60s of headroom, which comfortably covers msfrpcd startup.
+const (
+	connectAttempts = 20
+	connectDelay    = 3 * time.Second
 )
 
 // ServerSpec describes one stdio MCP server to launch.
@@ -19,6 +30,11 @@ type ServerSpec struct {
 	Name    string
 	Command string
 	Args    []string
+	// Optional marks a best-effort server: if it fails to start, initialize,
+	// or list tools, the failure is logged and the server is skipped rather
+	// than aborting the whole orchestrator. Core tools (hexstrike/metasploit)
+	// stay strict; add-on servers (e.g. lightpanda) are optional.
+	Optional bool
 }
 
 // Multi manages a set of MCP servers and exposes their tools under a single
@@ -37,19 +53,46 @@ func NewMulti(ctx context.Context, specs []ServerSpec) (*Multi, error) {
 		owner:   make(map[string]string),
 	}
 	for _, spec := range specs {
-		c, err := client.NewStdioMCPClient(spec.Command, nil, spec.Args...)
-		if err != nil {
-			return nil, fmt.Errorf("mcpclient: start %s: %w", spec.Name, err)
+		var (
+			c       *client.Client
+			tools   []mcp.Tool
+			lastErr error
+		)
+		for attempt := 1; attempt <= connectAttempts; attempt++ {
+			cc, err := client.NewStdioMCPClient(spec.Command, nil, spec.Args...)
+			if err != nil {
+				// Spawn failure (binary missing / can't exec) is a hard error —
+				// retrying won't fix it, so stop and let the caller skip/fail.
+				lastErr = fmt.Errorf("start: %w", err)
+				break
+			}
+			if _, err = cc.Initialize(ctx, mcp.InitializeRequest{}); err != nil {
+				lastErr = fmt.Errorf("initialize: %w", err)
+				_ = cc.Close()
+			} else if listing, lerr := cc.ListTools(ctx, mcp.ListToolsRequest{}); lerr != nil {
+				lastErr = fmt.Errorf("list tools: %w", lerr)
+				_ = cc.Close()
+			} else {
+				c, tools, lastErr = cc, listing.Tools, nil
+				break
+			}
+			if attempt < connectAttempts {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(connectDelay):
+				}
+			}
 		}
-		if _, err := c.Initialize(ctx, mcp.InitializeRequest{}); err != nil {
-			return nil, fmt.Errorf("mcpclient: initialize %s: %w", spec.Name, err)
-		}
-		listing, err := c.ListTools(ctx, mcp.ListToolsRequest{})
-		if err != nil {
-			return nil, fmt.Errorf("mcpclient: list tools %s: %w", spec.Name, err)
+		if c == nil {
+			if spec.Optional {
+				log.Printf("mcpclient: optional server %s unavailable: %v", spec.Name, lastErr)
+				continue
+			}
+			return nil, fmt.Errorf("mcpclient: %s: %w", spec.Name, lastErr)
 		}
 		m.clients[spec.Name] = c
-		for _, t := range listing.Tools {
+		for _, t := range tools {
 			schema := map[string]any{}
 			if t.InputSchema.Properties != nil {
 				schema["properties"] = t.InputSchema.Properties

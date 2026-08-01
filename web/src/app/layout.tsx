@@ -44,6 +44,12 @@ const RootLayout = ({ children }: Readonly<{ children: ReactNode }>) => {
       suppressHydrationWarning
     >
       <body className='app-scanlines flex min-h-full w-full flex-auto flex-col'>
+        {/* No-FOUC: apply the saved accent preset before first paint. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var p=localStorage.getItem('talon-theme-preset');if(p&&p!=='talon')document.documentElement.dataset.themePreset=p;}catch(e){}})();`
+          }}
+        />
         <NuqsAdapter>
           <Providers sidebarDefaultOpen={true}>
             <TooltipProvider>{children}</TooltipProvider>

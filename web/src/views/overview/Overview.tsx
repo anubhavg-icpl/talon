@@ -276,7 +276,8 @@ const Overview = () => {
                 </Link>
               </div>
             ) : (
-              <Table>
+              <div className='overflow-x-auto'>
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead className='micro-label'>STATUS</TableHead>
@@ -307,7 +308,8 @@ const Overview = () => {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>

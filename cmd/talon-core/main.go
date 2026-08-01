@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -42,10 +43,19 @@ func main() {
 
 	ctx := context.Background()
 
-	tools, err := mcpclient.NewMulti(ctx, []mcpclient.ServerSpec{
+	specs := []mcpclient.ServerSpec{
 		{Name: "hexstrike", Command: mcpBinaryPath("HEXSTRIKE_MCP_PATH", "talon-arsenal")},
 		{Name: "metasploit", Command: mcpBinaryPath("METASPLOIT_MCP_PATH", "talon-strike")},
-	})
+	}
+	// Lightpanda browser-automation MCP (optional): headless browser tools
+	// (goto/markdown/links/evaluate/click/…) for web-facing recon. Self-gating:
+	// added only when the `lightpanda` binary is present, and Optional so a
+	// missing/broken binary is skipped with a warning instead of crashing core.
+	if cmd := lightpandaCommand(); cmd != "" {
+		log.Printf("talon-core: lightpanda mcp enabled (%s)", cmd)
+		specs = append(specs, mcpclient.ServerSpec{Name: "lightpanda", Command: cmd, Args: []string{"mcp"}, Optional: true})
+	}
+	tools, err := mcpclient.NewMulti(ctx, specs)
 	if err != nil {
 		log.Fatalf("talon-core: start mcp servers: %v", err)
 	}
@@ -146,6 +156,18 @@ func main() {
 	if err := http.ListenAndServe(":8000", srv.Handler()); err != nil {
 		log.Fatalf("talon-core: %v", err)
 	}
+}
+
+// lightpandaCommand resolves the lightpanda binary for the browser MCP server:
+// LIGHTPANDA_MCP_PATH override, else PATH lookup, else "" (feature skipped).
+func lightpandaCommand() string {
+	if v := os.Getenv("LIGHTPANDA_MCP_PATH"); v != "" {
+		return v
+	}
+	if p, err := exec.LookPath("lightpanda"); err == nil {
+		return p
+	}
+	return ""
 }
 
 // mcpBinaryPath resolves an MCP server binary path from an env var override,

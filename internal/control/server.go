@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -117,6 +119,23 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /config", s.handleGetConfig)
 	mux.HandleFunc("PUT /config", s.handlePutConfig)
 	mux.HandleFunc("GET /mcp/servers", s.handleMCPServers)
+
+	// /shell/* — SSO reverse-proxy to the ttyd web terminal inside
+	// arsenal_engine. ttyd runs no-auth bound to loopback; this route is gated
+	// by the same session-auth middleware as the rest of the console (the
+	// talon_session cookie — no second login), and Go proxies the WebSocket
+	// upgrade natively. Only reachable through this authed proxy.
+	shellTarget := os.Getenv("TTYD_URL")
+	if shellTarget == "" {
+		shellTarget = "http://127.0.0.1:7681"
+	}
+	if u, err := url.Parse(shellTarget); err == nil {
+		proxy := httputil.NewSingleHostReverseProxy(u)
+		mux.Handle("/shell/", proxy)
+		mux.HandleFunc("GET /shell", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/shell/", http.StatusTemporaryRedirect)
+		})
+	}
 	return mux
 }
 

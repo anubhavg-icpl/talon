@@ -1,6 +1,9 @@
 # Shared env for talon-core and talon-relay (single source — no duplicated lists).
 x-talon-env: &talon-env
   HEXSTRIKE_SERVER_URL: http://localhost:${HEXSTRIKE_PORT:-8888}
+  # Optional browser-automation MCP. Binary is best-effort installed in the
+  # image; talon-core self-gates and skips it if absent, so this never blocks.
+  LIGHTPANDA_MCP_PATH: ${LIGHTPANDA_MCP_PATH:-/usr/local/bin/lightpanda}
   MSF_SERVER: localhost
   MSF_PORT: ${MSF_PORT:-5554}
   MSF_PASSWORD: ${MSF_PASSWORD:?MSF_PASSWORD must be set}
@@ -72,6 +75,10 @@ services:
     privileged: true
     environment:
       API_PORT: ${HEXSTRIKE_PORT:-8888}
+      # Integrated web terminal (ttyd): loopback-only, no basic-auth. Access is
+      # gated by talon-core's session-authenticated /shell reverse proxy (SSO),
+      # so no separate credentials live here.
+      TTYD_PORT: ${TTYD_PORT:-7681}
     restart: unless-stopped
     network_mode: host
 
@@ -140,6 +147,9 @@ services:
     environment:
       <<: *talon-env
       TALON_DATA_DIR: /data
+      # ttyd web terminal (arsenal_engine, loopback) reverse-proxied by core at
+      # /shell behind session auth.
+      TTYD_URL: http://127.0.0.1:${TTYD_PORT:-7681}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./talon-data:/data

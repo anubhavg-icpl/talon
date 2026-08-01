@@ -41,6 +41,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # module) must not fail the whole image. Core recon still works via apt
 # nmap/nuclei/ffuf/etc. above.
 # ---------------------------------------------------------------------------
+# ttyd — browser web terminal (full interactive PTY) powering the console's
+# integrated Kali shell. Installed as the upstream static binary (not reliably
+# packaged in Kali apt); tolerant so a fetch failure never breaks the image.
+RUN curl -fsSL -o /usr/local/bin/ttyd \
+      https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 \
+    && chmod +x /usr/local/bin/ttyd \
+    && /usr/local/bin/ttyd --version \
+    || echo "ttyd: install skipped (web terminal disabled)"
+
 ENV GOPROXY=https://proxy.golang.org,direct
 RUN set -eu; \
     failed=0; \
@@ -104,7 +113,14 @@ WORKDIR /opt/arsenal-engine
 COPY arsenal_engine.py .
 COPY LICENSE.upstream ./LICENSE.upstream
 
-ENV API_PORT=8888
-EXPOSE 8888
+ENV API_PORT=8888 \
+    TTYD_PORT=7681
 
-CMD python3 arsenal_engine.py --port "${API_PORT}"
+EXPOSE 8888 7681
+
+# Run the ttyd web terminal (full interactive PTY) alongside the tool API so
+# operators get a live Kali shell inside the console. It binds LOOPBACK only
+# (127.0.0.1) with NO basic-auth and base-path /shell: it is unreachable from
+# the network and is exposed solely through talon-core's session-authenticated
+# /shell reverse proxy (SSO — same console login, no second credential prompt).
+CMD sh -c 'ttyd -p "${TTYD_PORT}" -i 127.0.0.1 -b /shell -W bash & exec python3 arsenal_engine.py --port "${API_PORT}"'

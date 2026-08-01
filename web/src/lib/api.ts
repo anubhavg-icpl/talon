@@ -16,6 +16,7 @@ export type RunSummary = {
   judge_verdict?: boolean
   tool_calls: number
   started_at: string // RFC3339
+  ended_at?: string // RFC3339, present once the run reached a terminal state
 }
 
 export type ListRunsResponse = {

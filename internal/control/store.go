@@ -24,6 +24,10 @@ type Session struct {
 	ToolLog          []core.ToolCallRecord
 	// StartedAt is when the run was created (UTC), used for listing/sorting.
 	StartedAt time.Time
+	// EndedAt is when the run reached a terminal state (completed/error), UTC.
+	// Zero while the run is still initializing/running/awaiting_approval. Lets
+	// the UI freeze the elapsed timer instead of counting forever.
+	EndedAt time.Time
 	// JudgeVerdict is set when a completed run included a judge assessment.
 	// Only meaningful when Status is "completed".
 	JudgeVerdict bool
@@ -137,6 +141,7 @@ func (s *Store) SetResult(runID string, result core.RunResult) {
 	sess.Status = "completed"
 	sess.Output = result.FinalMessage
 	sess.PendingInterrupt = nil
+	sess.EndedAt = time.Now().UTC()
 	sess.JudgeVerdict = result.JudgeVerdict
 	sess.JudgeSet = true
 	sess.History = append(sess.History, historyLine("completed judge=%v tools=%d", result.JudgeVerdict, len(sess.ToolLog)))
@@ -150,6 +155,7 @@ func (s *Store) SetError(runID string, err error) {
 		sess.Status = "error"
 		sess.Output = err.Error()
 		sess.PendingInterrupt = nil
+		sess.EndedAt = time.Now().UTC()
 		sess.History = append(sess.History, historyLine("error: %s", err.Error()))
 		s.saveLocked(runID)
 	}
@@ -238,6 +244,8 @@ type RunSummary struct {
 	JudgeVerdict *bool     `json:"judge_verdict,omitempty"`
 	ToolCalls    int       `json:"tool_calls"`
 	StartedAt    time.Time `json:"started_at"`
+	// EndedAt is the terminal-state timestamp; omitted (zero) while active.
+	EndedAt time.Time `json:"ended_at,omitzero"`
 }
 
 // List returns one summary per run, newest first.
@@ -275,6 +283,7 @@ func (s *Store) PaginatedList(limit, offset int) ([]RunSummary, int, error) {
 			Status:      sess.Status,
 			ToolCalls:   len(sess.ToolLog),
 			StartedAt:   sess.StartedAt,
+			EndedAt:     sess.EndedAt,
 		}
 		if sess.JudgeSet {
 			v := sess.JudgeVerdict

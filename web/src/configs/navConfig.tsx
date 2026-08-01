@@ -68,6 +68,11 @@ export const navItems: NavItem[] = [
         icon: 'Crosshair',
         label: 'New Operation',
         href: '/runs/new'
+      },
+      {
+        icon: 'SquareTerminal',
+        label: 'Kali Shell',
+        href: '/terminal'
       }
     ]
   },

@@ -20,8 +20,24 @@ RUN CGO_ENABLED=0 go build -o /out/talon-core ./cmd/talon-core \
  && CGO_ENABLED=0 go build -o /out/talon-strike ./cmd/talon-strike \
  && CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/talon ./cmd/talon
 
-FROM alpine:3.20
-RUN apk add --no-cache ca-certificates docker-cli
+# Runtime on glibc (debian-slim), NOT alpine/musl: the Lightpanda browser
+# binary is glibc-linked and fails to exec on musl. The Go binaries are static
+# (CGO_ENABLED=0) so they run on either base.
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+# Docker CLI only (daemon comes from the mounted /var/run/docker.sock).
+COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+# Lightpanda browser-automation MCP (optional): glibc binary — runs on this
+# base. talon-core self-gates via LIGHTPANDA_MCP_PATH; `|| echo` keeps the
+# build green on fetch failure so the image is never blocked on it.
+RUN curl -fsSL -o /usr/local/bin/lightpanda \
+      https://github.com/lightpanda-io/browser/releases/download/nightly/lightpanda-x86_64-linux \
+    && chmod +x /usr/local/bin/lightpanda \
+    && /usr/local/bin/lightpanda version >/dev/null 2>&1 \
+    && echo "lightpanda: installed" \
+    || echo "lightpanda: install skipped (optional MCP)"
 COPY --from=build /out/ /app/
 WORKDIR /app
 ENV HEXSTRIKE_MCP_PATH=/app/talon-arsenal \
