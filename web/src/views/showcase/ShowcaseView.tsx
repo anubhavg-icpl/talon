@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import Link from 'next/link'
 
+import Lazy3D from '@/components/shared/Lazy3D'
 import PageHeader from '@/components/shared/PageHeader'
 import { ExamplesStage } from '@/components/shared/three'
 import { Badge } from '@/components/ui/badge'
@@ -128,8 +129,10 @@ const ShowcaseView = () => {
         }
       />
 
-      {/* Single primary WebGL stage (prod: one heavy canvas, not three) */}
-      <ExamplesStage />
+      {/* Single primary WebGL stage — gated so the page always loads first */}
+      <Lazy3D className='min-h-[360px] w-full' label='SHOWCASE THREE.JS STAGE' poster='/showcase/operator-globe-hud.webp'>
+        <ExamplesStage className='min-h-[360px] w-full' />
+      </Lazy3D>
 
       {/* Product still/video reel — no extra WebGL */}
       <div className='grid gap-4 lg:grid-cols-[1fr_220px]'>

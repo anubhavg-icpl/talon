@@ -1,11 +1,10 @@
 'use client'
 
-// Distributes the operator Three.js globe across views with one consistent
-// framed treatment so every hub feels like the same C2 console. All props
-// optional — defaults to a static compact globe (no live-run state coupling).
+// Framed operator globe. WebGL is gated behind Lazy3D so hubs don't crash tabs.
 
-import { cn } from '@/lib/utils'
+import Lazy3D from '@/components/shared/Lazy3D'
 import { TalonGlobe } from '@/components/shared/three'
+import { cn } from '@/lib/utils'
 
 type GlobePanelProps = {
   className?: string
@@ -14,6 +13,8 @@ type GlobePanelProps = {
   activityLevel?: number
   interactive?: boolean
   label?: string
+  /** Use compact "3D" chip gate (thumbnails) */
+  gateCompact?: boolean
 }
 
 const GlobePanel = ({
@@ -22,8 +23,11 @@ const GlobePanel = ({
   state = 'idle',
   activityLevel = 0,
   interactive,
-  label
+  label,
+  gateCompact
 }: GlobePanelProps) => {
+  const compactGate = gateCompact ?? variant === 'compact'
+
   return (
     <div
       className={cn(
@@ -31,14 +35,16 @@ const GlobePanel = ({
         className
       )}
     >
-      <TalonGlobe
-        className='h-full w-full'
-        variant={variant}
-        state={state}
-        activityLevel={activityLevel}
-        interactive={interactive}
-      />
-      {label ? <span className='micro-label absolute bottom-1.5 left-2 text-primary/70'>{label}</span> : null}
+      <Lazy3D compact={compactGate} className='h-full w-full' label={label || 'OPERATOR GLOBE'}>
+        <TalonGlobe
+          className='h-full w-full'
+          variant={variant}
+          state={state}
+          activityLevel={activityLevel}
+          interactive={interactive}
+        />
+      </Lazy3D>
+      {label ? <span className='micro-label absolute bottom-1.5 left-2 z-10 text-primary/70'>{label}</span> : null}
     </div>
   )
 }

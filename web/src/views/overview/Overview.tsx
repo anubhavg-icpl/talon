@@ -18,6 +18,7 @@ import LiveDot from '@/components/shared/LiveDot'
 import Logo from '@/components/shared/Logo'
 import PageHeader from '@/components/shared/PageHeader'
 import StatusBadge from '@/components/shared/StatusBadge'
+import Lazy3D from '@/components/shared/Lazy3D'
 import { TalonGlobe } from '@/components/shared/three'
 import UtcClock from '@/components/shared/UtcClock'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -177,17 +178,19 @@ const Overview = () => {
               OPEN PRODUCT SHOWCASE →
             </Link>
           </div>
-          <div className='relative mx-auto aspect-square w-full max-w-[280px] lg:max-w-[300px] overflow-hidden rounded-sm border border-primary/20 bg-black/40'>
-            <TalonGlobe
-              className='h-full w-full'
-              variant='hero'
-              interactive
-              state={globeState}
-              activityLevel={globeLevel}
-              onClick={() => {
-                window.location.assign('/runs/new')
-              }}
-            />
+          <div className='relative mx-auto aspect-square w-full max-w-[280px] overflow-hidden rounded-sm border border-primary/20 bg-black/40 lg:max-w-[300px]'>
+            <Lazy3D className='h-full w-full' label='LIVE ENGAGEMENT GLOBE'>
+              <TalonGlobe
+                className='h-full w-full'
+                variant='hero'
+                interactive
+                state={globeState}
+                activityLevel={globeLevel}
+                onClick={() => {
+                  window.location.assign('/runs/new')
+                }}
+              />
+            </Lazy3D>
           </div>
         </div>
       </div>

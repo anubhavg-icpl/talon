@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 // Component Imports
+import Lazy3D from '@/components/shared/Lazy3D'
 import { TalonGlobe } from '@/components/shared/three'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -242,7 +243,9 @@ const NewRun = () => {
           <CardDescription className='font-mono text-[10px]'>Three.js · compact globe</CardDescription>
         </CardHeader>
         <CardContent className='flex justify-center p-2 pb-4'>
-          <TalonGlobe className='aspect-square w-full max-w-[220px]' variant='compact' state='thinking' activityLevel={0.5} />
+          <Lazy3D className='aspect-square w-full max-w-[220px]' label='TARGET HUD' compact>
+            <TalonGlobe className='h-full w-full' variant='compact' state='thinking' activityLevel={0.5} />
+          </Lazy3D>
         </CardContent>
       </Card>
       </div>

@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 
 import type { BudgetStats, Credential, NotifyConfig, Schedule, ScopePolicy, Target } from '@/lib/api'
-import { TalonGlobe } from '@/components/shared/three'
+import GlobePanel from '@/components/shared/GlobePanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -79,9 +79,7 @@ const OpsHub = () => {
             BATCH · TARGETS · SCOPE/ROE · SCHEDULES · WEBHOOKS · CREDENTIALS · BUDGET
           </p>
         </div>
-        <div className='hud-corners hidden h-28 w-28 shrink-0 overflow-hidden sm:block'>
-          <TalonGlobe className='h-full w-full' variant='compact' state='running' activityLevel={0.4} />
-        </div>
+        <GlobePanel className='hidden size-28 shrink-0 sm:block' state='running' activityLevel={0.4} gateCompact />
       </div>
 
       {budget && (

@@ -5,7 +5,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import Logo from '@/components/shared/Logo'
-import { TalonGlobe } from '@/components/shared/three'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -48,10 +47,16 @@ const Login = () => {
 
   return (
     <div className='relative flex min-h-svh items-center justify-center overflow-hidden p-4'>
-      {/* Single WebGL layer (prod: no stacked rain + starfield + globe) */}
-      <div className='pointer-events-none absolute inset-0 opacity-90' aria-hidden>
-        <TalonGlobe className='h-full w-full' variant='background' state='idle' activityLevel={0.25} />
-      </div>
+      {/* Static backdrop only — no WebGL on login (prevents tab crash before auth) */}
+      <div
+        className='pointer-events-none absolute inset-0 opacity-80'
+        aria-hidden
+        style={{
+          backgroundImage: 'url(/showcase/operator-globe-hud.webp)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        }}
+      />
       <div className='scanlines pointer-events-none absolute inset-0' />
       <div className='pointer-events-none absolute inset-0 bg-gradient-to-b from-background/50 via-background/65 to-background/90' />
 
