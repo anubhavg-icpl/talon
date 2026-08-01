@@ -33,6 +33,10 @@ func TestResolveModel(t *testing.T) {
 
 		// Bedrock defaults
 		{"bedrock main default", "bedrock", "", "", "", "", "", "", RoleMain, "bedrock", "qwen.qwen3-vl-235b-a22b"},
+
+		// ONNX / SmolLM defaults
+		{"onnx main default", "onnx", "", "", "", "", "", "", RoleMain, "onnx", "smollm"},
+		{"onnx code default", "onnx", "", "", "", "", "", "", RoleCode, "onnx", "smollm"},
 	}
 
 	for _, c := range cases {
@@ -45,6 +49,9 @@ func TestResolveModel(t *testing.T) {
 			os.Unsetenv("OLLAMA_MAIN_MODEL")
 			os.Unsetenv("OLLAMA_CODE_MODEL")
 			os.Unsetenv("OLLAMA_JUDGE_MODEL")
+			os.Unsetenv("ONNX_MAIN_MODEL")
+			os.Unsetenv("ONNX_CODE_MODEL")
+			os.Unsetenv("ONNX_JUDGE_MODEL")
 
 			if c.provider != "" {
 				os.Setenv("LLM_PROVIDER", c.provider)

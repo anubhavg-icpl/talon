@@ -24,9 +24,17 @@ func NewModel(ctx context.Context, cfg config.LLMConfig, provider, modelID strin
 			return nil, fmt.Errorf("llm: OPENAI_API_KEY is not set (required when LLM_PROVIDER=openai; no hardcoded fallback)")
 		}
 		return NewOpenAI(cfg.OpenAIBaseURL, cfg.OpenAIAPIKey, modelID), nil
+	case "onnx":
+		// Local SmolLM / ONNX Runtime service speaks OpenAI chat.completions.
+		// API key is optional (compose default "talon-local"); empty still works.
+		base := cfg.ONNXBaseURL
+		if base == "" {
+			base = "http://localhost:8090/v1"
+		}
+		return NewOpenAI(base, cfg.ONNXAPIKey, modelID), nil
 	case "bedrock", "":
 		return NewBedrock(ctx, modelID, cfg.BedrockRegion, cfg.Temperature, cfg.MaxTokens)
 	default:
-		return nil, fmt.Errorf("llm: unknown provider %q (want bedrock|ollama|openai)", provider)
+		return nil, fmt.Errorf("llm: unknown provider %q (want bedrock|ollama|openai|onnx)", provider)
 	}
 }

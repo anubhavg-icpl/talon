@@ -86,13 +86,15 @@ func LoadAMQPConfig() AMQPConfig {
 }
 
 // LLMConfig selects and configures the ChatModel backend. Provider picks the
-// implementation: "bedrock" (default), "ollama" (local GPU, zero cloud), or
+// implementation: "bedrock" (default), "ollama" (local GPU, zero cloud),
 // "openai" (any OpenAI-compatible /chat/completions endpoint -- OpenAI, Azure,
-// z.ai/GLM, vLLM, LiteLLM). Only the fields relevant to the active provider
+// z.ai/GLM, vLLM, LiteLLM), or "onnx" (local SmolLM / ONNX Runtime SLM service
+// via compose profile "slm"). Only the fields relevant to the active provider
 // are read; the others may stay blank. No credential has a hardcoded fallback
 // -- OPENAI_API_KEY / AWS creds are required when their provider is selected.
+// ONNX_API_KEY is optional (local onnx-slm ignores auth).
 type LLMConfig struct {
-	Provider string // bedrock | ollama | openai
+	Provider string // bedrock | ollama | openai | onnx
 
 	// Ollama (LLM_PROVIDER=ollama)
 	OllamaURL string
@@ -100,6 +102,11 @@ type LLMConfig struct {
 	// OpenAI-compatible (LLM_PROVIDER=openai)
 	OpenAIBaseURL string
 	OpenAIAPIKey  string
+
+	// ONNX / SmolLM SLM runtime (LLM_PROVIDER=onnx) — OpenAI-compatible
+	// server from the onnx-slm compose service (default :8090/v1).
+	ONNXBaseURL string
+	ONNXAPIKey  string
 
 	// Bedrock (LLM_PROVIDER=bedrock, the default)
 	BedrockRegion string
@@ -117,6 +124,8 @@ func LoadLLMConfig() LLMConfig {
 		OllamaURL:     getenv("OLLAMA_URL", "http://localhost:11434"),
 		OpenAIBaseURL: getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
 		OpenAIAPIKey:  os.Getenv("OPENAI_API_KEY"),
+		ONNXBaseURL:   getenv("ONNX_BASE_URL", "http://localhost:8090/v1"),
+		ONNXAPIKey:    getenv("ONNX_API_KEY", "talon-local"),
 		BedrockRegion: getenv("AWS_REGION", "us-east-1"),
 		Temperature:   getenvFloat("LLM_TEMPERATURE", 0.3),
 		MaxTokens:     int32(getenvInt("LLM_MAX_TOKENS", 1000)),
@@ -151,6 +160,7 @@ func ProviderFor(cfg LLMConfig, role string) string {
 //	bedrock: AGENT_MODEL_ID (main), JUDGE_MODEL_ID (judge), CODE_MODEL_ID (code)
 //	ollama:  OLLAMA_MAIN_MODEL, OLLAMA_JUDGE_MODEL, OLLAMA_CODE_MODEL
 //	openai:  OPENAI_MAIN_MODEL, OPENAI_JUDGE_MODEL, OPENAI_CODE_MODEL
+//	onnx:    ONNX_MAIN_MODEL, ONNX_JUDGE_MODEL, ONNX_CODE_MODEL
 //
 // Judge defaults to the main model when its own env is unset, since judging is
 // a lighter task; codegen always needs its own (specialized) model.
@@ -177,6 +187,15 @@ func ModelIDFor(cfg LLMConfig, role string) string {
 			return getenv("OPENAI_CODE_MODEL", "glm-5.2")
 		}
 		return getenv("OPENAI_JUDGE_MODEL", getenv("OPENAI_MAIN_MODEL", "glm-5.2"))
+	case "onnx":
+		// Local SmolLM / ONNX Runtime SLM — one small model covers all roles.
+		if role == RoleMain {
+			return getenv("ONNX_MAIN_MODEL", "smollm")
+		}
+		if role == RoleCode {
+			return getenv("ONNX_CODE_MODEL", getenv("ONNX_MAIN_MODEL", "smollm"))
+		}
+		return getenv("ONNX_JUDGE_MODEL", getenv("ONNX_MAIN_MODEL", "smollm"))
 	default: // bedrock
 		if role == RoleMain {
 			return getenv("AGENT_MODEL_ID", "qwen.qwen3-vl-235b-a22b")
