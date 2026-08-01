@@ -39,9 +39,10 @@ ENV GOPATH=/root/go \
     PYTHONUNBUFFERED=1
 
 # ---------------------------------------------------------------------------
-# 0) Arch base + BlackArch strap (official)
+# 0) Arch base + BlackArch strap (official) + operator shell deps
 # ---------------------------------------------------------------------------
 RUN set -eux; \
+    # Core Arch packages first (names differ from Debian/Kali)
     pacman -Syu --noconfirm --needed \
       base base-devel git curl wget unzip tar xz jq which \
       python python-pip python-setuptools python-wheel \
@@ -49,17 +50,23 @@ RUN set -eux; \
       openssl libpcap libffi libxml2 libxslt zlib libjpeg-turbo libpng \
       ruby \
       jre-openjdk-headless \
-      sudo iproute2 iputils net-tools bind-tools gnu-netcat \
+      sudo iproute2 iputils net-tools bind \
+      openbsd-netcat \
       procps-ng file less vim nano bash \
-      ca-certificates \
       fastfetch; \
-    # BlackArch keyring + mirrorlist
+    # Official BlackArch strap → enables blackarch repo
     curl -fsSL -o /tmp/strap.sh https://blackarch.org/strap.sh; \
     chmod +x /tmp/strap.sh; \
     /tmp/strap.sh; \
     rm -f /tmp/strap.sh; \
     pacman -Syu --noconfirm; \
-    # Parallel downloads, no confirm prompts
+    # Prove we are NOT Kali
+    grep -qi arch /etc/os-release; \
+    ! grep -qi kali /etc/os-release; \
+    echo 'talon-blackarch' > /etc/hostname; \
+    # Silence any leftover distro motd noise
+    : > /etc/motd; \
+    touch /root/.hushlogin; \
     sed -i 's/^#ParallelDownloads.*/ParallelDownloads = 5/' /etc/pacman.conf || true; \
     pacman -Scc --noconfirm || true
 
