@@ -1,11 +1,12 @@
 # SLM Assist UI assets
 
-Static SVGs used by `web/src/views/assist/AssistView.tsx`:
+Generated operator stills used by `AssistView`:
 
 | File | Use |
 |------|-----|
-| `slm-assist-mark.svg` | Page title mark |
-| `slm-assist-banner.svg` | Pipeline banner (UI → Go → tools → stream) |
-| `slm-assist-empty.svg` | Empty chat state illustration |
+| `slm-assist-mark.webp` | Page title + chat header mark |
+| `slm-assist-banner.webp` | Pipeline hero strip |
+| `slm-assist-empty.webp` | Empty chat state |
+| `slm-assist-tools.webp` | Tools panel header |
 
-Served at `/assist/*` from the Next.js public folder.
+Legacy SVGs kept as fallback only.

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Activity, Bot, Loader2, Send, Sparkles, Square, Wrench } from 'lucide-react'
+import { Activity, Loader2, Send, Sparkles, Square, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 
 import PageHeader from '@/components/shared/PageHeader'
@@ -264,12 +264,13 @@ const AssistView = () => {
       <PageHeader
         title={
           <span className='inline-flex items-center gap-3'>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src='/assist/slm-assist-mark.svg'
+              src='/assist/slm-assist-mark.webp'
               alt=''
-              width={36}
-              height={36}
-              className='size-9 rounded-md border border-border/60'
+              width={40}
+              height={40}
+              className='size-10 rounded-md border border-primary/30 object-cover shadow-[0_0_20px_oklch(0.62_0.22_25/0.25)]'
             />
             SLM Assist
           </span>
@@ -277,32 +278,45 @@ const AssistView = () => {
         description='Local / hosted copilot with curated codebase tools — runs, skills, health. Read-only; full exploits stay on agent runs.'
       />
 
-      <div className='from-primary/10 via-background to-background relative overflow-hidden rounded-lg border border-border/60 bg-linear-to-br p-3 sm:p-4'>
+      {/* Pipeline hero */}
+      <div className='hud-corners relative min-h-[100px] overflow-hidden rounded-sm border border-primary/20 sm:min-h-[120px]'>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src='/assist/slm-assist-banner.svg'
-          alt='SLM Assist pipeline'
-          className='pointer-events-none absolute inset-0 size-full object-cover opacity-40'
+          src='/assist/slm-assist-banner.webp'
+          alt=''
+          className='absolute inset-0 size-full object-cover object-center'
         />
-        <div className='relative flex flex-wrap items-center gap-3'>
-          <Sparkles className='text-primary size-4' />
-          <p className='font-mono text-[11px] tracking-wide text-muted-foreground sm:text-xs'>
-            UI → <code className='text-primary'>/api/talon/llm/assist</code> → Go tools → provider · tokens stream as SSE
-          </p>
+        <div className='absolute inset-0 bg-gradient-to-r from-background via-background/75 to-background/30' />
+        <div className='absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-background/20' />
+        <div className='relative flex h-full min-h-[100px] flex-wrap items-end gap-3 p-4 sm:min-h-[120px] sm:p-5'>
+          <div className='flex flex-1 flex-col gap-1.5'>
+            <p className='micro-label text-primary flex items-center gap-1.5'>
+              <Sparkles className='size-3' />
+              LOCAL COPILOT PIPELINE
+            </p>
+            <p className='font-mono text-[11px] tracking-wide text-zinc-200 sm:text-xs'>
+              UI → <code className='text-primary'>/api/talon/llm/assist</code> → Go tools → provider · SSE tokens
+            </p>
+          </div>
           {info?.provider && (
-            <Badge variant='outline' className='ml-auto font-mono text-[10px] tracking-wider uppercase'>
+            <Badge
+              variant='outline'
+              className='border-primary/40 bg-black/50 font-mono text-[10px] tracking-wider text-zinc-100 uppercase backdrop-blur-sm'
+            >
               {info.provider} · {info.model}
             </Badge>
           )}
         </div>
       </div>
 
-      <div className='grid flex-1 gap-4 lg:grid-cols-[1fr_280px]'>
-        <Card className='flex min-h-[560px] flex-col border-border/80'>
-          <CardHeader className='flex flex-row items-center justify-between space-y-0 border-b py-3'>
+      <div className='grid flex-1 gap-4 lg:grid-cols-[1fr_300px]'>
+        <Card className='hud-corners flex min-h-[560px] flex-col overflow-hidden border-border/80 pt-0'>
+          <CardHeader className='flex flex-row items-center justify-between space-y-0 border-b border-primary/10 py-3'>
             <div className='flex min-w-0 items-center gap-2'>
-              <Bot className='text-primary size-4 shrink-0' />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src='/assist/slm-assist-mark.webp' alt='' className='size-6 rounded-sm object-cover' />
               <CardTitle className='font-mono text-sm tracking-widest uppercase'>Console chat</CardTitle>
-              {busy && <Loader2 className='text-muted-foreground size-3.5 shrink-0 animate-spin' />}
+              {busy && <Loader2 className='text-primary size-3.5 shrink-0 animate-spin' />}
               {busy && phase && (
                 <span className='text-muted-foreground max-w-[200px] truncate font-mono text-[10px] tracking-wide sm:max-w-[280px]'>
                   {phase}
@@ -320,13 +334,19 @@ const AssistView = () => {
           <CardContent className='flex flex-1 flex-col gap-3 p-0'>
             <ScrollArea className='h-[440px] flex-1 px-4 py-3'>
               {items.length === 0 && (
-                <div className='text-muted-foreground space-y-4 py-8 text-center text-sm'>
+                <div className='text-muted-foreground space-y-5 py-6 text-center text-sm'>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src='/assist/slm-assist-empty.svg'
+                    src='/assist/slm-assist-empty.webp'
                     alt=''
-                    className='mx-auto h-24 w-auto opacity-90'
+                    className='mx-auto h-36 w-auto rounded-sm border border-primary/15 object-cover shadow-[0_0_40px_oklch(0.62_0.22_25/0.12)] sm:h-44'
                   />
-                  <p className='font-mono text-xs tracking-widest uppercase'>Ask about runs, skills, stack health</p>
+                  <div>
+                    <p className='font-mono text-xs tracking-widest text-foreground uppercase'>
+                      Ask about runs, skills, stack health
+                    </p>
+                    <p className='micro-label mt-1'>Curated tools · no exploit MCP here</p>
+                  </div>
                   <div className='flex flex-wrap justify-center gap-2'>
                     {SUGGESTIONS.map(s => (
                       <Button
@@ -334,7 +354,7 @@ const AssistView = () => {
                         type='button'
                         size='sm'
                         variant='outline'
-                        className='h-auto max-w-xs whitespace-normal py-1.5 text-left font-mono text-[11px]'
+                        className='h-auto max-w-xs whitespace-normal border-primary/25 py-1.5 text-left font-mono text-[11px]'
                         onClick={() => send(s)}
                         disabled={busy}
                       >
@@ -361,7 +381,8 @@ const AssistView = () => {
                       <div className='text-muted-foreground mb-1 flex items-center gap-1.5 font-mono text-[10px] tracking-widest uppercase'>
                         {m.role === 'assistant' ? (
                           <>
-                            <Bot className='size-3' />
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src='/assist/slm-assist-mark.webp' alt='' className='size-3.5 rounded-sm object-cover' />
                             assistant
                           </>
                         ) : (
@@ -388,7 +409,7 @@ const AssistView = () => {
               </div>
             </ScrollArea>
 
-            <div className='border-t p-3'>
+            <div className='border-t border-primary/10 p-3'>
               <div className='flex gap-2'>
                 <Textarea
                   value={draft}
@@ -423,21 +444,33 @@ const AssistView = () => {
           </CardContent>
         </Card>
 
-        <Card className='border-border/80 h-fit'>
-          <CardHeader className='py-3'>
-            <CardTitle className='flex items-center gap-2 font-mono text-xs tracking-widest uppercase'>
-              <Wrench className='size-3.5' />
-              Tools ({tools.length || info?.tool_count || 0})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className='space-y-2 px-3 pb-4'>
+        <Card className='hud-corners h-fit overflow-hidden border-border/80 pt-0'>
+          <div className='relative h-24 border-b border-primary/15'>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src='/assist/slm-assist-tools.webp'
+              alt=''
+              className='absolute inset-0 size-full object-cover object-top'
+            />
+            <div className='absolute inset-0 bg-gradient-to-t from-card via-card/50 to-transparent' />
+            <div className='absolute right-3 bottom-2 left-3'>
+              <CardTitle className='flex items-center gap-2 font-mono text-xs tracking-widest text-zinc-100 uppercase'>
+                <Wrench className='size-3.5 text-primary' />
+                Tools ({tools.length || info?.tool_count || 0})
+              </CardTitle>
+            </div>
+          </div>
+          <CardContent className='space-y-2 px-3 pt-3 pb-4'>
             <p className='text-muted-foreground text-xs'>
               Curated read-only catalog. Full MCP exploits stay on agent runs.
             </p>
-            <ScrollArea className='h-[420px] pr-2'>
+            <ScrollArea className='h-[380px] pr-2'>
               <ul className='space-y-2'>
                 {tools.map(t => (
-                  <li key={t.name} className='rounded border border-border/60 p-2'>
+                  <li
+                    key={t.name}
+                    className='rounded-sm border border-border/60 border-l-primary/40 border-l-2 p-2 transition-colors hover:border-primary/30 hover:bg-primary/5'
+                  >
                     <div className='font-mono text-[11px] font-semibold tracking-wide'>{t.name}</div>
                     <p className='text-muted-foreground mt-0.5 text-[11px] leading-snug'>{t.description}</p>
                   </li>
