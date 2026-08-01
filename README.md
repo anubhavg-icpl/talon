@@ -1,19 +1,11 @@
 # Talon
 
 <p align="center">
-  <img src="assets/logo-wordmark.webp" alt="Talon" width="280" />
-</p>
-
-<p align="center">
-  <img src="assets/talon-hero-raptor.webp" alt="Talon AI — offensive orchestration" width="920" />
+  <img src="assets/talon-mark-red.webp" alt="Talon" width="180" />
 </p>
 
 <p align="center">
   <strong>AI-driven penetration-testing orchestration, built natively in Go.</strong>
-</p>
-
-<p align="center">
-  <img src="assets/hero-banner.webp" alt="Talon banner" width="920" />
 </p>
 
 Point Talon at a target (IP + optional CVE / service). It runs a full
@@ -22,94 +14,27 @@ fallback → judge**. Operators drive it with the **`talon` CLI** or the HTTP
 control plane. Only use this against systems you own or have **written
 authorization** to test.
 
-<p align="center">
-  <img src="assets/security-warning-banner.webp" alt="Authorized use only" width="920" />
-</p>
-
 > Offensive security tool. Unauthorized access is illegal. Read
 > [Security & responsible use](#security--responsible-use).
-
-<p align="center">
-  <img src="assets/header-collage.webp" alt="Talon product collage" width="920" />
-</p>
-
----
-
-## Visual tour
-
-All product art is **WebP** under [`assets/`](assets/).
-
-### Brand
-
-<p align="center">
-  <img src="assets/talon-mark-red.webp" alt="Talon mark" width="160" />
-  &nbsp;&nbsp;&nbsp;
-  <img src="assets/talon-brand-mark.webp" alt="Talon brand mark" width="160" />
-  &nbsp;&nbsp;&nbsp;
-  <img src="assets/favicon.webp" alt="Favicon" width="160" />
-  &nbsp;&nbsp;&nbsp;
-  <img src="assets/go-native-milestone.webp" alt="Go-native" width="160" />
-</p>
-
-### Service badges
-
-<p align="center">
-  <img src="assets/talon-core-badge.webp" alt="talon-core" width="140" />
-  <img src="assets/talon-arsenal-badge.webp" alt="talon-arsenal" width="140" />
-  <img src="assets/talon-strike-badge.webp" alt="talon-strike" width="140" />
-  <img src="assets/talon-forge-badge.webp" alt="talon-forge" width="140" />
-  <img src="assets/talon-relay-badge.webp" alt="talon-relay" width="140" />
-</p>
-
-### Pipeline stages
-
-| Recon | HITL gate | Exploit (MSF) |
-|:-----:|:---------:|:-------------:|
-| <img src="assets/recon-workflow.webp" alt="Recon workflow" width="280" /> | <img src="assets/hitl-gate.webp" alt="HITL gate" width="280" /> | <img src="assets/msf-rpc-connection.webp" alt="MSF RPC" width="280" /> |
-
-| Forge sandbox | Judge | Sequence |
-|:-------------:|:-----:|:--------:|
-| <img src="assets/codegen-sandbox.webp" alt="Codegen sandbox" width="280" /> | <img src="assets/judge-verdict.webp" alt="Judge verdict" width="280" /> | <img src="assets/sequence-diagram-base.webp" alt="Sequence diagram" width="280" /> |
-
-### Product surfaces
-
-| Ops dashboard | CLI console | Architecture |
-|:-------------:|:-----------:|:------------:|
-| <img src="assets/talon-dashboard-product.webp" alt="Dashboard" width="300" /> | <img src="assets/console-hero.webp" alt="Operator console" width="300" /> | <img src="assets/architecture-poster.webp" alt="Architecture" width="300" /> |
-
-| Dashboard mock | Terminal mock | Agents pipeline |
-|:--------------:|:-------------:|:---------------:|
-| <img src="assets/dashboard-mockup.webp" alt="Dashboard mockup" width="300" /> | <img src="assets/terminal-mockup.webp" alt="Terminal mockup" width="300" /> | <img src="assets/talon-pipeline-agents.webp" alt="Multi-agent pipeline" width="300" /> |
-
-### Skills, agents, knowledge
-
-<p align="center">
-  <img src="assets/talon-knowledge-panel.webp" alt="Skills / knowledge panel" width="920" />
-</p>
-
-<p align="center">
-  <img src="assets/talon-agent-filmstrip.webp" alt="Agent filmstrip" width="920" />
-</p>
 
 ---
 
 ## Table of contents
 
-1. [Visual tour](#visual-tour)
-2. [What it does](#what-it-does)
-3. [Components](#components)
-4. [Quick start](#quick-start)
-5. [Operator CLI (`talon`)](#operator-cli-talon)
-6. [Web dashboard](#web-dashboard)
-7. [Local E2E lab (CVE-2011-2523)](#local-e2e-lab-cve-2011-2523)
-8. [Configuration](#configuration)
-9. [HTTP API](#http-api)
-10. [Architecture notes](#architecture-notes)
-11. [Tools (Arsenal / Strike / Forge)](#tools-arsenal--strike--forge)
-12. [Development](#development)
-13. [Troubleshooting](#troubleshooting)
-14. [Security & responsible use](#security--responsible-use)
-15. [License](#license)
+1. [What it does](#what-it-does)
+2. [Components](#components)
+3. [Quick start](#quick-start)
+4. [Operator CLI (`talon`)](#operator-cli-talon)
+5. [Web dashboard](#web-dashboard)
+6. [Local E2E lab (CVE-2011-2523)](#local-e2e-lab-cve-2011-2523)
+7. [Configuration](#configuration)
+8. [HTTP API](#http-api)
+9. [Architecture notes](#architecture-notes)
+10. [Tools (Arsenal / Strike / Forge)](#tools-arsenal--strike--forge)
+11. [Development](#development)
+12. [Troubleshooting](#troubleshooting)
+13. [Security & responsible use](#security--responsible-use)
+14. [License](#license)
 
 **Long-lived product baseline (what ships E2E):** [docs/PRODUCT.md](docs/PRODUCT.md) · feature waves: [docs/FEATURE_MAP.md](docs/FEATURE_MAP.md)
 
@@ -255,10 +180,6 @@ Compose still runs `msf_rpc`, `arsenal_engine`, and optionally `vuln-target`.
 
 ## Operator CLI (`talon`)
 
-<p align="center">
-  <img src="assets/console-hero.webp" alt="Talon operator console" width="920" />
-</p>
-
 Config precedence: **flags → env → `~/.config/talon/config.yaml` → defaults**.
 
 | Env / config | Meaning |
@@ -310,10 +231,6 @@ or unreachable core (`talon run status` maps terminal run status to exit codes).
 ---
 
 ## Web dashboard
-
-<p align="center">
-  <img src="assets/talon-dashboard-product.webp" alt="Talon Ops Console" width="920" />
-</p>
 
 A full ops-console UI (**Talon Ops Console**) lives in `web/` — Next.js +
 shadcn/ui, dark hacker theme, real-time everything over the core API.
@@ -554,10 +471,6 @@ Queue-driven runs auto-approve nmap today (no AMQP HITL yet).
 
 ## Architecture notes
 
-<p align="center">
-  <img src="assets/architecture-poster.webp" alt="Talon architecture" width="920" />
-</p>
-
 - **MCP is the tool boundary** — arsenal and strike are stdio MCP servers, not
   in-process plugins.
 - **HITL only on `nmap_scan`** by design; other tools run under the agent.
@@ -576,21 +489,9 @@ Operator (talon CLI)
         └── optional talon-relay via RabbitMQ
 ```
 
-<p align="center">
-  <img src="assets/sequence-diagram-base.webp" alt="Pipeline sequence" width="720" />
-</p>
-
 ---
 
 ## Tools (Arsenal / Strike / Forge)
-
-<p align="center">
-  <img src="assets/talon-arsenal-badge.webp" alt="Arsenal" width="120" />
-  &nbsp;
-  <img src="assets/talon-strike-badge.webp" alt="Strike" width="120" />
-  &nbsp;
-  <img src="assets/talon-forge-badge.webp" alt="Forge" width="120" />
-</p>
 
 ### Arsenal (via Arsenal Engine)
 
@@ -679,10 +580,6 @@ missed sessions even when MSF had shells.
 ---
 
 ## Security & responsible use
-
-<p align="center">
-  <img src="assets/security-warning-banner.webp" alt="Authorized use only" width="720" />
-</p>
 
 - Only targets you own or have **written authorization** to test.
 - Lab profile `vuln` is intentional malware/backdoor software for local use.

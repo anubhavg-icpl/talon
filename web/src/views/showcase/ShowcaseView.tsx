@@ -32,7 +32,7 @@ const REEL: ReelItem[] = [
   },
   {
     id: 'dashboard',
-    title: 'Ops console',
+    title: 'Operator console',
     blurb: 'Live runs, findings, skills catalog, and multi-agent control plane.',
     poster: '/showcase/talon-dashboard-product.webp',
     video: '/showcase/talon-dashboard.mp4',

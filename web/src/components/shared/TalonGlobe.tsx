@@ -53,26 +53,28 @@ const TalonGlobe = ({ className, activityLevel = 0, state = 'idle', onClick }: T
     const globe = new THREE.Group()
     scene.add(globe)
 
-    const RED = new THREE.Color(0xff2b2b)
-    const WHITE = new THREE.Color(0xffffff)
+    // Electric cyan operator wire — never brand-red chrome
+    const CYAN = new THREE.Color(0x22d3ee)
+    const MINT = new THREE.Color(0xa5f3fc)
+    const WHITE = new THREE.Color(0xe0f2fe)
 
     const core = new THREE.Mesh(
       new THREE.SphereGeometry(0.98, 48, 48),
-      new THREE.MeshBasicMaterial({ color: 0x0a0608 })
+      new THREE.MeshBasicMaterial({ color: 0x060a0e })
     )
     globe.add(core)
 
-    const wireMat = new THREE.LineBasicMaterial({ color: RED, transparent: true, opacity: 0.42 })
+    const wireMat = new THREE.LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.48 })
     const wire = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 28, 20)), wireMat)
     globe.add(wire)
 
-    const pointsMat = new THREE.PointsMaterial({ color: WHITE, size: 0.012, transparent: true, opacity: 0.8 })
+    const pointsMat = new THREE.PointsMaterial({ color: WHITE, size: 0.012, transparent: true, opacity: 0.75 })
     const points = new THREE.Points(new THREE.SphereGeometry(1.01, 40, 30), pointsMat)
     globe.add(points)
 
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(1.18, 1.2, 96),
-      new THREE.MeshBasicMaterial({ color: RED, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
     )
     ring.rotation.x = Math.PI / 2.2
     globe.add(ring)
@@ -83,7 +85,7 @@ const TalonGlobe = ({ className, activityLevel = 0, state = 'idle', onClick }: T
     for (let i = 0; i < 3; i++) {
       const w = new THREE.Mesh(
         new THREE.RingGeometry(1.25, 1.27, 96),
-        new THREE.MeshBasicMaterial({ color: RED, transparent: true, opacity: 0, side: THREE.DoubleSide })
+        new THREE.MeshBasicMaterial({ color: MINT, transparent: true, opacity: 0, side: THREE.DoubleSide })
       )
       w.rotation.x = Math.PI / 2.2
       w.userData.phase = i / 3
@@ -104,15 +106,15 @@ const TalonGlobe = ({ className, activityLevel = 0, state = 'idle', onClick }: T
         wireMat.color.copy(WHITE)
       } else if (s === 'thinking' || s === 'running') {
         speed = 0.03
-        targetOpacity = 0.7
-        wireMat.color.copy(RED)
+        targetOpacity = 0.75
+        wireMat.color.copy(MINT)
       } else if (s === 'speaking') {
         speed = 0.008
-        targetOpacity = 0.6
-        wireMat.color.copy(RED)
+        targetOpacity = 0.65
+        wireMat.color.copy(CYAN)
       } else {
-        targetOpacity = 0.42
-        wireMat.color.copy(RED)
+        targetOpacity = 0.48
+        wireMat.color.copy(CYAN)
         if (s === 'idle') micLevel = Math.max(micLevel, 0)
       }
     }

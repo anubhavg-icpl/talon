@@ -2,7 +2,7 @@
 import Login from '@/views/auth/Login'
 
 export const metadata = {
-  title: 'Talon Ops Console — Authenticate'
+  title: 'Talon // Operator — Authenticate'
 }
 
 const LoginPage = () => <Login />

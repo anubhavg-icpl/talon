@@ -61,13 +61,13 @@ const Header = () => {
   }
 
   return (
-    <header className='bg-card sticky top-0 z-50 border-b'>
-      <div className='mx-auto flex max-w-360 items-center justify-between gap-6 px-4 py-2 sm:px-6'>
+    <header className='op-header sticky top-0 z-50'>
+      <div className='mx-auto flex max-w-360 items-center justify-between gap-6 px-4 py-2.5 sm:px-6'>
         <div className='flex items-center gap-4'>
-          <SidebarTrigger className='[&_svg]:size-5!' />
-          <Separator orientation='vertical' className='hidden h-4! data-vertical:self-center sm:block' />
+          <SidebarTrigger className='text-primary/80 hover:text-primary [&_svg]:size-5!' />
+          <Separator orientation='vertical' className='bg-primary/20 hidden h-4! data-vertical:self-center sm:block' />
           <Breadcrumb className='hidden sm:block'>
-            <BreadcrumbList>
+            <BreadcrumbList className='font-mono text-[10px] tracking-widest uppercase'>
               {segments.map((segment, index) => {
                 const isLast = index === segments.length - 1
                 const label = segment.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -76,9 +76,13 @@ const Header = () => {
                 return (
                   <Fragment key={href}>
                     <BreadcrumbItem>
-                      {isLast ? <BreadcrumbPage>{label}</BreadcrumbPage> : <BreadcrumbLink>{label}</BreadcrumbLink>}
+                      {isLast ? (
+                        <BreadcrumbPage className='text-primary'>{label}</BreadcrumbPage>
+                      ) : (
+                        <BreadcrumbLink className='text-muted-foreground hover:text-primary'>{label}</BreadcrumbLink>
+                      )}
                     </BreadcrumbItem>
-                    {!isLast && <BreadcrumbSeparator />}
+                    {!isLast && <BreadcrumbSeparator className='text-primary/30' />}
                   </Fragment>
                 )
               })}
@@ -87,21 +91,21 @@ const Header = () => {
         </div>
         <div className='flex items-center gap-4 font-mono text-[10px] tracking-widest uppercase'>
           {coreUp === null ? (
-            <span className='text-muted-foreground'>CORE …</span>
+            <span className='text-muted-foreground'>LINK …</span>
           ) : coreUp ? (
             <span className='text-primary flex items-center gap-2'>
-              <LiveDot tone='green' /> CORE ONLINE
+              <LiveDot tone='cyan' /> C2 LINK UP
             </span>
           ) : (
             <span className='text-destructive flex items-center gap-2'>
-              <LiveDot tone='red' /> CORE OFFLINE
+              <LiveDot tone='red' /> C2 LINK DOWN
             </span>
           )}
           {username && (
             <span className='text-muted-foreground hidden items-center gap-3 sm:flex'>
-              <span className='text-foreground'>@{username}</span>
-              <button onClick={handleLogout} className='hover:text-destructive cursor-pointer transition-colors'>
-                [ LOGOUT ]
+              <span className='text-foreground'>op/{username}</span>
+              <button onClick={handleLogout} className='hover:text-primary cursor-pointer transition-colors'>
+                [ EXIT ]
               </button>
             </span>
           )}

@@ -7,7 +7,7 @@ const toneClasses: Record<Tone, string> = {
   green: 'bg-primary',
   red: 'bg-destructive',
   amber: 'bg-warning',
-  cyan: 'bg-info',
+  cyan: 'bg-primary',
   muted: 'bg-muted-foreground'
 }
 

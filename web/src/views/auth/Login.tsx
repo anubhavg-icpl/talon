@@ -51,13 +51,15 @@ const Login = () => {
 
   return (
     <div className='relative flex min-h-svh items-center justify-center overflow-hidden p-4'>
-      <MatrixRain className='absolute inset-0 opacity-10' />
+      <div className='grid-bg pointer-events-none absolute inset-0 opacity-40' />
+      <MatrixRain className='absolute inset-0 opacity-[0.12]' />
       <div className='scanlines pointer-events-none absolute inset-0' />
+      <div className='pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,oklch(0.84_0.14_205/0.08),transparent_60%)]' />
 
-      <div className='hud-corners bg-card/90 relative w-full max-w-md rounded-md border p-8 backdrop-blur'>
+      <div className='hud-corners bg-card/85 relative w-full max-w-md rounded-sm border border-primary/20 p-8 backdrop-blur-md'>
         <div className='mb-8 flex flex-col items-center gap-3'>
           <Logo />
-          <p className='micro-label text-center'>RESTRICTED AREA — AUTHORIZED OPERATORS ONLY</p>
+          <p className='micro-label text-primary/80 text-center'>C2 GATE — AUTHORIZED OPERATORS ONLY</p>
         </div>
 
         <form onSubmit={submit} className='flex flex-col gap-5'>
@@ -99,12 +101,16 @@ const Login = () => {
             </p>
           )}
 
-          <Button type='submit' disabled={busy} className='mt-2 font-mono text-xs font-semibold tracking-widest uppercase'>
-            {busy ? '[ ⟳ AUTHENTICATING… ]' : '[ AUTHENTICATE ]'}
+          <Button
+            type='submit'
+            disabled={busy}
+            className='glow-cyan mt-2 font-mono text-xs font-semibold tracking-widest uppercase'
+          >
+            {busy ? '[ ⟳ LINKING… ]' : '[ ENTER C2 ]'}
           </Button>
         </form>
 
-        <p className='micro-label mt-6 text-center'>$ talon auth login — CLI operators use the same credentials</p>
+        <p className='micro-label mt-6 text-center'>$ talon auth login — same credentials as the CLI</p>
       </div>
     </div>
   )

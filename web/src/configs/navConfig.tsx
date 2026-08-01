@@ -86,7 +86,7 @@ export const navItems: NavItem[] = [
       },
       {
         icon: 'Shield',
-        label: 'Ops Control',
+        label: 'Engagements',
         href: '/ops'
       }
     ]
