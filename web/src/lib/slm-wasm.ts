@@ -3,6 +3,9 @@
  *
  * Production chat uses Go → POST /llm/assist (tools) or /llm/stream.
  * This module is only for offline demos (SmolLM2-135M in the browser).
+ *
+ * @huggingface/transformers is intentionally NOT a hard dependency — load it
+ * at runtime if installed. The dashboard build must not require it.
  */
 
 export type WASMStreamHandlers = {
@@ -14,6 +17,24 @@ export type WASMStreamHandlers = {
 
 const DEFAULT_WASM_MODEL = 'HuggingFaceTB/SmolLM2-135M-Instruct'
 
+type TransformersMod = {
+  pipeline: (
+    task: string,
+    model: string,
+    opts?: Record<string, unknown>
+  ) => Promise<(messages: unknown, genOpts?: Record<string, unknown>) => Promise<unknown>>
+  env: { allowLocalModels: boolean }
+}
+
+async function loadTransformers(): Promise<TransformersMod> {
+  // Dynamic string keeps TypeScript from resolving a missing package at build time.
+  const spec = '@huggingface/' + 'transformers'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod = await (Function('s', 'return import(s)') as (s: string) => Promise<any>)(spec)
+
+  return mod as TransformersMod
+}
+
 /** Stream a reply from in-browser SmolLM (Transformers.js + ORT-Web WASM). */
 export async function streamSLMWASM(
   messages: { role: string; content: string }[],
@@ -24,7 +45,7 @@ export async function streamSLMWASM(
 
   try {
     handlers.onStatus?.('loading transformers.js + ORT-Web WASM…')
-    const { pipeline, env } = await import('@huggingface/transformers')
+    const { pipeline, env } = await loadTransformers()
 
     env.allowLocalModels = false
     handlers.onStatus?.(`loading ${modelId}…`)
@@ -36,13 +57,14 @@ export async function streamSLMWASM(
     if (cancelled) return () => undefined
 
     handlers.onStatus?.('generating…')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const out = (await generator(messages, { max_new_tokens: 128, do_sample: false })) as any
+    const out = (await generator(messages, { max_new_tokens: 128, do_sample: false })) as
+      | { generated_text?: unknown }[]
+      | null
     const generated = out?.[0]?.generated_text
     let text = ''
 
     if (Array.isArray(generated)) {
-      const last = generated[generated.length - 1]
+      const last = generated[generated.length - 1] as { content?: string }
 
       text = typeof last?.content === 'string' ? last.content : String(last ?? '')
     } else if (typeof generated === 'string') {
