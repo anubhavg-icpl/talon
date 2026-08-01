@@ -362,8 +362,16 @@ const TalonGlobe = ({
     ro?.observe(wrap)
 
     let raf = 0
+    let pageVisible = document.visibilityState === 'visible'
+    const onVis = () => {
+      pageVisible = document.visibilityState === 'visible'
+    }
+    document.addEventListener('visibilitychange', onVis)
+
     const animate = () => {
       raf = requestAnimationFrame(animate)
+      // Production: don't burn GPU on hidden tabs
+      if (!pageVisible) return
       applyState(stateRef.current)
       micLevel = Math.max(micLevel * 0.92, levelRef.current)
 
@@ -431,6 +439,7 @@ const TalonGlobe = ({
 
     return () => {
       cancelAnimationFrame(raf)
+      document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('resize', resize)
       ro?.disconnect()
       if (onClick) wrap.removeEventListener('click', onClickWrap)

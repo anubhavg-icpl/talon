@@ -263,8 +263,15 @@ const SkeletonDemo = ({
     ro.observe(wrap)
 
     let raf = 0
+    let pageVisible = document.visibilityState === 'visible'
+    const onVis = () => {
+      pageVisible = document.visibilityState === 'visible'
+    }
+    document.addEventListener('visibilitychange', onVis)
+
     const animate = () => {
       raf = requestAnimationFrame(animate)
+      if (!pageVisible) return
       const delta = clock.getDelta()
       if (!prefersReduced) {
         for (const m of mixers) m.update(delta)
@@ -281,6 +288,7 @@ const SkeletonDemo = ({
     return () => {
       disposed = true
       cancelAnimationFrame(raf)
+      document.removeEventListener('visibilitychange', onVis)
       ro.disconnect()
       wrap.removeEventListener('skeleton-mode', onModeHint)
       controls.dispose()

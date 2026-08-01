@@ -13,7 +13,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 // Component Imports
-import TalonGlobe from '@/components/shared/TalonGlobe'
+import { TalonGlobe } from '@/components/shared/three'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'

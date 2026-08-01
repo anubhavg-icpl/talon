@@ -5,9 +5,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import Logo from '@/components/shared/Logo'
-import MatrixRain from '@/components/shared/MatrixRain'
-import TalonGlobe from '@/components/shared/TalonGlobe'
-import Starfield from '@/components/shared/three/Starfield'
+import { TalonGlobe } from '@/components/shared/three'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -50,22 +48,20 @@ const Login = () => {
 
   return (
     <div className='relative flex min-h-svh items-center justify-center overflow-hidden p-4'>
-      {/* Full Three.js C2 background */}
-      <div className='pointer-events-none absolute inset-0'>
-        <TalonGlobe className='h-full w-full opacity-80' variant='background' state='running' activityLevel={0.4} />
+      {/* Single WebGL layer (prod: no stacked rain + starfield + globe) */}
+      <div className='pointer-events-none absolute inset-0 opacity-90' aria-hidden>
+        <TalonGlobe className='h-full w-full' variant='background' state='idle' activityLevel={0.25} />
       </div>
-      <Starfield className='opacity-50' count={500} opacity={0.35} />
-      <MatrixRain className='absolute inset-0 opacity-[0.08]' />
       <div className='scanlines pointer-events-none absolute inset-0' />
-      <div className='pointer-events-none absolute inset-0 bg-gradient-to-b from-background/40 via-background/55 to-background/80' />
+      <div className='pointer-events-none absolute inset-0 bg-gradient-to-b from-background/50 via-background/65 to-background/90' />
 
-      <div className='hud-corners bg-card/85 relative z-10 w-full max-w-md rounded-sm border border-primary/20 p-8 backdrop-blur-md'>
+      <div className='hud-corners bg-card/90 relative z-10 w-full max-w-md rounded-sm border border-primary/20 p-8 shadow-[0_0_48px_oklch(0.84_0.14_205/0.08)] backdrop-blur-md'>
         <div className='mb-8 flex flex-col items-center gap-3'>
           <Logo />
-          <p className='micro-label text-primary/80 text-center'>C2 GATE — THREE.JS OPERATOR SHELL</p>
+          <p className='micro-label text-primary/80 text-center'>AUTHORIZED OPERATORS ONLY</p>
         </div>
 
-        <form onSubmit={submit} className='flex flex-col gap-5'>
+        <form onSubmit={submit} className='flex flex-col gap-5' noValidate>
           <div className='flex flex-col gap-2'>
             <Label htmlFor='username' className='micro-label'>
               OPERATOR ID
@@ -99,7 +95,10 @@ const Login = () => {
           </div>
 
           {error && (
-            <p className='border-destructive/40 bg-destructive/10 text-destructive rounded-sm border px-3 py-2 font-mono text-xs tracking-widest uppercase'>
+            <p
+              role='alert'
+              className='border-destructive/40 bg-destructive/10 text-destructive rounded-sm border px-3 py-2 font-mono text-xs tracking-widest uppercase'
+            >
               {error}
             </p>
           )}

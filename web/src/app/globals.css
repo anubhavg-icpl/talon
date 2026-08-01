@@ -500,6 +500,15 @@ input[type='number']::-webkit-outer-spin-button {
   .showcase-kenburns {
     animation: none;
   }
+
+  .app-scanlines::after,
+  .scanlines {
+    display: none;
+  }
+
+  .text-glow {
+    text-shadow: none;
+  }
 }
 
 /* Selection + scrollbar — operator feel */
@@ -511,4 +520,33 @@ input[type='number']::-webkit-outer-spin-button {
 * {
   scrollbar-width: thin;
   scrollbar-color: oklch(0.84 0.14 205 / 35%) transparent;
+}
+
+/* Production focus rings */
+:focus-visible {
+  outline: 2px solid oklch(0.84 0.14 205 / 70%);
+  outline-offset: 2px;
+}
+
+/* Smooth main content enter (respect reduced motion via media query above) */
+@media (prefers-reduced-motion: no-preference) {
+  main.operator-stage > * {
+    animation: op-fade-in 0.28s ease-out;
+  }
+}
+
+@keyframes op-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Tables / dense data feel */
+table {
+  font-variant-numeric: tabular-nums;
 }

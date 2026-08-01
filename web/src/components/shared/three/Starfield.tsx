@@ -90,8 +90,15 @@ const Starfield = ({ className, count = 700, opacity = 0.45, speed = 0.00035 }: 
     ro.observe(wrap)
 
     let raf = 0
+    let pageVisible = document.visibilityState === 'visible'
+    const onVis = () => {
+      pageVisible = document.visibilityState === 'visible'
+    }
+    document.addEventListener('visibilitychange', onVis)
+
     const tick = () => {
       raf = requestAnimationFrame(tick)
+      if (!pageVisible) return
       if (!reduced) {
         points.rotation.y += speed
         points.rotation.x += speed * 0.35
@@ -103,6 +110,7 @@ const Starfield = ({ className, count = 700, opacity = 0.45, speed = 0.00035 }: 
 
     return () => {
       cancelAnimationFrame(raf)
+      document.removeEventListener('visibilitychange', onVis)
       ro.disconnect()
       renderer.dispose()
       geo.dispose()

@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 
 import type { BudgetStats, Credential, NotifyConfig, Schedule, ScopePolicy, Target } from '@/lib/api'
-import TalonGlobe from '@/components/shared/TalonGlobe'
+import { TalonGlobe } from '@/components/shared/three'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

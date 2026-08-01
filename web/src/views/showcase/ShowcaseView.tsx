@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import Link from 'next/link'
 
-import TalonGlobe from '@/components/shared/TalonGlobe'
-import ExamplesStage from '@/components/shared/three/ExamplesStage'
+import PageHeader from '@/components/shared/PageHeader'
+import { ExamplesStage } from '@/components/shared/three'
 import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -110,43 +110,33 @@ const ShowcaseView = () => {
 
   return (
     <div className='flex flex-col gap-6'>
-      <div className='flex flex-wrap items-end justify-between gap-3'>
-        <div>
-          <h1 className='font-mono text-xl font-semibold tracking-widest'>SHOWCASE</h1>
-          <p className='micro-label mt-1'>
-            SKELETONUTILS + GLTF · OPERATOR GLOBE · PRODUCT REEL — YOUR THREE.JS EXAMPLES E2E
-          </p>
-        </div>
-        <div className='flex flex-wrap gap-2'>
-          <Link href='/runs/new' className={cn(buttonVariants(), 'font-mono text-xs tracking-widest uppercase')}>
-            Launch operation
-          </Link>
-          <Link
-            href='/skills'
-            className={cn(buttonVariants({ variant: 'outline' }), 'font-mono text-xs tracking-widest uppercase')}
-          >
-            Browse skills
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title='SHOWCASE'
+        description='SkeletonUtils · GLTF · operator globe · product reel'
+        actions={
+          <>
+            <Link href='/runs/new' className={cn(buttonVariants(), 'font-mono text-xs tracking-widest uppercase')}>
+              Launch operation
+            </Link>
+            <Link
+              href='/skills'
+              className={cn(buttonVariants({ variant: 'outline' }), 'font-mono text-xs tracking-widest uppercase')}
+            >
+              Browse skills
+            </Link>
+          </>
+        }
+      />
 
-      {/* Exact patterns from the Three.js examples you shared */}
+      {/* Single primary WebGL stage (prod: one heavy canvas, not three) */}
       <ExamplesStage />
 
-      {/* Main stage + side globe */}
-      <div className='grid gap-4 lg:grid-cols-[1fr_280px]'>
-        <Card className='hud-corners scanlines relative overflow-hidden'>
+      {/* Product still/video reel — no extra WebGL */}
+      <div className='grid gap-4 lg:grid-cols-[1fr_220px]'>
+        <Card className='hud-corners relative overflow-hidden'>
           <CardContent className='p-0'>
             <div className='relative aspect-video w-full bg-black'>
-              {item.live3d ? (
-                <TalonGlobe
-                  className='h-full w-full'
-                  variant='hero'
-                  state='running'
-                  activityLevel={0.7}
-                  interactive
-                />
-              ) : videoOk[item.id] ? (
+              {videoOk[item.id] && item.video && !item.live3d ? (
                 <video
                   key={item.id}
                   className='h-full w-full object-cover'
@@ -167,7 +157,7 @@ const ShowcaseView = () => {
                     alt={item.title}
                     className='showcase-kenburns h-full w-full object-cover'
                   />
-                  {item.video && videoOk[item.id] === undefined && (
+                  {item.video && !item.live3d && videoOk[item.id] === undefined && (
                     <video
                       className='hidden'
                       src={item.video}
@@ -186,12 +176,12 @@ const ShowcaseView = () => {
                     </Badge>
                   ))}
                   {item.live3d ? (
-                    <Badge className='font-mono text-[10px]'>LIVE 3D</Badge>
+                    <Badge className='font-mono text-[10px]'>SEE STAGE ABOVE</Badge>
                   ) : videoOk[item.id] ? (
                     <Badge className='font-mono text-[10px]'>VIDEO</Badge>
                   ) : (
                     <Badge variant='secondary' className='font-mono text-[10px]'>
-                      STILL REEL
+                      STILL
                     </Badge>
                   )}
                 </div>
@@ -202,42 +192,37 @@ const ShowcaseView = () => {
           </CardContent>
         </Card>
 
-        <div className='flex flex-col gap-4'>
-          <Card className='hud-corners flex flex-1 flex-col overflow-hidden'>
+        <div className='flex flex-col gap-3'>
+          <Card className='hud-corners flex-1'>
             <CardHeader className='pb-2'>
-              <CardTitle className='micro-label'>COMPACT GLOBE</CardTitle>
-              <CardDescription className='font-mono text-[11px]'>Click → new engagement</CardDescription>
+              <CardTitle className='micro-label'>REEL CONTROLS</CardTitle>
+              <CardDescription className='font-mono text-[11px]'>Stills & optional MP4s</CardDescription>
             </CardHeader>
-            <CardContent className='flex flex-1 items-center justify-center p-2'>
-              <TalonGlobe
-                className='aspect-square w-full max-w-[260px]'
-                variant='compact'
-                state='running'
-                activityLevel={0.55}
-                onClick={() => {
-                  window.location.href = '/runs/new'
-                }}
-              />
+            <CardContent className='flex flex-col gap-2'>
+              <Button
+                variant='outline'
+                size='sm'
+                className='font-mono text-[10px] tracking-widest uppercase'
+                onClick={() => setPlaying(p => !p)}
+              >
+                {playing ? 'Pause reel' : 'Play reel'}
+              </Button>
+              <Button
+                variant='outline'
+                size='sm'
+                className='font-mono text-[10px] tracking-widest uppercase'
+                onClick={() => setActive(i => (i + 1) % REEL.length)}
+              >
+                Next slide
+              </Button>
+              <Link
+                href='/runs/new'
+                className={cn(buttonVariants({ size: 'sm' }), 'font-mono text-[10px] tracking-widest uppercase')}
+              >
+                Engage
+              </Link>
             </CardContent>
           </Card>
-          <div className='flex gap-2'>
-            <Button
-              variant='outline'
-              size='sm'
-              className='flex-1 font-mono text-[10px] tracking-widest uppercase'
-              onClick={() => setPlaying(p => !p)}
-            >
-              {playing ? 'Pause reel' : 'Play reel'}
-            </Button>
-            <Button
-              variant='outline'
-              size='sm'
-              className='font-mono text-[10px] tracking-widest uppercase'
-              onClick={() => setActive(i => (i + 1) % REEL.length)}
-            >
-              Next
-            </Button>
-          </div>
         </div>
       </div>
 

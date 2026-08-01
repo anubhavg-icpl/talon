@@ -16,9 +16,9 @@ import type { RunsSummaryResponse, RunSummary } from '@/lib/api'
 import Elapsed from '@/components/shared/Elapsed'
 import LiveDot from '@/components/shared/LiveDot'
 import Logo from '@/components/shared/Logo'
-import MatrixRain from '@/components/shared/MatrixRain'
+import PageHeader from '@/components/shared/PageHeader'
 import StatusBadge from '@/components/shared/StatusBadge'
-import TalonGlobe from '@/components/shared/TalonGlobe'
+import { TalonGlobe } from '@/components/shared/three'
 import UtcClock from '@/components/shared/UtcClock'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
@@ -141,21 +141,33 @@ const Overview = () => {
 
   return (
     <div className='flex flex-col gap-6'>
-      {/* Hero + wireframe globe (from agentic-os HUD) */}
-      <div className='grid-bg relative overflow-hidden rounded-md border'>
-        <MatrixRain />
-        <div className='scanlines absolute inset-0' />
-        <div className='relative grid items-center gap-6 px-6 py-8 md:grid-cols-[1fr_minmax(200px,280px)] lg:grid-cols-[1fr_320px]'>
+      <PageHeader
+        title='OVERVIEW'
+        description='Fleet status · live engagements · findings roll-up'
+        actions={
+          <Link
+            href='/runs/new'
+            className='bg-primary text-primary-foreground hover:bg-primary/90 rounded-sm px-3 py-2 font-mono text-[10px] tracking-widest uppercase'
+          >
+            New operation
+          </Link>
+        }
+      />
+
+      {/* Hero + single WebGL globe (prod: no matrix rain stack) */}
+      <div className='hud-corners relative overflow-hidden rounded-sm border border-primary/15'>
+        <div className='scanlines pointer-events-none absolute inset-0 opacity-60' />
+        <div className='relative grid items-center gap-6 px-6 py-8 md:grid-cols-[1fr_minmax(200px,280px)] lg:grid-cols-[1fr_300px]'>
           <div className='flex flex-col gap-2'>
             <p className='micro-label'>AI PENTEST ORCHESTRATION</p>
             <Logo className='text-2xl sm:text-3xl [&_svg]:size-7' />
             <UtcClock className='text-muted-foreground font-mono text-xs tracking-widest' />
             <p className='text-muted-foreground mt-2 max-w-md font-mono text-[11px] leading-relaxed'>
-              Live operator globe · arcs + beacons · spins harder when engagements run · skills + multi-agent pipeline
+              Operator globe tracks active runs · CyberStrike skills + multi-agent pipeline · drag to orbit
             </p>
             {stats.active > 0 && (
               <p className='text-primary micro-label mt-1 flex items-center gap-2'>
-                <LiveDot tone='cyan' /> {stats.active} ACTIVE · C2 GLOBE LIVE
+                <LiveDot tone='cyan' /> {stats.active} ACTIVE · C2 LIVE
               </p>
             )}
             <Link
@@ -165,7 +177,7 @@ const Overview = () => {
               OPEN PRODUCT SHOWCASE →
             </Link>
           </div>
-          <div className='hud-corners relative mx-auto aspect-square w-full max-w-[280px] lg:max-w-[320px]'>
+          <div className='relative mx-auto aspect-square w-full max-w-[280px] lg:max-w-[300px] overflow-hidden rounded-sm border border-primary/20 bg-black/40'>
             <TalonGlobe
               className='h-full w-full'
               variant='hero'
