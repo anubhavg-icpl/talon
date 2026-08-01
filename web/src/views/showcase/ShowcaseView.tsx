@@ -25,7 +25,7 @@ const REEL: ReelItem[] = [
     id: 'hero',
     title: 'Talon AI — Offensive orchestration',
     blurb: 'Go-native recon → exploit → post-exploit → judge pipeline with HITL gates.',
-    poster: '/showcase/talon-hero-raptor.jpg',
+    poster: '/showcase/talon-hero-raptor.webp',
     video: '/showcase/talon-hero.mp4',
     tags: ['brand', 'hero']
   },
@@ -33,7 +33,7 @@ const REEL: ReelItem[] = [
     id: 'dashboard',
     title: 'Ops console',
     blurb: 'Live runs, findings, skills catalog, and multi-agent control plane.',
-    poster: '/showcase/talon-dashboard-product.jpg',
+    poster: '/showcase/talon-dashboard-product.webp',
     video: '/showcase/talon-dashboard.mp4',
     tags: ['ui', 'product']
   },
@@ -41,7 +41,7 @@ const REEL: ReelItem[] = [
     id: 'pipeline',
     title: 'Multi-agent pipeline',
     blurb: 'Orchestrator delegates recon, exploit, post-exploit, codegen, and report specialists.',
-    poster: '/showcase/talon-pipeline-agents.jpg',
+    poster: '/showcase/talon-pipeline-agents.webp',
     video: '/showcase/talon-pipeline.mp4',
     tags: ['agents', 'a2a']
   },
@@ -49,7 +49,7 @@ const REEL: ReelItem[] = [
     id: 'skills',
     title: 'CyberStrike skills pack',
     blurb: '~7.6k methodology skills — browse in UI, load via skill_search / skill_get at runtime.',
-    poster: '/showcase/talon-knowledge-panel.jpg',
+    poster: '/showcase/talon-knowledge-panel.webp',
     video: '/showcase/talon-skills.mp4',
     tags: ['skills', 'cyberstrike']
   },
@@ -57,14 +57,14 @@ const REEL: ReelItem[] = [
     id: 'filmstrip',
     title: 'Agent filmstrip',
     blurb: 'Specialist modes: COMMANDER, GHOST, STRIKER, PHANTOM, CIPHER.',
-    poster: '/showcase/talon-agent-filmstrip.jpg',
+    poster: '/showcase/talon-agent-filmstrip.webp',
     tags: ['agents']
   },
   {
     id: 'mark',
     title: 'Brand mark',
     blurb: 'Talon raptor identity for the red/black ops console.',
-    poster: '/showcase/talon-brand-mark.jpg',
+    poster: '/showcase/talon-brand-mark.webp',
     tags: ['brand']
   }
 ]

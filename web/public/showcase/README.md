@@ -1,10 +1,19 @@
 # Product showcase media
 
-Stills are committed for the dashboard **Showcase** reel.
+Stills are committed as **WebP** for the dashboard **Showcase** reel.
+
+| Still | Slide |
+|-------|--------|
+| `talon-hero-raptor.webp` | Brand / raptor hero |
+| `talon-dashboard-product.webp` | Ops console |
+| `talon-pipeline-agents.webp` | Multi-agent pipeline |
+| `talon-knowledge-panel.webp` | Skills / knowledge panel |
+| `talon-agent-filmstrip.webp` | Agent filmstrip |
+| `talon-brand-mark.webp` | Brand mark |
 
 ## Optional MP4s (auto-detected)
 
-Drop real product videos here (same names). The UI switches from Ken Burns
+Drop real product videos here (same base names). The UI switches from Ken Burns
 stills to `<video>` when a file loads successfully:
 
 | File | Slide |
