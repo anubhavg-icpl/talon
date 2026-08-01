@@ -1,0 +1,37 @@
+# Example CI: build Talon binaries and smoke-check control plane packages.
+name: talon-lab
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Optional lab target IP (not scanned in CI by default)'
+        required: false
+        default: ''
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Unit tests
+        run: go test ./internal/core/ ./internal/control/ ./internal/cli/ -count=1
+      - name: Build bins
+        run: |
+          go build -o /tmp/talon-core ./cmd/talon-core
+          go build -o /tmp/talon ./cmd/talon
+      - name: Skills pack present
+        run: test -d skills && find skills -name '*.md' | head -5
+
+  # Optional: only when you provide a self-hosted runner with lab access.
+  # engage:
+  #   if: github.event_name == 'workflow_dispatch' && inputs.target != ''
+  #   runs-on: self-hosted
+  #   steps:
+  #     - run: talon run start --ip ${{ inputs.target }} --mode recon --watch

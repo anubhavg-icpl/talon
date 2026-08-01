@@ -42,6 +42,8 @@ import {
   addNote,
   analyzeRun,
   exportRun,
+  retestRun,
+  reportHTMLUrl,
   getFindings,
   getKillChain,
   getMethodology,
@@ -860,7 +862,7 @@ const RunDetail = ({ runId }: { runId: string }) => {
                     <p className='micro-label mt-1'>AGENT MODE: {status.agent_mode.toUpperCase()}</p>
                   )}
                 </div>
-                <div className='flex gap-2'>
+                <div className='flex flex-wrap gap-2'>
                   <Button
                     variant='outline'
                     size='sm'
@@ -876,6 +878,30 @@ const RunDetail = ({ runId }: { runId: string }) => {
                     className='font-mono text-[10px] tracking-widest uppercase'
                   >
                     Export JSON
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    className='font-mono text-[10px] tracking-widest uppercase'
+                    onClick={() => window.open(reportHTMLUrl(runId), '_blank')}
+                  >
+                    Print PDF
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    className='font-mono text-[10px] tracking-widest uppercase'
+                    onClick={async () => {
+                      try {
+                        const res = await retestRun(runId)
+                        toast.success(`Retest ${res.run_id.slice(0, 8)}`)
+                        window.location.href = `/runs/${res.run_id}`
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : 'retest failed')
+                      }
+                    }}
+                  >
+                    Retest
                   </Button>
                 </div>
               </div>

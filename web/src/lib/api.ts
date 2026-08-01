@@ -395,6 +395,125 @@ export const batchStart = (body: {
   body: JSON.stringify(body)
 })
 
+export type ScopePolicy = {
+  enabled: boolean
+  allowed_cidrs: string[]
+  denied_cidrs: string[]
+  denied_ports?: number[]
+  max_concurrent: number
+  require_auth_label: boolean
+  auto_approve_nmap_private: boolean
+  updated_at?: string
+}
+
+export const getScope = () => request<ScopePolicy>('/scope')
+export const putScope = (body: ScopePolicy) =>
+  request<ScopePolicy>('/scope', { method: 'PUT', body: JSON.stringify(body) })
+
+export type Target = {
+  id: string
+  address: string
+  url?: string
+  label?: string
+  tags?: string[]
+  notes?: string
+  last_run_id?: string
+  last_status?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export const listTargets = () => request<{ targets: Target[] }>('/targets')
+export const upsertTarget = (t: Partial<Target> & { address?: string; url?: string }) =>
+  request<Target>('/targets', { method: 'POST', body: JSON.stringify(t) })
+export const deleteTarget = (id: string) =>
+  request<{ deleted: string }>(`/targets/${id}`, { method: 'DELETE' })
+
+export type Schedule = {
+  id: string
+  name: string
+  interval: string
+  target: string
+  playbook_id?: string
+  agent_mode?: string
+  enabled: boolean
+  last_run_at?: string
+  next_run_at?: string
+  created_at?: string
+}
+
+export const listSchedules = () => request<{ schedules: Schedule[] }>('/schedules')
+export const upsertSchedule = (s: Partial<Schedule> & { name: string; target: string }) =>
+  request<Schedule>('/schedules', { method: 'POST', body: JSON.stringify(s) })
+export const deleteSchedule = (id: string) =>
+  request<{ deleted: string }>(`/schedules/${id}`, { method: 'DELETE' })
+
+export type NotifyConfig = {
+  webhook_url: string
+  on_complete: boolean
+  on_hitl: boolean
+  on_critical_finding: boolean
+  on_error: boolean
+}
+
+export const getNotify = () => request<NotifyConfig>('/notify')
+export const putNotify = (n: NotifyConfig) =>
+  request<NotifyConfig>('/notify', { method: 'PUT', body: JSON.stringify(n) })
+
+export type Credential = {
+  id: string
+  name: string
+  kind: string
+  username?: string
+  has_secret: boolean
+  scope?: string
+  created_at?: string
+}
+
+export const listCredentials = () => request<{ credentials: Credential[] }>('/credentials')
+export const addCredential = (body: {
+  name: string
+  kind?: string
+  username?: string
+  secret: string
+  scope?: string
+}) => request<Credential>('/credentials', { method: 'POST', body: JSON.stringify(body) })
+export const deleteCredential = (id: string) =>
+  request<{ deleted: string }>(`/credentials/${id}`, { method: 'DELETE' })
+
+export type EvidenceItem = {
+  id: string
+  run_id: string
+  finding_id?: string
+  kind: string
+  title: string
+  body: string
+  created_at: string
+}
+
+export const listEvidence = (runId?: string) =>
+  request<{ evidence: EvidenceItem[] }>(`/evidence${runId ? `?run_id=${encodeURIComponent(runId)}` : ''}`)
+export const addEvidence = (e: Partial<EvidenceItem> & { run_id: string; title: string }) =>
+  request<EvidenceItem>('/evidence', { method: 'POST', body: JSON.stringify(e) })
+
+export type BudgetStats = {
+  llm_calls: number
+  tool_calls: number
+  runs_started: number
+  runs_completed: number
+  critical_findings: number
+}
+
+export const getBudget = () => request<BudgetStats>('/budget')
+
+export const retestRun = (runId: string, findingId?: string) =>
+  request<{ run_id: string; message: string }>(`/runs/${runId}/retest`, {
+    method: 'POST',
+    body: JSON.stringify({ finding_id: findingId || '' })
+  })
+
+export const reportHTMLUrl = (runId: string) => `/api/talon/runs/${runId}/report.html`
+
 export type KillChainLink = {
   from: string
   to: string

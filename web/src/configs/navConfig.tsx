@@ -83,6 +83,11 @@ export const navItems: NavItem[] = [
         icon: 'GitCompare',
         label: 'Compare',
         href: '/compare'
+      },
+      {
+        icon: 'Shield',
+        label: 'Ops Control',
+        href: '/ops'
       }
     ]
   },

@@ -74,6 +74,10 @@ const NewRun = () => {
     if (mode) setAgentMode(mode)
     const pb = searchParams.get('playbook')
     if (pb) setPlaybookId(pb)
+    const ipQ = searchParams.get('ip')
+    if (ipQ) {
+      // prefill via form default is hard; set through setValue if available — use reset on ip field via DOM
+    }
     getAgents()
       .then(res => setAgents(res.agents ?? []))
       .catch(() => {})
@@ -93,11 +97,17 @@ const NewRun = () => {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting }
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { ip: '', cve_id: '', service_name: '', description: '', lhost: '', lport: '', agent_mode: 'full' }
   })
+
+  useEffect(() => {
+    const ipQ = searchParams.get('ip')
+    if (ipQ) setValue('ip', ipQ)
+  }, [searchParams, setValue])
 
   const onSubmit = async (values: FormValues) => {
     try {

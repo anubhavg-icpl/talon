@@ -53,6 +53,8 @@ type Server struct {
 	settings *Settings
 	// tools, when non-nil, backs GET /mcp/servers.
 	tools *mcpclient.Multi
+	// platform: targets, scope, schedules, notify, credentials, evidence, budget.
+	platform *Platform
 }
 
 func NewServer(orch *core.Orchestrator, store *Store, opts ...ServerOption) *Server {
@@ -96,6 +98,17 @@ func WithTools(m *mcpclient.Multi) ServerOption {
 	return func(s *Server) { s.tools = m }
 }
 
+// WithPlatform wires targets/scope/schedules/notify/credentials.
+func WithPlatform(p *Platform) ServerOption {
+	return func(s *Server) {
+		s.platform = p
+		if p != nil {
+			p.SetStartFn(s.startRunFromPlatform)
+			p.StartScheduler()
+		}
+	}
+}
+
 // Mux builds the http.ServeMux, using Go 1.22+ method+pattern routing so no
 // router dependency is needed.
 func (s *Server) Mux() *http.ServeMux {
@@ -137,6 +150,26 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /runs/{run_id}/notes", s.handleGetNotes)
 	mux.HandleFunc("POST /runs/{run_id}/notes", s.handleAddNote)
 	mux.HandleFunc("POST /input/batch", s.handleBatchStart)
+	// Platform: scope, targets, schedules, notify, credentials, evidence, budget, retest, HTML report, OpenAPI
+	mux.HandleFunc("GET /scope", s.handleGetScope)
+	mux.HandleFunc("PUT /scope", s.handlePutScope)
+	mux.HandleFunc("GET /targets", s.handleListTargets)
+	mux.HandleFunc("POST /targets", s.handleUpsertTarget)
+	mux.HandleFunc("DELETE /targets/{id}", s.handleDeleteTarget)
+	mux.HandleFunc("GET /schedules", s.handleListSchedules)
+	mux.HandleFunc("POST /schedules", s.handleUpsertSchedule)
+	mux.HandleFunc("DELETE /schedules/{id}", s.handleDeleteSchedule)
+	mux.HandleFunc("GET /notify", s.handleGetNotify)
+	mux.HandleFunc("PUT /notify", s.handlePutNotify)
+	mux.HandleFunc("GET /credentials", s.handleListCredentials)
+	mux.HandleFunc("POST /credentials", s.handleAddCredential)
+	mux.HandleFunc("DELETE /credentials/{id}", s.handleDeleteCredential)
+	mux.HandleFunc("GET /evidence", s.handleListEvidence)
+	mux.HandleFunc("POST /evidence", s.handleAddEvidence)
+	mux.HandleFunc("GET /budget", s.handleBudget)
+	mux.HandleFunc("POST /runs/{run_id}/retest", s.handleRetest)
+	mux.HandleFunc("GET /runs/{run_id}/report.html", s.handleReportHTML)
+	mux.HandleFunc("GET /openapi.yaml", s.handleOpenAPI)
 	return mux
 }
 
@@ -223,6 +256,23 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	applyStartDefaults(&req)
+	if strings.TrimSpace(req.IP) == "" {
+		writeError(w, http.StatusBadRequest, "ip required")
+		return
+	}
+
+	// Scope / ROE gate
+	active, _, _ := s.store.PaginatedList(500, 0)
+	activeN := 0
+	for _, rs := range active {
+		if rs.Status == "running" || rs.Status == "awaiting_approval" || rs.Status == "initializing" {
+			activeN++
+		}
+	}
+	if err := s.ensurePlatform().CheckStart(req.IP, req.Description, activeN); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
 
 	runID := uuid.NewString()
 	input := core.RunInput{
@@ -235,6 +285,8 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		Context:     config.Context{LHOST: req.LHOST, LPORT: req.LPORT},
 	}
 	s.store.Create(runID, input)
+	s.ensurePlatform().IncBudget("start", 1)
+	s.ensurePlatform().TouchTarget(req.IP, runID, "running")
 
 	// Runs in the background; on a HITL interrupt it stores the pending
 	// interrupt and returns rather than blocking -- POST
@@ -453,7 +505,56 @@ func (s *Server) runWorkflow(runID string, input core.RunInput) {
 	}
 	log.Printf("talon-core: run %s finished interrupted=%v tools=%d findings=%d",
 		runID, result.Interrupted, len(result.ToolLog), len(result.Findings))
-	s.store.SetResult(runID, ensureFindings(input, result))
+	final := ensureFindings(input, result)
+	s.store.SetResult(runID, final)
+	s.afterRunHooks(runID, input, final)
+}
+
+func (s *Server) afterRunHooks(runID string, input core.RunInput, result core.RunResult) {
+	plat := s.ensurePlatform()
+	if result.Interrupted {
+		plat.Fire("hitl", map[string]any{
+			"run_id": runID, "target": input.TargetIP,
+			"tool": func() string {
+				if result.Interrupt != nil {
+					return result.Interrupt.ToolName
+				}
+				return ""
+			}(),
+		})
+		// Lab auto-approve private nmap (scope policy)
+		if result.Interrupt != nil && result.Interrupt.ToolName == "nmap_scan" && plat.AutoApproveNmap(input.TargetIP) {
+			log.Printf("talon-core: auto-approving nmap for private target %s run %s", input.TargetIP, runID)
+			go func() {
+				time.Sleep(400 * time.Millisecond)
+				if _, ok := s.store.ClaimInterrupt(runID); ok {
+					s.resumeWorkflow(runID, input, core.Decision{Type: "approve"})
+				}
+			}()
+		}
+		return
+	}
+	plat.IncBudget("complete", 1)
+	plat.IncBudget("tool", int64(len(result.ToolLog)))
+	crit := 0
+	for _, f := range result.Findings {
+		if f.Severity == core.SeverityCritical {
+			crit++
+		}
+	}
+	if crit > 0 {
+		plat.IncBudget("critical", int64(crit))
+		plat.Fire("critical", map[string]any{"run_id": runID, "target": input.TargetIP, "critical": crit})
+	}
+	status := "completed"
+	if !result.Interrupted && result.FinalMessage != "" {
+		// ok
+	}
+	plat.TouchTarget(input.TargetIP, runID, status)
+	plat.Fire("complete", map[string]any{
+		"run_id": runID, "target": input.TargetIP,
+		"judge": result.JudgeVerdict, "findings": len(result.Findings),
+	})
 }
 
 // ensureFindings attaches structured findings/report if the orchestrator
