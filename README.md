@@ -26,15 +26,16 @@ authorization** to test.
 3. [Quick start](#quick-start)
 4. [Operator CLI (`talon`)](#operator-cli-talon)
 5. [Web dashboard](#web-dashboard)
-6. [Local E2E lab (CVE-2011-2523)](#local-e2e-lab-cve-2011-2523)
-7. [Configuration](#configuration)
-8. [HTTP API](#http-api)
-9. [Architecture notes](#architecture-notes)
-10. [Tools (Arsenal / Strike / Forge)](#tools-arsenal--strike--forge)
-11. [Development](#development)
-12. [Troubleshooting](#troubleshooting)
-13. [Security & responsible use](#security--responsible-use)
-14. [License](#license)
+6. [Gallery](#gallery)
+7. [Local E2E lab (CVE-2011-2523)](#local-e2e-lab-cve-2011-2523)
+8. [Configuration](#configuration)
+9. [HTTP API](#http-api)
+10. [Architecture notes](#architecture-notes)
+11. [Tools (Arsenal / Strike / Forge)](#tools-arsenal--strike--forge)
+12. [Development](#development)
+13. [Troubleshooting](#troubleshooting)
+14. [Security & responsible use](#security--responsible-use)
+15. [License](#license)
 
 **Long-lived product baseline (aligned E2E — routes, theme, WebGL, verify):**
 [docs/PRODUCT.md](docs/PRODUCT.md) · feature waves: [docs/FEATURE_MAP.md](docs/FEATURE_MAP.md)
@@ -82,7 +83,7 @@ before the scan runs (CLI: `talon run approve|reject|edit`).
 | **rabbitmq** | Broker for relay |
 | **postgres** | Run history + dashboard users/sessions (auth) + runtime config |
 | **redis** | Cache (health probes, AI analysis, sessions) — core runs uncached without it |
-| **dashboard** | Web ops console (`:3000`) — Next.js UI over the core API |
+| **dashboard** | Web ops console (`:3100`) — Next.js UI over the core API |
 | **vuln-target** | Lab only (`--profile vuln`) — real vsftpd 2.3.4 by default |
 
 Core and relay spawn arsenal + strike as **local MCP stdio children**
@@ -234,7 +235,10 @@ or unreachable core (`talon run status` maps terminal run status to exit codes).
 ## Web dashboard
 
 A full ops-console UI (**Talon Ops Console**) lives in `web/` — Next.js +
-shadcn/ui, dark hacker theme, real-time everything over the core API.
+shadcn/ui, **electric-red operator theme**, real-time everything over the core
+API, with a distributed **Three.js globe** (live WebGL C2 HUD on Overview /
+New run / Engagements / Findings / Skills / Runs + Login, and an ambient
+starfield across every page).
 
 ```bash
 docker compose up -d --build dashboard   # or just: docker compose up -d --build
@@ -247,10 +251,16 @@ Login with `TALON_ADMIN_USERNAME` / `TALON_ADMIN_PASSWORD` from `.env`
 
 | Page | What you get |
 |------|--------------|
-| `/overview` | Fleet stats, run-activity chart, verdicts donut, live active operations |
+| `/overview` | Fleet stats, run-activity chart, verdicts donut, live active operations, live globe |
+| `/showcase` | Live operator globe (Three.js) + SkeletonUtils/GLTF stage + product reel |
 | `/runs` | Filterable/sortable table of every run (persisted across restarts) |
-| `/runs/new` | Launch a run: target IP, CVE, service, LHOST/LPORT |
+| `/runs/new` | Launch a run: target IP, CVE, service, LHOST/LPORT, playbook |
 | `/runs/{id}` | Live terminal feed (WebSocket), **HITL approve/reject/edit gate**, **structured findings** (3-gate), report, **AI analysis**, traces |
+| `/findings` | Global structured-findings registry across runs (severity triage) |
+| `/skills` | CyberStrike + builtin skills catalog (~7.6k) — browse / search / inject |
+| `/ops` | Engagements: scope, targets, schedules, webhooks, credentials, evidence, budget, retest |
+| `/agents` · `/playbooks` · `/intel` · `/compare` | Multi-agent view, playbooks, intel feed, run compare |
+| `/terminal` | SSO'd web shell into the arsenal (Kali) container |
 | `/settings` | Live service health (7 probes), **config editor** (LLM/attacker/features, DB-backed), **MCP servers** panel |
 
 Architecture: the browser only talks to the dashboard; a server-side proxy
@@ -269,6 +279,68 @@ cd web && pnpm install && pnpm dev   # http://localhost:3000, needs core on :800
 
 ---
 
+## Gallery
+
+<details open>
+<summary><b>Operator surface — product, pipeline, globe</b></summary>
+<br/>
+<table>
+  <tr>
+    <td width="33%" align="center"><img src="assets/talon-hero-raptor.webp" alt="Talon hero"/><br/><sub>Operator hero</sub></td>
+    <td width="33%" align="center"><img src="assets/talon-dashboard-product.webp" alt="Dashboard"/><br/><sub>Ops console</sub></td>
+    <td width="33%" align="center"><img src="assets/operator-globe-hud.webp" alt="Globe"/><br/><sub>Live C2 globe</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/talon-pipeline-agents.webp" alt="Pipeline"/><br/><sub>Multi-agent pipeline</sub></td>
+    <td align="center"><img src="assets/architecture-poster.webp" alt="Architecture"/><br/><sub>Architecture</sub></td>
+    <td align="center"><img src="assets/header-collage.webp" alt="Header"/><br/><sub>Header collage</sub></td>
+  </tr>
+</table>
+</details>
+
+<details>
+<summary><b>Recon → exploit → judge → report</b></summary>
+<br/>
+<table>
+  <tr>
+    <td width="33%" align="center"><img src="assets/recon-workflow.webp" alt="Recon"/><br/><sub>Recon workflow</sub></td>
+    <td width="33%" align="center"><img src="assets/hitl-gate.webp" alt="HITL"/><br/><sub>HITL gate</sub></td>
+    <td width="33%" align="center"><img src="assets/judge-verdict.webp" alt="Judge"/><br/><sub>Judge verdict</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/codegen-sandbox.webp" alt="Forge"/><br/><sub>Talon Forge (codegen)</sub></td>
+    <td align="center"><img src="assets/talon-knowledge-panel.webp" alt="Skills"/><br/><sub>CyberStrike skills</sub></td>
+    <td align="center"><img src="assets/talon-agent-filmstrip.webp" alt="Agents"/><br/><sub>Agent filmstrip</sub></td>
+  </tr>
+</table>
+</details>
+
+<details>
+<summary><b>Component badges & brand</b></summary>
+<br/>
+<table>
+  <tr>
+    <td width="20%" align="center"><img src="assets/talon-core-badge.webp" alt="core"/><br/><sub>core</sub></td>
+    <td width="20%" align="center"><img src="assets/talon-arsenal-badge.webp" alt="arsenal"/><br/><sub>arsenal</sub></td>
+    <td width="20%" align="center"><img src="assets/talon-strike-badge.webp" alt="strike"/><br/><sub>strike</sub></td>
+    <td width="20%" align="center"><img src="assets/talon-relay-badge.webp" alt="relay"/><br/><sub>relay</sub></td>
+    <td width="20%" align="center"><img src="assets/talon-forge-badge.webp" alt="forge"/><br/><sub>forge</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="assets/talon-brand-mark.webp" alt="brand"/><br/><sub>brand mark</sub></td>
+    <td align="center"><img src="assets/logo-wordmark.webp" alt="wordmark"/><br/><sub>wordmark</sub></td>
+    <td align="center"><img src="assets/msf-rpc-connection.webp" alt="msf"/><br/><sub>msf-rpc</sub></td>
+    <td align="center"><img src="assets/console-hero.webp" alt="console"/><br/><sub>console hero</sub></td>
+    <td align="center"><img src="assets/go-native-milestone.webp" alt="native"/><br/><sub>go-native</sub></td>
+  </tr>
+</table>
+</details>
+
+> All assets live in [`assets/`](assets/) (WebP). Showcase reel stills ship in
+> [`web/public/showcase/`](web/public/showcase/).
+
+---
+
 ## Local E2E lab (CVE-2011-2523)
 
 Authorized **local** validation of the full pipeline (recon → MSF session →
@@ -283,6 +355,15 @@ docker compose --profile vuln up -d --build vuln-target
 
 # mimic — Python only (recon/forge; no real MSF session)
 VULN_TARGET=mimic docker compose --profile vuln up -d --build vuln-target
+```
+
+**Optional web target — DVWA** (intentionally vulnerable web app; recon +
+default-cred + security-level findings, web-exploit path):
+
+```bash
+docker run -d --name talon_vuln_dvwa -p 8480:80 --restart unless-stopped vulnerables/web-dvwa
+# first run: visit http://localhost:8480/setup.php → Create / Reset DB → login admin/password
+# then:  POST /input/start  {"ip":"127.0.0.1","service_name":"http","description":"DVWA. AUTHORIZED lab target."}
 ```
 
 ### Payload that works
