@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 // Util Imports
 import type { AgentInfo, Playbook } from '@/lib/api'
+import { agentAvatarSrc } from '@/lib/agent-avatars'
 import { getAgents, getPlaybooks, startRun } from '@/lib/api'
 
 const schema = z.object({
@@ -193,7 +194,15 @@ const NewRun = () => {
                       ]
                   ).map(a => (
                     <SelectItem key={a.id} value={a.id} className='font-mono text-xs'>
-                      {a.codename} — {a.name}
+                      <span className='flex items-center gap-2'>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={agentAvatarSrc(a.id)}
+                          alt=''
+                          className='size-5 shrink-0 rounded-full object-cover ring-1 ring-primary/30'
+                        />
+                        {a.codename} — {a.name}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

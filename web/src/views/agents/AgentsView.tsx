@@ -6,10 +6,12 @@ import Link from 'next/link'
 
 import type { AgentInfo } from '@/lib/api'
 import HudStill from '@/components/shared/HudStill'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { agentAvatarSrc } from '@/lib/agent-avatars'
 import { getAgents } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -37,10 +39,12 @@ const AgentsView = () => {
         </Link>
       </div>
 
-      <div className='grid gap-3 md:grid-cols-2'>
-        <HudStill src='/showcase/talon-agent-filmstrip.webp' alt='Agent modes filmstrip' variant='filmstrip' />
-        <HudStill src='/showcase/talon-pipeline-agents.webp' alt='Multi-agent pipeline' variant='banner' />
-      </div>
+      <HudStill
+        src='/showcase/talon-pipeline-agents.webp'
+        alt='Multi-agent pipeline'
+        variant='banner'
+        className='max-h-28'
+      />
 
       {error && (
         <div className='border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-4 py-3 font-mono text-xs'>
@@ -52,39 +56,62 @@ const AgentsView = () => {
         <Skeleton className='h-40 w-full' />
       ) : (
         <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
-          {agents.map(a => (
-            <Card key={a.id} className='hud-corners'>
-              <CardHeader>
-                <div className='flex flex-wrap gap-2'>
-                  <Badge className='font-mono text-[10px] tracking-widest'>{a.codename}</Badge>
-                  <Badge variant='outline' className='font-mono text-[10px] tracking-widest uppercase'>
-                    {a.focus}
-                  </Badge>
+          {agents.map(a => {
+            const src = agentAvatarSrc(a.id)
+            const initials = a.codename.slice(0, 2)
+            return (
+              <Card key={a.id} className='hud-corners overflow-hidden pt-0'>
+                <div className='relative h-36 w-full border-b border-primary/15 bg-black'>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={src}
+                    alt={a.codename}
+                    className='absolute inset-0 size-full object-cover object-[center_20%]'
+                  />
+                  <div className='pointer-events-none absolute inset-0 bg-gradient-to-t from-card via-card/20 to-transparent' />
+                  <div className='absolute right-3 bottom-3 left-3 flex items-end gap-3'>
+                    <Avatar className='size-14 ring-2 ring-primary/40' size='lg'>
+                      <AvatarImage src={src} alt={a.codename} />
+                      <AvatarFallback className='font-mono text-xs'>{initials}</AvatarFallback>
+                    </Avatar>
+                    <div className='min-w-0 pb-0.5'>
+                      <p className='font-mono text-sm font-semibold tracking-widest text-primary'>{a.codename}</p>
+                      <p className='micro-label truncate text-zinc-300'>{a.focus}</p>
+                    </div>
+                  </div>
                 </div>
-                <CardTitle className='mt-2 font-mono text-sm tracking-widest'>{a.name}</CardTitle>
-                <CardDescription className='font-mono text-xs'>{a.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className='micro-label mb-2'>DELEGATES</p>
-                <div className='flex flex-wrap gap-1'>
-                  {a.delegates.map(d => (
-                    <Badge key={d} variant='secondary' className='font-mono text-[10px]'>
-                      {d.replace('delegate_', '')}
+                <CardHeader className='pt-4'>
+                  <div className='flex flex-wrap gap-2'>
+                    <Badge className='font-mono text-[10px] tracking-widest'>{a.codename}</Badge>
+                    <Badge variant='outline' className='font-mono text-[10px] tracking-widest uppercase'>
+                      {a.focus}
                     </Badge>
-                  ))}
-                </div>
-                <Link
-                  href={`/runs/new?mode=${a.id}`}
-                  className={cn(
-                    buttonVariants({ variant: 'outline', size: 'sm' }),
-                    'mt-4 font-mono text-[10px] tracking-widest uppercase'
-                  )}
-                >
-                  Launch as {a.codename}
-                </Link>
-              </CardContent>
-            </Card>
-          ))}
+                  </div>
+                  <CardTitle className='mt-2 font-mono text-sm tracking-widest'>{a.name}</CardTitle>
+                  <CardDescription className='font-mono text-xs'>{a.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className='micro-label mb-2'>DELEGATES</p>
+                  <div className='flex flex-wrap gap-1'>
+                    {a.delegates.map(d => (
+                      <Badge key={d} variant='secondary' className='font-mono text-[10px]'>
+                        {d.replace('delegate_', '')}
+                      </Badge>
+                    ))}
+                  </div>
+                  <Link
+                    href={`/runs/new?mode=${a.id}`}
+                    className={cn(
+                      buttonVariants({ variant: 'outline', size: 'sm' }),
+                      'mt-4 font-mono text-[10px] tracking-widest uppercase'
+                    )}
+                  >
+                    Launch as {a.codename}
+                  </Link>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
 
