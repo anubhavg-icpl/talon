@@ -50,11 +50,16 @@ Examples:
   talon status
   talon console
   talon console --run <run_id> --auto-approve
-  talon run start --ip 127.0.0.1 --cve CVE-2011-2523 --lhost 192.168.0.176
+  talon run start --ip 127.0.0.1 --cve CVE-2011-2523 --mode web --lhost 192.168.0.176
   talon run status <run_id>
-  talon run watch <run_id>
-  talon run approve <run_id>
-  talon run tools <run_id> --output json
+  talon run findings <run_id>
+  talon run report <run_id>
+  talon run killchain <run_id>
+  talon run methodology <run_id>
+  talon run triage <run_id> FIND-001 --status approved
+  talon skills --brief
+  talon agents
+  talon findings --severity critical
   talon logs core --tail 100
   talon logs arsenal -f`,
 		SilenceUsage:  true,
@@ -139,6 +144,9 @@ Examples:
 	root.AddCommand(newStatusCmd(opts))
 	root.AddCommand(newConsoleCmd(opts))
 	root.AddCommand(newRunCmd(opts))
+	root.AddCommand(newSkillsCmd(opts))
+	root.AddCommand(newAgentsCmd(opts))
+	root.AddCommand(newFindingsCmd(opts))
 	root.AddCommand(newLogsCmd(opts))
 	root.AddCommand(newCompletionCmd())
 	root.AddCommand(newConfigCmd(opts))

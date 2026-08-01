@@ -65,12 +65,14 @@ type StartRequest struct {
 	Description string `json:"description,omitempty"`
 	LHOST       string `json:"lhost,omitempty"`
 	LPORT       int    `json:"lport,omitempty"`
+	AgentMode   string `json:"agent_mode,omitempty"`
 }
 
 // StartResponse is the body returned by POST /input/start.
 type StartResponse struct {
-	RunID   string `json:"run_id"`
-	Message string `json:"message"`
+	RunID     string `json:"run_id"`
+	Message   string `json:"message"`
+	AgentMode string `json:"agent_mode,omitempty"`
 }
 
 // PendingInterrupt mirrors core.PendingInterrupt over the wire.
@@ -83,10 +85,15 @@ type PendingInterrupt struct {
 
 // StatusResponse is GET /output/status/{run_id}.
 type StatusResponse struct {
-	Status       string            `json:"status"`
-	Output       string            `json:"output"`
-	Interrupt    *PendingInterrupt `json:"interrupt"`
-	JudgeVerdict *bool             `json:"judge_verdict,omitempty"`
+	Status            string            `json:"status"`
+	Output            string            `json:"output"`
+	Interrupt         *PendingInterrupt `json:"interrupt"`
+	JudgeVerdict      *bool             `json:"judge_verdict,omitempty"`
+	FindingsCount     int               `json:"findings_count,omitempty"`
+	FindingsSummary   map[string]any    `json:"findings_summary,omitempty"`
+	HasReport         bool              `json:"has_report,omitempty"`
+	AgentMode         string            `json:"agent_mode,omitempty"`
+	MethodologyPercent int              `json:"methodology_percent,omitempty"`
 }
 
 // ResumeRequest is POST /output/resume/{run_id}.
@@ -208,6 +215,122 @@ func (c *Client) Traces(ctx context.Context, runID string) (*TracesResponse, err
 		return nil, err
 	}
 	return &out, nil
+}
+
+// GetJSON fetches an arbitrary JSON endpoint into out.
+func (c *Client) GetJSON(ctx context.Context, path string, out any) error {
+	return c.doJSON(ctx, http.MethodGet, path, nil, out)
+}
+
+// PostJSON posts body to path and decodes into out.
+func (c *Client) PostJSON(ctx context.Context, path string, body, out any) error {
+	return c.doJSON(ctx, http.MethodPost, path, body, out)
+}
+
+// FindingsResponse is GET /runs/{id}/findings.
+type FindingsResponse struct {
+	RunID    string           `json:"run_id"`
+	Findings []map[string]any `json:"findings"`
+	Summary  map[string]any   `json:"summary"`
+}
+
+// Findings fetches structured findings for a run.
+func (c *Client) Findings(ctx context.Context, runID string) (*FindingsResponse, error) {
+	var out FindingsResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/runs/"+url.PathEscape(runID)+"/findings", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Report fetches structured report for a run (raw map for flexibility).
+func (c *Client) Report(ctx context.Context, runID string) (map[string]any, error) {
+	var out map[string]any
+	if err := c.doJSON(ctx, http.MethodGet, "/runs/"+url.PathEscape(runID)+"/report", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// KillChain fetches kill-chain analysis for a run.
+func (c *Client) KillChain(ctx context.Context, runID string) (map[string]any, error) {
+	var out map[string]any
+	if err := c.doJSON(ctx, http.MethodGet, "/runs/"+url.PathEscape(runID)+"/killchain", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Methodology fetches methodology coverage for a run.
+func (c *Client) Methodology(ctx context.Context, runID string) (map[string]any, error) {
+	var out map[string]any
+	if err := c.doJSON(ctx, http.MethodGet, "/runs/"+url.PathEscape(runID)+"/methodology", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Skills lists the skill catalog.
+func (c *Client) Skills(ctx context.Context, brief bool, stage string) (map[string]any, error) {
+	q := url.Values{}
+	if brief {
+		q.Set("brief", "1")
+	}
+	if stage != "" {
+		q.Set("stage", stage)
+	}
+	path := "/skills"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var out map[string]any
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Agents lists specialist agent modes.
+func (c *Client) Agents(ctx context.Context) (map[string]any, error) {
+	var out map[string]any
+	if err := c.doJSON(ctx, http.MethodGet, "/agents", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GlobalFindings lists findings across runs.
+func (c *Client) GlobalFindings(ctx context.Context, severity string, limit int) (map[string]any, error) {
+	q := url.Values{}
+	if severity != "" {
+		q.Set("severity", severity)
+	}
+	if limit > 0 {
+		q.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	path := "/findings"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	var out map[string]any
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// TriageFinding posts triage for a finding.
+func (c *Client) TriageFinding(ctx context.Context, runID, findingID, status, dupOf string) (map[string]any, error) {
+	body := map[string]string{"status": status}
+	if dupOf != "" {
+		body["duplicate_of"] = dupOf
+	}
+	path := fmt.Sprintf("/runs/%s/findings/%s/triage", url.PathEscape(runID), url.PathEscape(findingID))
+	var out map[string]any
+	if err := c.doJSON(ctx, http.MethodPost, path, body, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, body any, out any) error {

@@ -39,8 +39,11 @@ RUN curl -fsSL -o /usr/local/bin/lightpanda \
     && echo "lightpanda: installed" \
     || echo "lightpanda: install skipped (optional MCP)"
 COPY --from=build /out/ /app/
+# Methodology skill pack (GET /skills + agent prompt injection).
+COPY --from=build /src/skills /app/skills
 WORKDIR /app
 ENV HEXSTRIKE_MCP_PATH=/app/talon-arsenal \
-    METASPLOIT_MCP_PATH=/app/talon-strike
+    METASPLOIT_MCP_PATH=/app/talon-strike \
+    TALON_SKILLS_DIR=/app/skills
 # Default command is core; compose overrides for relay.
 CMD ["/app/talon-core"]

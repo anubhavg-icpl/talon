@@ -75,13 +75,13 @@ const Header = () => {
   }
 
   return (
-    <header className='bg-card sticky top-0 z-50 border-b'>
-      <div className='mx-auto flex max-w-360 items-center justify-between gap-6 px-4 py-2 sm:px-6'>
+    <header className='op-header sticky top-0 z-50'>
+      <div className='mx-auto flex max-w-360 items-center justify-between gap-6 px-4 py-2.5 sm:px-6'>
         <div className='flex items-center gap-4'>
-          <SidebarTrigger className='[&_svg]:size-5!' />
-          <Separator orientation='vertical' className='hidden h-4! data-vertical:self-center sm:block' />
+          <SidebarTrigger className='text-primary/80 hover:text-primary [&_svg]:size-5!' />
+          <Separator orientation='vertical' className='bg-primary/20 hidden h-4! data-vertical:self-center sm:block' />
           <Breadcrumb className='hidden sm:block'>
-            <BreadcrumbList>
+            <BreadcrumbList className='font-mono text-[10px] tracking-widest uppercase'>
               {segments.map((segment, index) => {
                 const isLast = index === segments.length - 1
                 const label = segment.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -90,9 +90,13 @@ const Header = () => {
                 return (
                   <Fragment key={href}>
                     <BreadcrumbItem>
-                      {isLast ? <BreadcrumbPage>{label}</BreadcrumbPage> : <BreadcrumbLink>{label}</BreadcrumbLink>}
+                      {isLast ? (
+                        <BreadcrumbPage className='text-primary'>{label}</BreadcrumbPage>
+                      ) : (
+                        <BreadcrumbLink className='text-muted-foreground hover:text-primary'>{label}</BreadcrumbLink>
+                      )}
                     </BreadcrumbItem>
-                    {!isLast && <BreadcrumbSeparator />}
+                    {!isLast && <BreadcrumbSeparator className='text-primary/30' />}
                   </Fragment>
                 )
               })}
@@ -104,40 +108,23 @@ const Header = () => {
           <ThemeSettings />
           <Separator orientation='vertical' className='hidden h-4! data-vertical:self-center sm:block' />
           {coreUp === null ? (
-            <span className='text-muted-foreground'>CORE …</span>
+            <span className='text-muted-foreground'>LINK …</span>
           ) : coreUp ? (
             <span className='text-primary flex items-center gap-2'>
-              <LiveDot tone='green' /> <span className='hidden sm:inline'>CORE ONLINE</span>
+              <LiveDot tone='cyan' /> C2 LINK UP
             </span>
           ) : (
             <span className='text-destructive flex items-center gap-2'>
-              <LiveDot tone='red' /> <span className='hidden sm:inline'>CORE OFFLINE</span>
+              <LiveDot tone='red' /> C2 LINK DOWN
             </span>
           )}
           {username && (
-            <DropdownMenu>
-              <DropdownMenuTrigger className='text-muted-foreground hover:text-foreground flex items-center gap-1.5 font-mono text-[10px] tracking-widest uppercase transition-colors'>
-                <span className='text-foreground'>@{username}</span>
-                <ChevronDownIcon className='size-3' />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end' className='min-w-44'>
-                <DropdownMenuLabel className='micro-label'>OPERATOR</DropdownMenuLabel>
-                <DropdownMenuItem
-                  render={<Link href='/settings' />}
-                  className='font-mono text-xs tracking-widest uppercase'
-                >
-                  <SettingsIcon /> SYSTEM
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant='destructive'
-                  onClick={handleLogout}
-                  className='font-mono text-xs tracking-widest uppercase'
-                >
-                  <LogOutIcon /> LOGOUT
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <span className='text-muted-foreground hidden items-center gap-3 sm:flex'>
+              <span className='text-foreground'>op/{username}</span>
+              <button onClick={handleLogout} className='hover:text-primary cursor-pointer transition-colors'>
+                [ EXIT ]
+              </button>
+            </span>
           )}
         </div>
       </div>

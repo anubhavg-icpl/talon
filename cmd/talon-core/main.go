@@ -109,7 +109,13 @@ func main() {
 		}
 	}
 
-	opts := []control.ServerOption{control.WithAnalyzer(model), control.WithTools(tools), control.WithSettings(control.NewSettings(db))}
+	plat := control.NewPlatform(dataDir)
+	opts := []control.ServerOption{
+		control.WithAnalyzer(model),
+		control.WithTools(tools),
+		control.WithSettings(control.NewSettings(db)),
+		control.WithPlatform(plat),
+	}
 	if db != nil {
 		opts = append(opts, control.WithDB(db))
 	}

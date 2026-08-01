@@ -26,7 +26,9 @@ type RunInput struct {
 	CVEID       string
 	ServiceName string
 	Description string
-	Context     config.Context
+	// AgentMode selects specialist pipeline (full|recon|exploit|web|network|post).
+	AgentMode string
+	Context   config.Context
 }
 
 // ToolCallRecord is one logged tool invocation within a run.
@@ -44,8 +46,20 @@ type RunResult struct {
 	// JudgeVerdict reports whether the judge model confirmed the
 	// exploitation objective was met. Only meaningful when Interrupted is false.
 	JudgeVerdict bool
-	Interrupted  bool
-	Interrupt    *PendingInterrupt
+	// JudgeSet is true when JudgeVerdict was populated (false means judge
+	// was skipped, not "judge said false").
+	JudgeSet bool
+	// Findings are structured security findings extracted from the run
+	// (CyberStrike-inspired). Empty while Interrupted.
+	Findings []Finding
+	// Report is the structured multi-section validation report. Nil while Interrupted.
+	Report *StructuredReport
+	// KillChain is derived attack-path analysis. Nil while Interrupted.
+	KillChain *KillChainAnalysis
+	// Methodology is stage coverage for the run.
+	Methodology *MethodologyState
+	Interrupted bool
+	Interrupt   *PendingInterrupt
 }
 
 // PendingInterrupt describes a HITL-gated tool call awaiting a decision.
@@ -95,7 +109,11 @@ type CodegenTool interface {
 // do not share a process-global hook.
 type ProgressFunc func(toolLog []ToolCallRecord)
 
+// FindingsProgressFunc is invoked when mid-run findings change (report_finding).
+type FindingsProgressFunc func(findings []Finding)
+
 type progressCtxKey struct{}
+type findingsProgressCtxKey struct{}
 
 // WithProgress attaches a progress callback to ctx for one Run/Resume.
 func WithProgress(ctx context.Context, fn ProgressFunc) context.Context {
@@ -105,8 +123,21 @@ func WithProgress(ctx context.Context, fn ProgressFunc) context.Context {
 	return context.WithValue(ctx, progressCtxKey{}, fn)
 }
 
+// WithFindingsProgress attaches a mid-run findings callback.
+func WithFindingsProgress(ctx context.Context, fn FindingsProgressFunc) context.Context {
+	if fn == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, findingsProgressCtxKey{}, fn)
+}
+
 func progressFrom(ctx context.Context) ProgressFunc {
 	fn, _ := ctx.Value(progressCtxKey{}).(ProgressFunc)
+	return fn
+}
+
+func findingsProgressFrom(ctx context.Context) FindingsProgressFunc {
+	fn, _ := ctx.Value(findingsProgressCtxKey{}).(FindingsProgressFunc)
 	return fn
 }
 
@@ -116,6 +147,14 @@ func reportProgress(ctx context.Context, tr *tracker) {
 		return
 	}
 	fn(append([]ToolCallRecord(nil), tr.log...))
+}
+
+func reportFindingsProgress(ctx context.Context, bag *FindingBag) {
+	fn := findingsProgressFrom(ctx)
+	if fn == nil || bag == nil {
+		return
+	}
+	fn(bag.Snapshot())
 }
 
 // Orchestrator runs one full pentest validation workflow against a live MCP

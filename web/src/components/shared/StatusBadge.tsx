@@ -40,7 +40,7 @@ const statusConfig: Record<
     label: 'INITIALIZING',
     tone: 'cyan',
     pulse: true,
-    className: 'border-info/40 bg-info/10 text-info'
+    className: 'border-primary/40 bg-primary/10 text-primary'
   },
   not_found: {
     label: 'NOT FOUND',

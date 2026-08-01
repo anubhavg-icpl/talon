@@ -1,14 +1,11 @@
 'use client'
 
-// React Imports
 import { useState } from 'react'
 
-// Next Imports
 import { useRouter } from 'next/navigation'
 
-// Component Imports
 import Logo from '@/components/shared/Logo'
-import MatrixRain from '@/components/shared/MatrixRain'
+import { TalonGlobe } from '@/components/shared/three'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -51,16 +48,20 @@ const Login = () => {
 
   return (
     <div className='relative flex min-h-svh items-center justify-center overflow-hidden p-4'>
-      <MatrixRain className='absolute inset-0 opacity-10' />
+      {/* Single WebGL layer (prod: no stacked rain + starfield + globe) */}
+      <div className='pointer-events-none absolute inset-0 opacity-90' aria-hidden>
+        <TalonGlobe className='h-full w-full' variant='background' state='idle' activityLevel={0.25} />
+      </div>
       <div className='scanlines pointer-events-none absolute inset-0' />
+      <div className='pointer-events-none absolute inset-0 bg-gradient-to-b from-background/50 via-background/65 to-background/90' />
 
-      <div className='hud-corners bg-card/90 relative w-full max-w-md rounded-md border p-8 backdrop-blur'>
+      <div className='hud-corners bg-card/90 relative z-10 w-full max-w-md rounded-sm border border-primary/20 p-8 shadow-[0_0_48px_oklch(0.84_0.14_205/0.08)] backdrop-blur-md'>
         <div className='mb-8 flex flex-col items-center gap-3'>
           <Logo />
-          <p className='micro-label text-center'>RESTRICTED AREA — AUTHORIZED OPERATORS ONLY</p>
+          <p className='micro-label text-primary/80 text-center'>AUTHORIZED OPERATORS ONLY</p>
         </div>
 
-        <form onSubmit={submit} className='flex flex-col gap-5'>
+        <form onSubmit={submit} className='flex flex-col gap-5' noValidate>
           <div className='flex flex-col gap-2'>
             <Label htmlFor='username' className='micro-label'>
               OPERATOR ID
@@ -94,17 +95,24 @@ const Login = () => {
           </div>
 
           {error && (
-            <p className='border-destructive/40 bg-destructive/10 text-destructive rounded-sm border px-3 py-2 font-mono text-xs tracking-widest uppercase'>
+            <p
+              role='alert'
+              className='border-destructive/40 bg-destructive/10 text-destructive rounded-sm border px-3 py-2 font-mono text-xs tracking-widest uppercase'
+            >
               {error}
             </p>
           )}
 
-          <Button type='submit' disabled={busy} className='mt-2 font-mono text-xs font-semibold tracking-widest uppercase'>
-            {busy ? '[ ⟳ AUTHENTICATING… ]' : '[ AUTHENTICATE ]'}
+          <Button
+            type='submit'
+            disabled={busy}
+            className='glow-cyan mt-2 font-mono text-xs font-semibold tracking-widest uppercase'
+          >
+            {busy ? '[ ⟳ LINKING… ]' : '[ ENTER C2 ]'}
           </Button>
         </form>
 
-        <p className='micro-label mt-6 text-center'>$ talon auth login — CLI operators use the same credentials</p>
+        <p className='micro-label mt-6 text-center'>$ talon auth login — same credentials as the CLI</p>
       </div>
     </div>
   )

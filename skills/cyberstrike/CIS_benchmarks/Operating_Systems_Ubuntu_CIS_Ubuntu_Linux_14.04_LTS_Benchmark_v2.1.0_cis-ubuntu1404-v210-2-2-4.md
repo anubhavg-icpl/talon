@@ -1,0 +1,55 @@
+# stage: report
+# category: CIS_benchmarks
+
+
+# 2.2.4 Ensure CUPS is not enabled (Scored)
+
+## Profile Applicability
+
+- Level 1 - Server
+- Level 2 - Workstation
+
+## Description
+
+The Common Unix Print System (CUPS) provides the ability to print to both local and network printers. A system running CUPS can also accept print jobs from remote systems and print them to local printers. It also provides a web based remote administration capability.
+
+## Rationale
+
+If the system does not need to print jobs or accept print jobs from other systems, it is recommended that CUPS be disabled to reduce the potential attack surface.
+
+## Audit Procedure
+
+Run the following commands to verify no start conditions listed for `cups`:
+
+```bash
+initctl show-config cups
+```
+
+Verify the output shows `cups` with no start conditions.
+
+## Expected Result
+
+The `cups` service should have no start conditions listed.
+
+## Remediation
+
+Remove or comment out start lines in `/etc/init/cups.conf`:
+
+```bash
+#start on runlevel [2345]
+```
+
+## Default Value
+
+CUPS may be enabled by default on workstation installations. Disabling CUPS will prevent printing from the system, a common task for workstation systems.
+
+## References
+
+1. More detailed documentation on CUPS is available at the project homepage at http://www.cups.org.
+
+- CIS Controls: 9.1 Limit Open Ports, Protocols, and Services
+
+## Profile
+
+- Level 1 - Server
+- Level 2 - Workstation

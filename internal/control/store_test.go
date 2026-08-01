@@ -65,10 +65,18 @@ func TestSetResultHistoryAndJudge(t *testing.T) {
 	store.SetToolLog("r2", []core.ToolCallRecord{
 		{Index: 0, ToolName: "nmap_scan", Output: "open 21"},
 	})
+	findings := []core.Finding{{
+		ID: "FIND-001", Severity: core.SeverityCritical, Title: "RCE",
+		Evidence: core.GateEvidence{Passed: true, Baseline: "none", Attack: "session", Diff: "created"},
+	}}
+	rep := core.BuildReport(core.RunInput{TargetIP: "2.2.2.2"}, nil, "session opened", findings, true, true)
 	store.SetResult("r2", core.RunResult{
 		FinalMessage: "session opened",
 		ToolLog:      []core.ToolCallRecord{{Index: 0, ToolName: "nmap_scan", Output: "open 21"}},
 		JudgeVerdict: true,
+		JudgeSet:     true,
+		Findings:     findings,
+		Report:       &rep,
 	})
 
 	sess, ok := store.Get("r2")
@@ -83,6 +91,12 @@ func TestSetResultHistoryAndJudge(t *testing.T) {
 	}
 	if len(sess.History) < 3 {
 		t.Fatalf("expected history events, got %v", sess.History)
+	}
+	if len(sess.Findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(sess.Findings))
+	}
+	if sess.Report == nil || sess.Report.Markdown == "" {
+		t.Fatal("expected structured report")
 	}
 }
 

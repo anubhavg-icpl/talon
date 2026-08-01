@@ -150,6 +150,8 @@ func (db *DB) listRunsPaginated(ctx context.Context, limit, offset int) ([]RunSu
 	rows, err := db.pool.Query(ctx,
 		`SELECT run_id, COALESCE(target,''), COALESCE(cve_id,''), COALESCE(service_name,''),
 		        COALESCE(status,''), judge_verdict, COALESCE(tool_calls,0),
+		        COALESCE(jsonb_array_length(data->'Findings'), 0),
+		        COALESCE(data->'RunInput'->>'AgentMode', ''),
 		        COALESCE(started_at, updated_at), updated_at
 		 FROM runs ORDER BY started_at DESC NULLS LAST, updated_at DESC LIMIT $1 OFFSET $2`,
 		limit, offset)
@@ -161,7 +163,7 @@ func (db *DB) listRunsPaginated(ctx context.Context, limit, offset int) ([]RunSu
 	for rows.Next() {
 		var s RunSummary
 		var updatedAt time.Time
-		if err := rows.Scan(&s.RunID, &s.Target, &s.CVEID, &s.ServiceName, &s.Status, &s.JudgeVerdict, &s.ToolCalls, &s.StartedAt, &updatedAt); err != nil {
+		if err := rows.Scan(&s.RunID, &s.Target, &s.CVEID, &s.ServiceName, &s.Status, &s.JudgeVerdict, &s.ToolCalls, &s.FindingsCount, &s.AgentMode, &s.StartedAt, &updatedAt); err != nil {
 			return nil, 0, err
 		}
 		// For terminal runs the last write is the completion write, so updated_at

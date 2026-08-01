@@ -52,6 +52,11 @@ export const navItems: NavItem[] = [
         icon: 'Radar',
         label: 'Overview',
         href: '/overview'
+      },
+      {
+        icon: 'Clapperboard',
+        label: 'Showcase',
+        href: '/showcase'
       }
     ]
   },
@@ -73,6 +78,46 @@ export const navItems: NavItem[] = [
         icon: 'SquareTerminal',
         label: 'Kali Shell',
         href: '/terminal'
+      },
+      {
+        icon: 'Bug',
+        label: 'Findings',
+        href: '/findings'
+      },
+      {
+        icon: 'GitCompare',
+        label: 'Compare',
+        href: '/compare'
+      },
+      {
+        icon: 'Shield',
+        label: 'Engagements',
+        href: '/ops'
+      }
+    ]
+  },
+  {
+    groupLabel: 'Intelligence',
+    items: [
+      {
+        icon: 'Bot',
+        label: 'Agents',
+        href: '/agents'
+      },
+      {
+        icon: 'BookOpen',
+        label: 'Skills',
+        href: '/skills'
+      },
+      {
+        icon: 'ScrollText',
+        label: 'Playbooks',
+        href: '/playbooks'
+      },
+      {
+        icon: 'Radio',
+        label: 'Intel Feed',
+        href: '/intel'
       }
     ]
   },

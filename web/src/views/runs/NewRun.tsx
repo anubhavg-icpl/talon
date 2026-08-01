@@ -1,7 +1,10 @@
 'use client'
 
+// React Imports
+import { useEffect, useState } from 'react'
+
 // Next Imports
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 // Third-party Imports
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -10,15 +13,17 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 // Component Imports
-import PageHeader from '@/components/shared/PageHeader'
+import { TalonGlobe } from '@/components/shared/three'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
 // Util Imports
-import { startRun } from '@/lib/api'
+import type { AgentInfo, Playbook } from '@/lib/api'
+import { getAgents, getPlaybooks, startRun } from '@/lib/api'
 
 const schema = z.object({
   ip: z
@@ -35,7 +40,8 @@ const schema = z.object({
   lhost: z.string().optional(),
   lport: z
     .union([z.literal(''), z.coerce.number().int().min(1).max(65535)])
-    .optional()
+    .optional(),
+  agent_mode: z.string().optional()
 })
 
 type FormValues = z.infer<typeof schema>
@@ -58,15 +64,51 @@ const Field = ({
 
 const NewRun = () => {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [agents, setAgents] = useState<AgentInfo[]>([])
+  const [playbooks, setPlaybooks] = useState<Playbook[]>([])
+  const [agentMode, setAgentMode] = useState('full')
+  const [playbookId, setPlaybookId] = useState('')
+
+  useEffect(() => {
+    const mode = searchParams.get('mode')
+    if (mode) setAgentMode(mode)
+    const pb = searchParams.get('playbook')
+    if (pb) setPlaybookId(pb)
+    const ipQ = searchParams.get('ip')
+    if (ipQ) {
+      // prefill via form default is hard; set through setValue if available — use reset on ip field via DOM
+    }
+    getAgents()
+      .then(res => setAgents(res.agents ?? []))
+      .catch(() => {})
+    getPlaybooks()
+      .then(res => setPlaybooks(res.playbooks ?? []))
+      .catch(() => {})
+  }, [searchParams])
+
+  useEffect(() => {
+    if (!playbookId) return
+    const pb = playbooks.find(p => p.id === playbookId)
+    if (pb) {
+      setAgentMode(pb.agent_mode || 'full')
+    }
+  }, [playbookId, playbooks])
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting }
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { ip: '', cve_id: '', service_name: '', description: '', lhost: '', lport: '' }
+    defaultValues: { ip: '', cve_id: '', service_name: '', description: '', lhost: '', lport: '', agent_mode: 'full' }
   })
+
+  useEffect(() => {
+    const ipQ = searchParams.get('ip')
+    if (ipQ) setValue('ip', ipQ)
+  }, [searchParams, setValue])
 
   const onSubmit = async (values: FormValues) => {
     try {
@@ -76,7 +118,9 @@ const NewRun = () => {
         ...(values.service_name ? { service_name: values.service_name } : {}),
         ...(values.description ? { description: values.description } : {}),
         ...(values.lhost ? { lhost: values.lhost } : {}),
-        ...(values.lport ? { lport: Number(values.lport) } : {})
+        ...(values.lport ? { lport: Number(values.lport) } : {}),
+        agent_mode: agentMode || 'full',
+        ...(playbookId ? { playbook_id: playbookId } : {})
       })
 
       toast.success(`Operation launched — ${res.run_id}`)
@@ -87,9 +131,13 @@ const NewRun = () => {
   }
 
   return (
-    <div className='mx-auto flex max-w-2xl flex-col gap-6'>
-      <PageHeader title='NEW OPERATION' subtitle='PROVISION A PENTEST RUN' />
+    <div className='mx-auto flex max-w-5xl flex-col gap-6'>
+      <div>
+        <h1 className='font-mono text-xl font-semibold tracking-widest'>NEW OPERATION</h1>
+        <p className='micro-label mt-1'>PROVISION A PENTEST RUN · THREE.JS TARGET HUD</p>
+      </div>
 
+      <div className='grid gap-6 lg:grid-cols-[1fr_240px]'>
       <Card className='hud-corners scanlines relative overflow-hidden'>
         <CardHeader>
           <CardTitle className='text-primary font-mono text-sm tracking-widest'>$ talon run start</CardTitle>
@@ -101,6 +149,54 @@ const NewRun = () => {
           <form onSubmit={handleSubmit(onSubmit)} className='flex flex-col gap-4' noValidate>
             <Field label='TARGET IP *' error={errors.ip?.message}>
               <Input {...register('ip')} placeholder='10.10.10.5' className='font-mono' autoFocus />
+            </Field>
+
+            {playbooks.length > 0 && (
+              <Field label='PLAYBOOK (OPTIONAL)'>
+                <Select
+                  value={playbookId || '__none__'}
+                  onValueChange={v => setPlaybookId(!v || v === '__none__' ? '' : v)}
+                >
+                  <SelectTrigger className='font-mono'>
+                    <SelectValue placeholder='None' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='__none__' className='font-mono text-xs'>
+                      None — custom
+                    </SelectItem>
+                    {playbooks.map(pb => (
+                      <SelectItem key={pb.id} value={pb.id} className='font-mono text-xs'>
+                        {pb.codename} — {pb.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
+
+            <Field label='AGENT MODE (SPECIALIST)'>
+              <Select value={agentMode} onValueChange={v => setAgentMode(v ?? 'full')}>
+                <SelectTrigger className='font-mono'>
+                  <SelectValue placeholder='full' />
+                </SelectTrigger>
+                <SelectContent>
+                  {(agents.length
+                    ? agents
+                    : [
+                        { id: 'full', name: 'Full Pipeline', codename: 'COMMANDER' },
+                        { id: 'recon', name: 'Recon', codename: 'GHOST' },
+                        { id: 'web', name: 'Web Application', codename: 'STRIKER-WEB' },
+                        { id: 'network', name: 'Internal Network', codename: 'PHANTOM' },
+                        { id: 'exploit', name: 'Exploit', codename: 'STRIKER' },
+                        { id: 'post', name: 'Post-Exploit', codename: 'CIPHER' }
+                      ]
+                  ).map(a => (
+                    <SelectItem key={a.id} value={a.id} className='font-mono text-xs'>
+                      {a.codename} — {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
 
             <div className='grid gap-4 sm:grid-cols-2'>
@@ -139,6 +235,17 @@ const NewRun = () => {
           </form>
         </CardContent>
       </Card>
+
+      <Card className='hud-corners hidden overflow-hidden lg:block'>
+        <CardHeader className='pb-2'>
+          <CardTitle className='micro-label'>TARGET HUD</CardTitle>
+          <CardDescription className='font-mono text-[10px]'>Three.js · compact globe</CardDescription>
+        </CardHeader>
+        <CardContent className='flex justify-center p-2 pb-4'>
+          <TalonGlobe className='aspect-square w-full max-w-[220px]' variant='compact' state='thinking' activityLevel={0.5} />
+        </CardContent>
+      </Card>
+      </div>
     </div>
   )
 }

@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 const GLYPHS = 'アカサタナハマヤラワ0123456789ABCDEF<>/\\$#*+=-'.split('')
 
 /**
- * Canvas-based falling-character rain. Low opacity green accent,
+ * Canvas-based falling-character rain. Electric cyan operator accent,
  * resize-aware, animation cancelled on unmount, disabled when the
  * user prefers reduced motion.
  */
@@ -56,10 +56,10 @@ const MatrixRain = ({ className, opacity = 0.08 }: { className?: string; opacity
       if (time - last < 50) return
       last = time
 
-      ctx.fillStyle = 'rgba(5, 8, 10, 0.18)'
+      ctx.fillStyle = 'rgba(6, 10, 14, 0.2)'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
       ctx.font = `${fontSize}px monospace`
-      ctx.fillStyle = '#4ade80'
+      ctx.fillStyle = '#22d3ee'
 
       for (let i = 0; i < columns; i++) {
         const char = GLYPHS[Math.floor(Math.random() * GLYPHS.length)]

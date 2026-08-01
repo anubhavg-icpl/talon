@@ -16,8 +16,9 @@ import type { RunsSummaryResponse, RunSummary } from '@/lib/api'
 import Elapsed from '@/components/shared/Elapsed'
 import LiveDot from '@/components/shared/LiveDot'
 import Logo from '@/components/shared/Logo'
-import MatrixRain from '@/components/shared/MatrixRain'
+import PageHeader from '@/components/shared/PageHeader'
 import StatusBadge from '@/components/shared/StatusBadge'
+import { TalonGlobe } from '@/components/shared/three'
 import UtcClock from '@/components/shared/UtcClock'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
@@ -25,7 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 // Util Imports
-import { listRuns, runsSummary } from '@/lib/api'
+import { getGlobalFindings, getSkills, listRuns, runsSummary } from '@/lib/api'
 import { relativeTime } from '@/lib/format'
 
 const ACTIVE_STATUSES = new Set(['running', 'awaiting_approval', 'initializing'])
@@ -39,17 +40,27 @@ const VERDICT_COLORS = {
 const Overview = () => {
   const [runs, setRuns] = useState<RunSummary[] | null>(null)
   const [summary, setSummary] = useState<RunsSummaryResponse | null>(null)
+  const [findingsTotal, setFindingsTotal] = useState(0)
+  const [skillsTotal, setSkillsTotal] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
 
     const load = () =>
-      Promise.all([listRuns(10), runsSummary()])
-        .then(([runsRes, summaryRes]) => {
+      Promise.all([
+        listRuns(10),
+        runsSummary(),
+        getGlobalFindings({ limit: 200 }).catch(() => ({ findings: [], count: 0 })),
+        getSkills({ brief: true, limit: 1 }).catch(() => ({ skills: [], count: 0, total: 0 }))
+      ])
+        .then(([runsRes, summaryRes, findingsRes, skillsRes]) => {
           if (!mounted) return
           setRuns(runsRes.runs ?? [])
           setSummary(summaryRes)
+          setFindingsTotal(findingsRes.count ?? findingsRes.findings?.length ?? 0)
+          // API: total = catalog size; count = page size only
+          setSkillsTotal(skillsRes.total ?? skillsRes.count ?? 0)
           setError(null)
         })
         .catch(err => mounted && setError(err instanceof Error ? err.message : String(err)))
@@ -68,9 +79,11 @@ const Overview = () => {
       total: summary?.total ?? 0,
       active: summary?.active ?? 0,
       compromised: summary?.compromised ?? 0,
-      awaiting: summary?.awaiting_approval ?? 0
+      awaiting: summary?.awaiting_approval ?? 0,
+      findings: findingsTotal,
+      skills: skillsTotal
     }),
-    [summary]
+    [summary, findingsTotal, skillsTotal]
   )
 
   const activity = useMemo(() => {
@@ -117,19 +130,65 @@ const Overview = () => {
     { label: 'TOTAL RUNS', value: stats.total, tone: 'text-foreground' },
     { label: 'ACTIVE OPS', value: stats.active, tone: 'text-primary' },
     { label: 'COMPROMISED', value: stats.compromised, tone: 'text-primary text-glow' },
-    { label: 'AWAITING APPROVAL', value: stats.awaiting, tone: stats.awaiting > 0 ? 'text-warning' : 'text-foreground' }
+    { label: 'AWAITING APPROVAL', value: stats.awaiting, tone: stats.awaiting > 0 ? 'text-warning' : 'text-foreground' },
+    { label: 'FINDINGS', value: stats.findings, tone: 'text-primary' },
+    { label: 'SKILLS LOADED', value: stats.skills, tone: 'text-foreground' }
   ]
+
+  // Globe pulse: active ops drive activity; running state spins faster.
+  const globeState = stats.active > 0 ? 'running' : 'idle'
+  const globeLevel = Math.min(1, (stats.active || 0) * 0.35 + (stats.awaiting > 0 ? 0.25 : 0))
 
   return (
     <div className='flex flex-col gap-6'>
-      {/* Hero */}
-      <div className='grid-bg relative overflow-hidden rounded-md border'>
-        <MatrixRain />
-        <div className='scanlines absolute inset-0' />
-        <div className='relative flex flex-col gap-2 px-6 py-10'>
-          <p className='micro-label'>AI PENTEST ORCHESTRATION</p>
-          <Logo className='text-2xl sm:text-3xl [&_svg]:size-7' />
-          <UtcClock className='text-muted-foreground font-mono text-xs tracking-widest' />
+      <PageHeader
+        title='OVERVIEW'
+        description='Fleet status · live engagements · findings roll-up'
+        actions={
+          <Link
+            href='/runs/new'
+            className='bg-primary text-primary-foreground hover:bg-primary/90 rounded-sm px-3 py-2 font-mono text-[10px] tracking-widest uppercase'
+          >
+            New operation
+          </Link>
+        }
+      />
+
+      {/* Hero + single WebGL globe (prod: no matrix rain stack) */}
+      <div className='hud-corners relative overflow-hidden rounded-sm border border-primary/15'>
+        <div className='scanlines pointer-events-none absolute inset-0 opacity-60' />
+        <div className='relative grid items-center gap-6 px-6 py-8 md:grid-cols-[1fr_minmax(200px,280px)] lg:grid-cols-[1fr_300px]'>
+          <div className='flex flex-col gap-2'>
+            <p className='micro-label'>AI PENTEST ORCHESTRATION</p>
+            <Logo className='text-2xl sm:text-3xl [&_svg]:size-7' />
+            <UtcClock className='text-muted-foreground font-mono text-xs tracking-widest' />
+            <p className='text-muted-foreground mt-2 max-w-md font-mono text-[11px] leading-relaxed'>
+              Operator globe tracks active runs · CyberStrike skills + multi-agent pipeline · drag to orbit
+            </p>
+            {stats.active > 0 && (
+              <p className='text-primary micro-label mt-1 flex items-center gap-2'>
+                <LiveDot tone='cyan' /> {stats.active} ACTIVE · C2 LIVE
+              </p>
+            )}
+            <Link
+              href='/showcase'
+              className='text-primary micro-label mt-3 inline-flex w-fit tracking-widest underline-offset-4 hover:underline'
+            >
+              OPEN PRODUCT SHOWCASE →
+            </Link>
+          </div>
+          <div className='relative mx-auto aspect-square w-full max-w-[280px] lg:max-w-[300px] overflow-hidden rounded-sm border border-primary/20 bg-black/40'>
+            <TalonGlobe
+              className='h-full w-full'
+              variant='hero'
+              interactive
+              state={globeState}
+              activityLevel={globeLevel}
+              onClick={() => {
+                window.location.assign('/runs/new')
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -140,7 +199,7 @@ const Overview = () => {
       )}
 
       {/* Stat cards */}
-      <div className='grid grid-cols-2 gap-4 lg:grid-cols-4'>
+      <div className='grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6'>
         {statCards.map(card => (
           <Card key={card.label} className='hud-corners gap-2 py-4'>
             <CardHeader className='px-4'>

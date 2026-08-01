@@ -1,32 +1,30 @@
-// React Imports
 import type { ReactNode } from 'react'
 
-// Util Imports
 import { cn } from '@/lib/utils'
 
-/**
- * Standard page title block — one h1 + optional micro-label subtitle, with an
- * optional right-aligned action slot. Keeps every top-level view visually
- * aligned (typography, spacing, baseline) without repeating the markup.
- */
-const PageHeader = ({
-  title,
-  subtitle,
-  action,
-  className
-}: {
+// ponytail: accept BOTH prop conventions so merged callers compile without
+// rewriting either side -- origin views pass description/actions, local views
+// (Terminal, Runs, NewRun, Settings) pass subtitle/action.
+type PageHeaderProps = {
   title: ReactNode
+  description?: ReactNode
   subtitle?: ReactNode
+  actions?: ReactNode
   action?: ReactNode
   className?: string
-}) => {
+}
+
+/** Consistent operator page chrome. */
+const PageHeader = ({ title, description, subtitle, actions, action, className }: PageHeaderProps) => {
+  const desc = description ?? subtitle
+  const acts = actions ?? action
   return (
-    <div className={cn('flex flex-wrap items-end justify-between gap-3', className)}>
-      <div className='min-w-0'>
-        <h1 className='font-mono text-xl font-semibold tracking-widest'>{title}</h1>
-        {subtitle && <p className='micro-label mt-1'>{subtitle}</p>}
+    <div className={cn('flex flex-wrap items-end justify-between gap-4', className)}>
+      <div className='min-w-0 space-y-1.5'>
+        <h1 className='font-mono text-xl font-semibold tracking-[0.18em] text-foreground sm:text-2xl'>{title}</h1>
+        {desc ? <p className='micro-label text-muted-foreground max-w-2xl'>{desc}</p> : null}
       </div>
-      {action}
+      {acts ? <div className='flex flex-wrap items-center gap-2'>{acts}</div> : null}
     </div>
   )
 }

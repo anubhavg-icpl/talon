@@ -12,9 +12,10 @@ const CrosshairGlyph = ({ className }: { className?: string }) => (
 const Logo = ({ className, compact }: { className?: string; compact?: boolean }) => {
   return (
     <span className={cn('inline-flex items-center gap-2 font-mono', className)}>
-      <CrosshairGlyph className='text-primary size-5 shrink-0' />
-      <span className='text-sm font-semibold tracking-widest whitespace-nowrap'>
-        TALON <span className='text-primary'>{'//'}</span> {compact ? 'OPS' : 'OPS CONSOLE'}
+      <CrosshairGlyph className='text-primary size-5 shrink-0 drop-shadow-[0_0_8px_var(--op-glow)]' />
+      <span className='text-sm font-semibold tracking-[0.2em] whitespace-nowrap'>
+        TALON <span className='text-primary text-glow'>{'//'}</span>{' '}
+        <span className='text-primary/90'>{compact ? 'OP' : 'OPERATOR'}</span>
       </span>
     </span>
   )

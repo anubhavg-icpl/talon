@@ -30,8 +30,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Talon Ops Console',
-  description: 'AI pentest orchestration console — launch, monitor and authorize autonomous pentest operations.',
+  title: 'Talon // Operator',
+  description: 'AI-driven penetration testing orchestration — recon, exploit, post-exploit, judge.',
   icons: [{ rel: 'icon', url: '/favicon.webp', type: 'image/webp' }]
 }
 

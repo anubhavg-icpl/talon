@@ -1,0 +1,54 @@
+# stage: post_exploit
+# category: CIS_benchmarks
+
+
+# 1.2.15 Ensure that the --profiling argument is set to false (Automated)
+
+## Profile Applicability
+
+- Level 1 - Master Node
+
+## Description
+
+Disable profiling, if not needed.
+
+## Rationale
+
+Profiling allows for the identification of specific performance bottlenecks. It generates a significant amount of program data that could potentially be exploited to uncover system and program details. If you are not experiencing any bottlenecks and do not need the profiler for troubleshooting purposes, it is recommended to turn it off to reduce the potential attack surface.
+
+## Impact
+
+Profiling information would not be available.
+
+## Audit
+
+Run the following command on the Control Plane node:
+
+```bash
+ps -ef | grep kube-apiserver
+```
+
+Verify that the `--profiling` argument is set to `false`.
+
+## Remediation
+
+Edit the API server pod specification file `/etc/kubernetes/manifests/kube-apiserver.yaml` on the Control Plane node and set the below parameter.
+
+```bash
+--profiling=false
+```
+
+## Default Value
+
+By default, profiling is enabled.
+
+## References
+
+1. https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/
+
+## CIS Controls
+
+| Controls Version | Control                                              | IG 1 | IG 2 | IG 3 |
+| ---------------- | ---------------------------------------------------- | ---- | ---- | ---- |
+| v8               | 8 Audit Log Management                               |      |      |      |
+| v7               | 6 Maintenance, Monitoring and Analysis of Audit Logs |      |      |      |
