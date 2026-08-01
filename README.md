@@ -438,7 +438,7 @@ Everything important is env vars (`.env` for compose). See **`.env.example`**.
 | `MSF_PORT` | `5554` | SSL if `MSF_SSL=true` |
 | `MSF_SSL` | `true` | Self-signed; strike skips verify |
 | `LHOST` / `LPORT` | `127.0.0.1` / `4444` | Reverse listeners; core + strike |
-| `LLM_PROVIDER` | `bedrock` | Or `openai` / `ollama` |
+| `LLM_PROVIDER` | `bedrock` | Or `openai` / `ollama` / `onnx` (SmolLM SLM) |
 | `TALON_RUN_TIMEOUT` | `20m` | Wall clock per start/resume segment |
 | `OPENAI_HTTP_TIMEOUT` | (client default) | e.g. `120s` for slow hosted APIs |
 | `HEXSTRIKE_MCP_PATH` | sibling `talon-arsenal` | Core/relay spawn path |
@@ -460,6 +460,12 @@ LLM_PROVIDER=ollama
 # docker compose --profile ollama up -d
 # ollama create talon -f models/Modelfile
 
+# Local SmolLM / ONNX Runtime (millisecond SSE tokens → UI)
+LLM_PROVIDER=onnx
+# docker compose --profile slm up -d --build onnx-slm
+# ONNX_BASE_URL=http://localhost:8090/v1
+# See docs/slm-onnx.md
+
 # Mix: orchestrator on hosted, codegen local
 LLM_PROVIDER=openai
 LLM_CODE_PROVIDER=ollama
@@ -474,7 +480,11 @@ Base URL: **`http://localhost:8000`** (host networking).
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/health` | Liveness (`{"status":"ok","service":"talon-core"}`) |
-| `GET` | `/health/services` | Live probes of every dependency (postgres, arsenal, msfrpcd RPC auth, rabbitmq, ollama) with latency |
+| `GET` | `/health/services` | Live probes of every dependency (postgres, arsenal, msfrpcd RPC auth, rabbitmq, ollama, onnx-slm) with latency |
+| `POST` | `/llm/stream` | SSE token stream from active LLM (prefer `LLM_PROVIDER=onnx`) |
+| `POST` | `/llm/assist` | SLM assist with curated codebase tools (SSE: tokens + tool events) |
+| `GET` | `/llm/tools` | Read-only tool catalog for UI / SmolLM |
+| `GET` | `/llm/info` | Active provider/model for the stream path |
 | `POST` | `/auth/login` | `{username,password}` → session token + `talon_session` cookie |
 | `POST` | `/auth/logout` | Invalidate session, clear cookie |
 | `GET` | `/auth/me` | Current session user |
