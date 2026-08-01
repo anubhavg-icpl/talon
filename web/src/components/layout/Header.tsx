@@ -11,7 +11,7 @@ import { ChevronDownIcon, LogOutIcon, SettingsIcon } from 'lucide-react'
 
 // Component Imports
 import CommandPalette from '@/components/layout/CommandPalette'
-import ThemeSettings from '@/components/layout/ThemeSettings'
+
 import LiveDot from '@/components/shared/LiveDot'
 import {
   Breadcrumb,
@@ -105,7 +105,6 @@ const Header = () => {
         </div>
         <div className='flex items-center gap-3 font-mono text-[10px] tracking-widest uppercase'>
           <CommandPalette />
-          <ThemeSettings />
           <Separator orientation='vertical' className='hidden h-4! data-vertical:self-center sm:block' />
           {coreUp === null ? (
             <span className='text-muted-foreground'>LINK …</span>

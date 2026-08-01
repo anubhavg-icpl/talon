@@ -44,10 +44,10 @@ const RootLayout = ({ children }: Readonly<{ children: ReactNode }>) => {
       suppressHydrationWarning
     >
       <body className='app-scanlines flex min-h-full w-full flex-auto flex-col'>
-        {/* No-FOUC: apply the saved accent preset before first paint. */}
+        {/* Force default operator accent (electric red); clear any legacy preset. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=localStorage.getItem('talon-theme-preset');if(p&&p!=='talon')document.documentElement.dataset.themePreset=p;}catch(e){}})();`
+            __html: `(function(){try{delete document.documentElement.dataset.themePreset;localStorage.removeItem('talon-theme-preset');}catch(e){}})();`
           }}
         />
         <NuqsAdapter>
