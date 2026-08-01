@@ -95,92 +95,222 @@ const severityEdge = (sev: string): string => {
   }
 }
 
-// Compact 3-gate evidence chain (baseline -> attack -> diff) with per-gate
-// presence + overall verification flag: evidence you can scan in one glance,
-// matching how Burp / Wiz surface evidence-backed findings.
-const GateChain = ({ evidence }: { evidence?: Finding['evidence'] }) => {
+const formatEvidenceText = (raw?: string) => {
+  if (!raw) return ''
+  let s = raw.replace(/\\n/g, '\n').trim()
+  // Pretty-print JSON attack blobs (e.g. run_exploit payloads)
+  if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+    try {
+      s = JSON.stringify(JSON.parse(s), null, 2)
+    } catch {
+      /* keep raw */
+    }
+  }
+  return s
+}
+
+const formatStepsList = (raw?: string): string[] => {
+  if (!raw?.trim()) return []
+  return raw
+    .replace(/\\n/g, '\n')
+    .split('\n')
+    .map(l => l.replace(/^\s*\d+[\).\s-]+/, '').trim())
+    .filter(Boolean)
+}
+
+// Compact 3-gate evidence chain (baseline → attack → diff).
+const GateChain = ({ evidence, expanded }: { evidence?: Finding['evidence']; expanded?: boolean }) => {
   const gates = [
-    { name: 'BASELINE', value: evidence?.baseline },
-    { name: 'ATTACK', value: evidence?.attack },
-    { name: 'DIFF', value: evidence?.diff }
+    { key: 'baseline', name: 'BASELINE', value: evidence?.baseline },
+    { key: 'attack', name: 'ATTACK', value: evidence?.attack },
+    { key: 'diff', name: 'DIFF', value: evidence?.diff }
   ]
   if (!gates.some(g => g.value) && !evidence?.passed) return null
+
+  const present = gates.filter(g => g.value).length
+
   return (
-    <div className='border-border/40 bg-muted/20 mt-2 space-y-2 rounded border p-2 text-[11px]'>
-      <div className='flex items-center justify-between'>
-        <div className='flex items-center gap-1.5'>
+    <div className='border-border/40 bg-muted/20 space-y-2 rounded-sm border p-2.5 text-[11px]'>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <div className='flex flex-wrap items-center gap-1.5'>
           {gates.map((g, i) => (
-            <>
+            <span key={g.key} className='inline-flex items-center gap-1.5'>
               <span
                 className={cn(
-                  'flex h-4 w-4 items-center justify-center rounded-full font-mono text-[9px] font-bold',
-                  g.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground/40'
+                  'flex size-4 items-center justify-center rounded-full font-mono text-[9px] font-bold',
+                  g.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground/50'
                 )}
-                aria-label={g.value ? `${g.name}: present` : `${g.name}: absent`}
+                title={g.value ? `${g.name}: present` : `${g.name}: missing`}
               >
                 {i + 1}
               </span>
               <span
                 className={cn(
-                  'text-[9px] font-mono tracking-widest uppercase',
-                  g.value ? 'text-foreground' : 'text-muted-foreground/40'
+                  'font-mono text-[9px] tracking-widest uppercase',
+                  g.value ? 'text-foreground' : 'text-muted-foreground/50'
                 )}
               >
                 {g.name}
               </span>
-              {i < gates.length - 1 && <span className='text-muted-foreground/40'>›</span>}
-            </>
+              {i < gates.length - 1 && <span className='text-muted-foreground/40 mx-0.5'>›</span>}
+            </span>
           ))}
         </div>
-        {evidence?.passed && (
-          <Badge variant='outline' className='border-primary/50 text-primary font-mono text-[9px]'>
-            VERIFIED
-          </Badge>
-        )}
+        <div className='flex items-center gap-1.5'>
+          <span className='text-muted-foreground font-mono text-[9px] tracking-wide'>
+            {present}/3 gates
+          </span>
+          {evidence?.passed ? (
+            <Badge variant='outline' className='border-emerald-500/50 font-mono text-[9px] text-emerald-400'>
+              VERIFIED
+            </Badge>
+          ) : (
+            <Badge variant='outline' className='border-amber-500/40 font-mono text-[9px] text-amber-400'>
+              INCOMPLETE
+            </Badge>
+          )}
+        </div>
       </div>
-      <div className='space-y-0.5'>
-        {gates.map(g =>
-          g.value ? (
-            <p key={g.name}>
-              <span className='text-primary'>{g.name}:</span> {g.value}
-            </p>
-          ) : null
-        )}
-      </div>
+      {expanded && (
+        <div className='space-y-2 border-t border-border/40 pt-2'>
+          {gates.map(g => (
+            <div key={g.key} className='space-y-0.5'>
+              <p
+                className={cn(
+                  'font-mono text-[9px] font-semibold tracking-widest uppercase',
+                  g.value ? 'text-primary' : 'text-muted-foreground/50'
+                )}
+              >
+                {g.name}
+                {!g.value && <span className='ml-1 font-normal normal-case tracking-normal'>— not provided</span>}
+              </p>
+              {g.value && (
+                <pre className='text-muted-foreground max-h-36 overflow-auto rounded border border-border/30 bg-black/30 p-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap break-words'>
+                  {formatEvidenceText(g.value)}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-const FindingCard = ({ finding }: { finding: Finding }) => (
-  <Card className={cn('border-border/60', severityEdge(finding.severity))}>
-    <CardHeader className='pb-2'>
-      <div className='flex flex-wrap items-center gap-2'>
-        <Badge variant={severityVariant(finding.severity)} className='font-mono text-[10px] tracking-widest uppercase'>
-          {finding.severity}
-        </Badge>
-        {finding.stage && (
-          <span className='text-muted-foreground font-mono text-[10px] tracking-widest uppercase'>{finding.stage}</span>
-        )}
-        <span className='text-muted-foreground ml-auto font-mono text-[10px]'>{finding.id}</span>
-      </div>
-      <CardTitle className='mt-2 font-mono text-sm font-semibold tracking-wide'>{finding.title}</CardTitle>
-    </CardHeader>
-    <CardContent className='space-y-2 font-mono text-xs'>
-      {finding.description && <p className='text-muted-foreground leading-relaxed'>{finding.description}</p>}
-      <div className='text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-[10px] tracking-widest uppercase'>
-        {finding.endpoint && <span>EP: {finding.endpoint}</span>}
-        {finding.cwe_id && <span>REF: {finding.cwe_id}</span>}
-        {finding.source && <span>SRC: {finding.source}</span>}
-      </div>
-      {finding.evidence && <GateChain evidence={finding.evidence} />}
-      {finding.recommendation && (
-        <p className='text-muted-foreground'>
-          <span className='text-foreground'>REMEDY:</span> {finding.recommendation}
-        </p>
-      )}
-    </CardContent>
-  </Card>
-)
+const FindingCard = ({
+  finding,
+  defaultOpen = false
+}: {
+  finding: Finding
+  defaultOpen?: boolean
+}) => {
+  const [open, setOpen] = useState(defaultOpen)
+  const steps = formatStepsList(finding.steps_to_reproduce)
+  const hasEvidence =
+    Boolean(finding.evidence?.baseline || finding.evidence?.attack || finding.evidence?.diff) ||
+    finding.evidence?.passed
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card className={cn('border-border/60 overflow-hidden', severityEdge(finding.severity))}>
+        <CollapsibleTrigger className='hover:bg-muted/15 w-full text-left transition-colors'>
+          <CardHeader className='pb-2'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <Badge
+                variant={severityVariant(finding.severity)}
+                className='font-mono text-[10px] tracking-widest uppercase'
+              >
+                {finding.severity}
+              </Badge>
+              {finding.stage && (
+                <span className='text-muted-foreground font-mono text-[10px] tracking-widest uppercase'>
+                  {finding.stage}
+                </span>
+              )}
+              {finding.status && (
+                <span className='text-muted-foreground font-mono text-[10px] tracking-widest uppercase'>
+                  {finding.status}
+                </span>
+              )}
+              {finding.evidence?.passed ? (
+                <Badge variant='outline' className='border-emerald-500/40 font-mono text-[9px] text-emerald-400'>
+                  3-GATE PASS
+                </Badge>
+              ) : hasEvidence ? (
+                <Badge variant='outline' className='border-amber-500/40 font-mono text-[9px] text-amber-400'>
+                  3-GATE FAIL
+                </Badge>
+              ) : null}
+              <span className='text-muted-foreground ml-auto font-mono text-[10px]'>{finding.id}</span>
+              <span className='text-muted-foreground font-mono text-[10px]' aria-hidden>
+                {open ? '▾' : '▸'}
+              </span>
+            </div>
+            <CardTitle className='mt-2 font-mono text-sm font-semibold tracking-wide'>{finding.title}</CardTitle>
+            {!open && finding.description && (
+              <p className='text-muted-foreground mt-1 line-clamp-2 font-mono text-[11px] leading-relaxed'>
+                {finding.description}
+              </p>
+            )}
+            {!open && (
+              <div className='text-muted-foreground mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[9px] tracking-widest uppercase'>
+                {finding.endpoint && <span className='max-w-full truncate'>EP: {finding.endpoint}</span>}
+                {finding.source && <span>SRC: {finding.source}</span>}
+              </div>
+            )}
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className='space-y-3 border-t border-border/40 pt-3 font-mono text-xs'>
+            {finding.description && (
+              <p className='text-muted-foreground leading-relaxed'>{finding.description}</p>
+            )}
+            <div className='text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-[10px] tracking-widest uppercase'>
+              {finding.endpoint && (
+                <span className='max-w-full break-all normal-case tracking-normal'>
+                  <span className='text-primary mr-1 tracking-widest uppercase'>EP</span>
+                  {finding.endpoint}
+                </span>
+              )}
+              {finding.cwe_id && <span>REF: {finding.cwe_id}</span>}
+              {finding.source && <span>SRC: {finding.source}</span>}
+              {finding.attack_vector && <span>VEC: {finding.attack_vector}</span>}
+            </div>
+            {hasEvidence && <GateChain evidence={finding.evidence} expanded />}
+            {steps.length > 0 && (
+              <div>
+                <p className='micro-label mb-1.5'>STEPS TO REPRODUCE</p>
+                <ol className='text-muted-foreground list-decimal space-y-1 pl-4 text-[11px] leading-relaxed'>
+                  {steps.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            {finding.poc && (
+              <div>
+                <p className='micro-label mb-1'>POC</p>
+                <pre className='bg-muted/30 max-h-28 overflow-auto rounded border border-border/40 p-2 text-[10px] whitespace-pre-wrap'>
+                  {formatEvidenceText(finding.poc)}
+                </pre>
+              </div>
+            )}
+            {finding.recommendation && (
+              <p className='text-muted-foreground leading-relaxed'>
+                <span className='text-foreground font-semibold'>REMEDY:</span> {finding.recommendation}
+              </p>
+            )}
+            {finding.business_impact && (
+              <p className='text-muted-foreground leading-relaxed'>
+                <span className='text-foreground font-semibold'>IMPACT:</span> {finding.business_impact}
+              </p>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  )
+}
 
 const isActive = (status?: string) => status === 'running' || status === 'awaiting_approval' || status === 'initializing'
 
@@ -736,39 +866,43 @@ const RunDetail = ({ runId }: { runId: string }) => {
 
         <TabsContent value='findings' className='flex flex-col gap-4 pt-4'>
           <div className='flex flex-wrap items-center justify-between gap-2'>
-            {status?.findings_summary ? (
-              <div className='flex flex-wrap gap-2 font-mono text-[10px] tracking-widest uppercase'>
-                <Badge variant='outline'>TOTAL {status.findings_summary.total}</Badge>
-                {status.findings_summary.critical > 0 && (
-                  <Badge variant='destructive'>CRIT {status.findings_summary.critical}</Badge>
-                )}
-                {status.findings_summary.high > 0 && (
-                  <Badge variant='destructive'>HIGH {status.findings_summary.high}</Badge>
-                )}
-                {status.findings_summary.medium > 0 && (
-                  <Badge variant='default'>MED {status.findings_summary.medium}</Badge>
-                )}
-                {status.findings_summary.low > 0 && (
-                  <Badge variant='secondary'>LOW {status.findings_summary.low}</Badge>
-                )}
-                {status.findings_summary.info > 0 && (
-                  <Badge variant='outline'>INFO {status.findings_summary.info}</Badge>
-                )}
-                <Badge variant='outline' className='border-primary/40 text-primary'>
-                  3-GATE {status.findings_summary.confirmed}
-                </Badge>
-              </div>
-            ) : (
-              <span />
-            )}
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={exportFindingsJSON}
-              className='font-mono text-[10px] tracking-widest uppercase'
-            >
-              Export JSON
-            </Button>
+            {(() => {
+              const sum = status?.findings_summary
+              const local = {
+                total: findings.length,
+                critical: findings.filter(f => f.severity === 'critical').length,
+                high: findings.filter(f => f.severity === 'high').length,
+                medium: findings.filter(f => f.severity === 'medium').length,
+                low: findings.filter(f => f.severity === 'low').length,
+                info: findings.filter(f => f.severity === 'info').length,
+                confirmed: findings.filter(f => f.evidence?.passed).length
+              }
+              const s = sum && sum.total > 0 ? sum : local
+              if (!s.total && findings.length === 0) return <span />
+              return (
+                <div className='flex flex-wrap gap-2 font-mono text-[10px] tracking-widest uppercase'>
+                  <Badge variant='outline'>TOTAL {s.total || findings.length}</Badge>
+                  {s.critical > 0 && <Badge variant='destructive'>CRIT {s.critical}</Badge>}
+                  {s.high > 0 && <Badge variant='destructive'>HIGH {s.high}</Badge>}
+                  {s.medium > 0 && <Badge variant='default'>MED {s.medium}</Badge>}
+                  {s.low > 0 && <Badge variant='secondary'>LOW {s.low}</Badge>}
+                  {s.info > 0 && <Badge variant='outline'>INFO {s.info}</Badge>}
+                  <Badge variant='outline' className='border-primary/40 text-primary'>
+                    3-GATE {s.confirmed}
+                  </Badge>
+                </div>
+              )
+            })()}
+            <div className='flex flex-wrap gap-2'>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={exportFindingsJSON}
+                className='font-mono text-[10px] tracking-widest uppercase'
+              >
+                Export JSON
+              </Button>
+            </div>
           </div>
           {!loaded ? (
             <Skeleton className='h-48 w-full' />
@@ -780,31 +914,40 @@ const RunDetail = ({ runId }: { runId: string }) => {
             </p>
           ) : (
             <div className='flex flex-col gap-3'>
-              {findings.map(f => (
-                <div key={f.id} className='flex flex-col gap-2'>
-                  <FindingCard finding={f} />
-                  {f.status === 'new' && (
-                    <div className='flex gap-2'>
-                      <Button
-                        size='sm'
-                        variant='outline'
-                        className='font-mono text-[10px] tracking-widest uppercase'
-                        onClick={() => handleTriage(f.id, 'approved')}
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size='sm'
-                        variant='outline'
-                        className='font-mono text-[10px] tracking-widest uppercase'
-                        onClick={() => handleTriage(f.id, 'duplicate')}
-                      >
-                        Mark Duplicate
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))}
+              <p className='text-muted-foreground font-mono text-[10px] tracking-widest uppercase'>
+                Click a finding to expand evidence · {findings.length} item{findings.length === 1 ? '' : 's'}
+              </p>
+              {[...findings]
+                .sort((a, b) => {
+                  const rank = (s: string) =>
+                    ({ critical: 0, high: 1, medium: 2, low: 3, info: 4 })[s.toLowerCase()] ?? 5
+                  return rank(a.severity) - rank(b.severity)
+                })
+                .map((f, idx) => (
+                  <div key={`${f.id}-${f.source}-${f.stage ?? ''}-${idx}`} className='flex flex-col gap-2'>
+                    <FindingCard finding={f} defaultOpen={idx === 0} />
+                    {(f.status === 'new' || f.status === 'open') && (
+                      <div className='flex flex-wrap gap-2 pl-1'>
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          className='font-mono text-[10px] tracking-widest uppercase'
+                          onClick={() => handleTriage(f.id, 'approved')}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          className='font-mono text-[10px] tracking-widest uppercase'
+                          onClick={() => handleTriage(f.id, 'duplicate')}
+                        >
+                          Mark Duplicate
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
             </div>
           )}
         </TabsContent>
