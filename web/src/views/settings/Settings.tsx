@@ -1,32 +1,43 @@
 'use client'
 
-// React Imports
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
-// Third-party Imports
+import Link from 'next/link'
+
 import { version as nextVersion } from 'next/package.json'
+import { ChevronDown, CircleHelp, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 
-// Type Imports
 import type { ConfigEntry, MCPServerInfo, ServiceHealth } from '@/lib/api'
-
-// Component Imports
-import HudStill from '@/components/shared/HudStill'
 import LiveDot from '@/components/shared/LiveDot'
 import PageHeader from '@/components/shared/PageHeader'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
-
-// Next Imports
-import Link from 'next/link'
-
-// Util Imports
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { getAgents, getConfig, getMCPServers, getSkills, putConfig, serviceHealth } from '@/lib/api'
 import { cn } from '@/lib/utils'
+
+/* --------------------------------- helpers -------------------------------- */
+
+const HelpTip = ({ label, children }: { label: string; children: ReactNode }) => (
+  <Tooltip>
+    <TooltipTrigger
+      type='button'
+      className='text-muted-foreground hover:text-primary inline-flex size-5 shrink-0 items-center justify-center rounded-sm border border-border/60 transition-colors'
+      aria-label={label}
+    >
+      <CircleHelp className='size-3' />
+    </TooltipTrigger>
+    <TooltipContent side='top' className='max-w-xs text-left font-mono text-[11px] leading-relaxed'>
+      {children}
+    </TooltipContent>
+  </Tooltip>
+)
 
 const StatusPill = ({ status }: { status: ServiceHealth['status'] | 'loading' }) => {
   if (status === 'loading') return <Skeleton className='size-2 rounded-full' />
@@ -50,28 +61,39 @@ const StatusPill = ({ status }: { status: ServiceHealth['status'] | 'loading' })
   )
 }
 
-const ServiceCard = ({ svc }: { svc: ServiceHealth }) => (
-  <Card className='hud-corners gap-2 py-4'>
-    <CardHeader className='px-4'>
-      <CardTitle className='flex items-center justify-between font-mono text-sm tracking-widest'>
-        {svc.name}
-        <StatusPill status={svc.status} />
-      </CardTitle>
-      <CardDescription className='font-mono text-xs break-words'>{svc.detail}</CardDescription>
-    </CardHeader>
-    <CardContent className='flex items-center justify-between px-4'>
-      <p className='text-muted-foreground font-mono text-xs break-all'>{svc.endpoint}</p>
-      {svc.status === 'online' && <p className='micro-label shrink-0 pl-2'>{svc.latency_ms}ms</p>}
-    </CardContent>
-  </Card>
-)
+const ServiceCard = ({ svc }: { svc: ServiceHealth }) => {
+  const optional = svc.name === 'ollama' || svc.name === 'onnx-slm'
+  return (
+    <Card className='hud-corners gap-2 py-3'>
+      <CardHeader className='px-4 py-0'>
+        <CardTitle className='flex items-center justify-between gap-2 font-mono text-sm tracking-widest'>
+          <span className='flex min-w-0 items-center gap-1.5'>
+            <span className='truncate'>{svc.name}</span>
+            {optional && (
+              <HelpTip label={`${svc.name} help`}>
+                Optional dependency. Stack can run with LLM_PROVIDER=openai (or other) without this service.
+              </HelpTip>
+            )}
+          </span>
+          <StatusPill status={svc.status} />
+        </CardTitle>
+        <CardDescription className='line-clamp-2 font-mono text-[11px] break-words'>{svc.detail}</CardDescription>
+      </CardHeader>
+      <CardContent className='flex items-center justify-between gap-2 px-4 pt-1'>
+        <p className='text-muted-foreground truncate font-mono text-[11px]' title={svc.endpoint}>
+          {svc.endpoint}
+        </p>
+        {svc.status === 'online' && <p className='micro-label shrink-0'>{svc.latency_ms}ms</p>}
+      </CardContent>
+    </Card>
+  )
+}
 
 const SERVICE_SLOTS = 6
 
 /* ---------------------------------- CONFIG --------------------------------- */
 
 const SECRET_MASK = '••••••••'
-
 const LLM_MODEL_KEYS = new Set(['AGENT_MODEL_ID', 'JUDGE_MODEL_ID', 'CODE_MODEL_ID'])
 
 type ConfigGroup = 'llm' | 'attacker' | 'features' | 'other'
@@ -91,15 +113,26 @@ const groupOf = (key: string): ConfigGroup => {
   return 'other'
 }
 
-const GROUPS: { id: ConfigGroup; title: string }[] = [
-  { id: 'llm', title: 'LLM PROVIDER' },
-  { id: 'attacker', title: 'ATTACKER CONTEXT' },
-  { id: 'features', title: 'FEATURES' },
-  { id: 'other', title: 'OTHER' }
+const GROUPS: { id: ConfigGroup; title: string; hint: string }[] = [
+  {
+    id: 'llm',
+    title: 'LLM PROVIDER',
+    hint: 'bedrock | openai | ollama | onnx. Models and base URLs only apply to the active provider.'
+  },
+  {
+    id: 'attacker',
+    title: 'ATTACKER CONTEXT',
+    hint: 'LHOST/LPORT used for reverse shells and listener defaults on authorized lab targets.'
+  },
+  {
+    id: 'features',
+    title: 'FEATURES',
+    hint: 'Runtime feature flags persisted when Postgres is available.'
+  },
+  { id: 'other', title: 'OTHER', hint: 'Remaining operator-tunable keys from the control plane.' }
 ]
 
 const LLM_PROVIDERS = ['bedrock', 'openai', 'ollama', 'onnx']
-
 const parseBool = (value: string) => value === 'true' || value === '1'
 
 const SourceBadge = ({ source }: { source: ConfigEntry['source'] }) => {
@@ -121,11 +154,9 @@ const ConfigPanel = () => {
 
   useEffect(() => {
     let mounted = true
-
     getConfig()
       .then(res => mounted && setEntries(res.config ?? []))
       .catch(err => mounted && setError(err instanceof Error ? err.message : String(err)))
-
     return () => {
       mounted = false
     }
@@ -137,7 +168,6 @@ const ConfigPanel = () => {
     if (e.key in draft) return draft[e.key]
     if (e.key.startsWith('FEATURE_')) return parseBool(e.value)
     if (e.secret) return ''
-
     return e.value
   }
 
@@ -145,23 +175,18 @@ const ConfigPanel = () => {
 
   const collectDirty = (): Record<string, unknown> => {
     const dirty: Record<string, unknown> = {}
-
     for (const e of entries ?? []) {
       if (e.key.startsWith('FEATURE_')) {
         const value = Boolean(currentValue(e))
-
         if (value !== parseBool(e.value)) dirty[e.key] = value
       } else if (e.secret) {
         const value = String(currentValue(e))
-
         if (value !== '' && value !== SECRET_MASK) dirty[e.key] = value
       } else {
         const value = String(currentValue(e))
-
         if (value !== e.value) dirty[e.key] = value
       }
     }
-
     return dirty
   }
 
@@ -169,14 +194,11 @@ const ConfigPanel = () => {
 
   const save = async () => {
     setSaving(true)
-
     try {
       const res = await putConfig(collectDirty())
-
       toast.success(res.note || `UPDATED ${res.updated.length} KEYS`)
       setDraft({})
       const fresh = await getConfig()
-
       setEntries(fresh.config ?? [])
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save config')
@@ -241,9 +263,15 @@ const ConfigPanel = () => {
   }
 
   return (
-    <Card>
+    <Card className='hud-corners'>
       <CardHeader className='flex flex-wrap items-center justify-between gap-3'>
-        <CardTitle className='micro-label'>CONFIGURATION</CardTitle>
+        <div className='flex items-center gap-2'>
+          <CardTitle className='micro-label'>CONFIGURATION</CardTitle>
+          <HelpTip label='Config help'>
+            ENV keys come from process environment. DATABASE source can be edited when Postgres is available. Leave
+            secrets blank to keep the current value.
+          </HelpTip>
+        </div>
         <Button
           size='sm'
           className='font-mono text-xs font-semibold tracking-widest uppercase'
@@ -271,12 +299,14 @@ const ConfigPanel = () => {
             )}
             {GROUPS.map(group => {
               const groupEntries = entries.filter(e => groupOf(e.key) === group.id)
-
               if (groupEntries.length === 0) return null
 
               return (
                 <div key={group.id} className='flex flex-col gap-3'>
-                  <p className='micro-label'>{group.title}</p>
+                  <div className='flex items-center gap-2'>
+                    <p className='micro-label'>{group.title}</p>
+                    <HelpTip label={group.title}>{group.hint}</HelpTip>
+                  </div>
                   <div className='flex flex-col gap-3'>
                     {groupEntries.map(e => (
                       <div key={e.key} className='grid items-center gap-2 sm:grid-cols-[minmax(0,18rem)_1fr]'>
@@ -285,6 +315,12 @@ const ConfigPanel = () => {
                             {e.label || e.key}
                           </span>
                           <SourceBadge source={e.source} />
+                          <HelpTip label={e.key}>
+                            <span className='font-semibold'>{e.key}</span>
+                            {e.hot ? ' · hot-reload' : ''}
+                            {e.secret ? ' · secret' : ''}
+                            {e.set ? ' · set' : ' · unset'}
+                          </HelpTip>
                         </div>
                         <div className='flex items-center gap-2'>{renderControl(e)}</div>
                       </div>
@@ -300,196 +336,174 @@ const ConfigPanel = () => {
   )
 }
 
-/* -------------------------------- MCP SERVERS ------------------------------- */
+/* --------------------------- operator help (extra) -------------------------- */
 
-const TOOL_PREVIEW_COUNT = 12
-
-const MCPServerCard = ({ server }: { server: MCPServerInfo }) => {
-  const [expanded, setExpanded] = useState(false)
-
-  const tools = server.tools ?? []
-  const visible = expanded ? tools : tools.slice(0, TOOL_PREVIEW_COUNT)
-
-  return (
-    <Card className='hud-corners gap-2 py-4'>
-      <CardHeader className='px-4'>
-        <CardTitle className='flex items-center justify-between font-mono text-sm tracking-widest'>
-          {server.name}
-          <span className='micro-label border-primary/40 text-primary rounded-sm border px-1.5 py-0.5'>
-            {tools.length} TOOLS
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className='flex flex-col gap-2 px-4'>
-        <ul className='text-muted-foreground flex flex-col gap-1 font-mono text-xs break-all'>
-          {visible.map(tool => (
-            <li key={tool}>▸ {tool}</li>
-          ))}
-        </ul>
-        {tools.length > TOOL_PREVIEW_COUNT && (
-          <button
-            className='text-primary micro-label mt-1 self-start hover:underline'
-            onClick={() => setExpanded(prev => !prev)}
-          >
-            {expanded ? '[ SHOW LESS ]' : `[ SHOW ALL ${tools.length} ]`}
-          </button>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-const MCPPanel = () => {
+const OperatorHelp = ({ coreOnline }: { coreOnline: boolean }) => {
+  const [open, setOpen] = useState(false)
+  const [skillsCount, setSkillsCount] = useState<number | null>(null)
+  const [agentsCount, setAgentsCount] = useState<number | null>(null)
   const [servers, setServers] = useState<MCPServerInfo[] | null>(null)
   const [a2a, setA2a] = useState<{ model?: string; notes?: string[] } | null>(null)
   const [skillStats, setSkillStats] = useState<Record<string, number> | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [mcpError, setMcpError] = useState<string | null>(null)
+  const [expandedServer, setExpandedServer] = useState<string | null>(null)
 
   useEffect(() => {
-    let mounted = true
-
-    getMCPServers()
-      .then(res => {
-        if (!mounted) return
-        setServers(res.servers ?? [])
-        setA2a(res.agent_to_agent ?? null)
-        setSkillStats(res.skill_stats ?? null)
-      })
-      .catch(err => mounted && setError(err instanceof Error ? err.message : String(err)))
-
-    return () => {
-      mounted = false
-    }
-  }, [])
-
-  return (
-    <div className='flex flex-col gap-4'>
-      <div>
-        <h2 className='font-mono text-sm font-semibold tracking-widest'>MCP + AGENT-TO-AGENT</h2>
-        <p className='micro-label mt-1'>
-          STDIO MCP (ARSENAL / STRIKE) · IN-PROCESS SKILLS & FINDINGS · ORCHESTRATOR DELEGATES
-        </p>
-      </div>
-      {a2a && (
-        <Card className='border-primary/30'>
-          <CardHeader className='pb-2'>
-            <CardTitle className='micro-label'>AGENT COMMUNICATION</CardTitle>
-            <CardDescription className='font-mono text-xs'>{a2a.model}</CardDescription>
-          </CardHeader>
-          <CardContent className='space-y-1 font-mono text-[11px]'>
-            {(a2a.notes ?? []).map((n, i) => (
-              <p key={i} className='text-muted-foreground'>
-                ▸ {n}
-              </p>
-            ))}
-            {skillStats && (
-              <p className='text-primary mt-2'>
-                CyberStrike skills loaded: {skillStats.total ?? 0} (disk {skillStats.src_disk ?? 0} · builtin{' '}
-                {skillStats.src_builtin ?? 0}) — agents call skill_search / skill_get
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-      {error ? (
-        <p className='text-destructive font-mono text-xs tracking-widest uppercase'>MCP SERVERS UNAVAILABLE — {error}</p>
-      ) : servers === null ? (
-        <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          <Skeleton className='h-28 w-full' />
-          <Skeleton className='h-28 w-full' />
-        </div>
-      ) : servers.length === 0 ? (
-        <p className='micro-label py-6 text-center'>NO MCP SERVERS REGISTERED</p>
-      ) : (
-        <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-          {servers.map(server => (
-            <MCPServerCard key={server.name} server={server} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ------------------------------ INTELLIGENCE ------------------------------- */
-
-const IntelligencePanel = () => {
-  const [skillsCount, setSkillsCount] = useState<number | null>(null)
-  const [agentsCount, setAgentsCount] = useState<number | null>(null)
-
-  useEffect(() => {
+    if (!open) return
     getSkills({ brief: true, limit: 1 })
       .then(r => setSkillsCount(r.total ?? r.count ?? 0))
       .catch(() => setSkillsCount(0))
     getAgents()
       .then(r => setAgentsCount(r.count ?? 0))
       .catch(() => setAgentsCount(0))
-  }, [])
+    getMCPServers()
+      .then(res => {
+        setServers(res.servers ?? [])
+        setA2a(res.agent_to_agent ?? null)
+        setSkillStats(res.skill_stats ?? null)
+        setMcpError(null)
+      })
+      .catch(err => setMcpError(err instanceof Error ? err.message : String(err)))
+  }, [open])
 
   return (
-    <div className='flex flex-col gap-4'>
-      <div>
-        <h2 className='font-mono text-sm font-semibold tracking-widest'>INTELLIGENCE LAYER</h2>
-        <p className='micro-label mt-1'>SKILLS · AGENTS · FINDINGS — FULL API ↔ UI WIRING</p>
-      </div>
-      <div className='grid gap-4 sm:grid-cols-3'>
-        <Card className='hud-corners'>
-          <CardHeader>
-            <CardTitle className='micro-label'>SKILLS</CardTitle>
-            <CardDescription className='font-mono text-xs'>
-              {skillsCount === null ? '…' : `${skillsCount} loaded`} — methodology pack injected into agents
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link
-              href='/skills'
-              className={cn(
-                buttonVariants({ variant: 'outline', size: 'sm' }),
-                'font-mono text-[10px] tracking-widest uppercase'
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <Card className='hud-corners border-primary/20'>
+        <CollapsibleTrigger className='flex w-full items-center justify-between gap-3 px-4 py-3 text-left'>
+          <div className='flex items-center gap-2'>
+            <CircleHelp className='text-primary size-4' />
+            <div>
+              <p className='font-mono text-xs font-semibold tracking-widest uppercase'>Operator help</p>
+              <p className='micro-label mt-0.5'>Architecture · MCP · skills · proxy — toggle for details</p>
+            </div>
+          </div>
+          <ChevronDown className={cn('text-muted-foreground size-4 shrink-0 transition-transform', open && 'rotate-180')} />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className='flex flex-col gap-5 border-t border-border/60 pt-4'>
+            {/* Quick links */}
+            <div>
+              <p className='micro-label mb-2'>INTELLIGENCE</p>
+              <div className='grid gap-2 sm:grid-cols-3'>
+                <Link
+                  href='/skills'
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'h-auto justify-between py-2 font-mono text-[10px] tracking-widest uppercase'
+                  )}
+                >
+                  Skills {skillsCount != null ? `(${skillsCount})` : ''}
+                  <ExternalLink className='size-3 opacity-60' />
+                </Link>
+                <Link
+                  href='/agents'
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'h-auto justify-between py-2 font-mono text-[10px] tracking-widest uppercase'
+                  )}
+                >
+                  Agents {agentsCount != null ? `(${agentsCount})` : ''}
+                  <ExternalLink className='size-3 opacity-60' />
+                </Link>
+                <Link
+                  href='/findings'
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'h-auto justify-between py-2 font-mono text-[10px] tracking-widest uppercase'
+                  )}
+                >
+                  Findings
+                  <ExternalLink className='size-3 opacity-60' />
+                </Link>
+              </div>
+            </div>
+
+            {/* A2A notes */}
+            {a2a && (
+              <div className='rounded-sm border border-primary/20 bg-primary/5 p-3'>
+                <p className='micro-label mb-1'>AGENT COMMUNICATION</p>
+                <p className='text-muted-foreground mb-2 font-mono text-[11px]'>{a2a.model}</p>
+                <ul className='text-muted-foreground space-y-1 font-mono text-[11px]'>
+                  {(a2a.notes ?? []).map((n, i) => (
+                    <li key={i}>▸ {n}</li>
+                  ))}
+                </ul>
+                {skillStats && (
+                  <p className='text-primary mt-2 font-mono text-[11px]'>
+                    CyberStrike: {skillStats.total ?? 0} skills (disk {skillStats.src_disk ?? 0} · builtin{' '}
+                    {skillStats.src_builtin ?? 0})
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* MCP compact */}
+            <div>
+              <p className='micro-label mb-2'>MCP SERVERS</p>
+              {mcpError ? (
+                <p className='text-destructive font-mono text-[11px]'>Unavailable — {mcpError}</p>
+              ) : servers === null ? (
+                <Skeleton className='h-16 w-full' />
+              ) : servers.length === 0 ? (
+                <p className='micro-label'>No MCP servers registered</p>
+              ) : (
+                <div className='flex flex-col gap-2'>
+                  {servers.map(s => {
+                    const tools = s.tools ?? []
+                    const openSrv = expandedServer === s.name
+                    return (
+                      <div key={s.name} className='rounded-sm border border-border/60 px-3 py-2'>
+                        <button
+                          type='button'
+                          className='flex w-full items-center justify-between gap-2 text-left'
+                          onClick={() => setExpandedServer(openSrv ? null : s.name)}
+                        >
+                          <span className='font-mono text-xs font-semibold tracking-wide'>{s.name}</span>
+                          <span className='micro-label text-primary'>{tools.length} tools {openSrv ? '▾' : '▸'}</span>
+                        </button>
+                        {openSrv && (
+                          <ul className='text-muted-foreground mt-2 max-h-40 space-y-0.5 overflow-auto font-mono text-[10px]'>
+                            {tools.map(t => (
+                              <li key={t}>▸ {t}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               )}
-            >
-              Open Skills
-            </Link>
+            </div>
+
+            {/* Meta footnotes */}
+            <div className='grid gap-3 md:grid-cols-3'>
+              <div className='rounded-sm border border-border/50 p-3'>
+                <p className='micro-label mb-1'>DATA</p>
+                <p className='text-muted-foreground font-mono text-[11px] leading-relaxed'>
+                  Run state, tool logs and reports live under <span className='text-foreground'>TALON_DATA_DIR</span>.
+                  Back up that directory for history.
+                </p>
+              </div>
+              <div className='rounded-sm border border-border/50 p-3'>
+                <p className='micro-label mb-1'>VERSION</p>
+                <p className='text-muted-foreground font-mono text-[11px] leading-relaxed'>
+                  console: Next.js {nextVersion} standalone
+                  <br />
+                  core: {coreOnline ? 'reachable' : 'offline'}
+                </p>
+              </div>
+              <div className='rounded-sm border border-border/50 p-3'>
+                <p className='micro-label mb-1'>API PROXY</p>
+                <p className='text-muted-foreground font-mono text-[11px] leading-relaxed'>
+                  Browser → <span className='text-foreground'>/api/talon/*</span> → TALON_CORE_URL. Streams: WS → SSE →
+                  poll.
+                </p>
+              </div>
+            </div>
           </CardContent>
-        </Card>
-        <Card className='hud-corners'>
-          <CardHeader>
-            <CardTitle className='micro-label'>AGENTS</CardTitle>
-            <CardDescription className='font-mono text-xs'>
-              {agentsCount === null ? '…' : `${agentsCount} modes`} — full / recon / web / network / exploit / post
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link
-              href='/agents'
-              className={cn(
-                buttonVariants({ variant: 'outline', size: 'sm' }),
-                'font-mono text-[10px] tracking-widest uppercase'
-              )}
-            >
-              Open Agents
-            </Link>
-          </CardContent>
-        </Card>
-        <Card className='hud-corners'>
-          <CardHeader>
-            <CardTitle className='micro-label'>FINDINGS</CardTitle>
-            <CardDescription className='font-mono text-xs'>Global 3-gate findings registry across runs</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link
-              href='/findings'
-              className={cn(
-                buttonVariants({ variant: 'outline', size: 'sm' }),
-                'font-mono text-[10px] tracking-widest uppercase'
-              )}
-            >
-              Open Findings
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   )
 }
 
@@ -502,7 +516,6 @@ const Settings = () => {
 
   useEffect(() => {
     let mounted = true
-
     const check = () =>
       serviceHealth()
         .then(res => {
@@ -518,7 +531,6 @@ const Settings = () => {
 
     check()
     const id = setInterval(check, 10000)
-
     return () => {
       mounted = false
       clearInterval(id)
@@ -526,86 +538,50 @@ const Settings = () => {
   }, [])
 
   const coreOnline = services?.find(s => s.name === 'talon-core')?.status === 'online'
+  const onlineCount = services?.filter(s => s.status === 'online').length ?? 0
+  const totalCount = services?.length ?? 0
 
   return (
-    <div className='flex flex-col gap-6'>
-      <PageHeader
-        title='SYSTEM'
-        subtitle='LIVE SERVICE HEALTH — PROBED SERVER-SIDE EVERY 10S'
-        action={
-          lastProbe && (
-            <p className='micro-label'>LAST PROBE {lastProbe.toLocaleTimeString('en-GB', { hour12: false })}</p>
-          )
-        }
-      />
+    <TooltipProvider delay={200}>
+      <div className='flex flex-col gap-6'>
+        <PageHeader
+          title='SYSTEM'
+          subtitle='Service health · configuration'
+          action={
+            <div className='flex flex-wrap items-center gap-3'>
+              {services && (
+                <span className='micro-label text-primary'>
+                  {onlineCount}/{totalCount} ONLINE
+                </span>
+              )}
+              {lastProbe && (
+                <p className='micro-label'>PROBE {lastProbe.toLocaleTimeString('en-GB', { hour12: false })}</p>
+              )}
+              <HelpTip label='System page help'>
+                Live probes hit core every 10s. Optional LLM backends (ollama / onnx-slm) may be offline if you use
+                OpenAI. Extra architecture docs are under Operator help.
+              </HelpTip>
+            </div>
+          }
+        />
 
-      <HudStill
-        src='/showcase/talon-dashboard-product.webp'
-        alt='Operator console'
-        variant='banner'
-        className='max-h-28'
-      />
+        {probeError && (
+          <div className='border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-4 py-3 font-mono text-xs tracking-widest uppercase'>
+            CORE UNREACHABLE — {probeError}
+          </div>
+        )}
 
-      {probeError && (
-        <div className='border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-4 py-3 font-mono text-xs tracking-widest uppercase'>
-          CORE UNREACHABLE — {probeError}
+        <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'>
+          {services === null
+            ? Array.from({ length: SERVICE_SLOTS }).map((_, i) => <Skeleton key={i} className='h-24 w-full' />)
+            : services.map(svc => <ServiceCard key={svc.name} svc={svc} />)}
         </div>
-      )}
 
-      <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-        {services === null
-          ? Array.from({ length: SERVICE_SLOTS }).map((_, i) => <Skeleton key={i} className='h-28 w-full' />)
-          : services.map(svc => <ServiceCard key={svc.name} svc={svc} />)}
+        <ConfigPanel />
+
+        <OperatorHelp coreOnline={Boolean(coreOnline)} />
       </div>
-
-      <ConfigPanel />
-
-      <IntelligencePanel />
-
-      <MCPPanel />
-
-      <div className='grid gap-4 lg:grid-cols-2'>
-        <Card>
-          <CardHeader>
-            <CardTitle className='micro-label'>DATA PERSISTENCE</CardTitle>
-          </CardHeader>
-          <CardContent className='flex flex-col gap-2 font-mono text-xs'>
-            <p className='text-muted-foreground'>
-              Run state, tool logs and reports are persisted by talon-core under <span className='text-foreground'>TALON_DATA_DIR</span>.
-            </p>
-            <p className='text-muted-foreground'>Back up that directory to retain operation history.</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className='micro-label'>VERSION / BUILD</CardTitle>
-          </CardHeader>
-          <CardContent className='flex flex-col gap-2 font-mono text-xs'>
-            <p>
-              <span className='text-muted-foreground'>console:</span> talon-console (Next.js {nextVersion} / standalone)
-            </p>
-            <p>
-              <span className='text-muted-foreground'>core:</span>{' '}
-              {coreOnline ? 'reachable — version not exposed by API' : 'unknown (core offline)'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className='micro-label'>API PROXY</CardTitle>
-          </CardHeader>
-          <CardContent className='flex flex-col gap-2 font-mono text-xs'>
-            <p className='text-muted-foreground'>
-              All browser traffic is proxied through <span className='text-foreground'>/api/talon/*</span> →{' '}
-              <span className='text-foreground'>TALON_CORE_URL</span> (default http://localhost:8000).
-            </p>
-            <p className='text-muted-foreground'>Run streams prefer WebSocket, degrade to SSE then polling.</p>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+    </TooltipProvider>
   )
 }
 
