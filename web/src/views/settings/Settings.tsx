@@ -100,7 +100,7 @@ const SourceBadge = ({ source }: { source: ConfigEntry['source'] }) => {
     source === 'database'
       ? 'text-primary border-primary/40'
       : source === 'env'
-        ? 'text-cyan-400 border-cyan-400/40'
+        ? 'text-red-400 border-red-400/40'
         : 'text-muted-foreground border-border'
 
   return <span className={`micro-label rounded-sm border px-1.5 py-0.5 ${tone}`}>{source.toUpperCase()}</span>

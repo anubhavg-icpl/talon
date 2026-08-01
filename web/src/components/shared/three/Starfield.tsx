@@ -55,7 +55,7 @@ const Starfield = ({ className, count = 700, opacity = 0.45, speed = 0.00035 }: 
 
     const geo = buildStars(count)
     const mat = new THREE.PointsMaterial({
-      color: 0x7dd3fc,
+      color: 0xf87171,
       size: 0.04,
       transparent: true,
       opacity,
@@ -65,11 +65,11 @@ const Starfield = ({ className, count = 700, opacity = 0.45, speed = 0.00035 }: 
     const points = new THREE.Points(geo, mat)
     scene.add(points)
 
-    // Subtle cyan nebula fog plane (additive-ish via low opacity sphere)
+    // Subtle red nebula fog plane (additive-ish via low opacity sphere)
     const haze = new THREE.Mesh(
       new THREE.SphereGeometry(18, 16, 16),
       new THREE.MeshBasicMaterial({
-        color: 0x0e7490,
+        color: 0x991b1b,
         transparent: true,
         opacity: 0.035,
         side: THREE.BackSide,

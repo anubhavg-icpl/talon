@@ -120,7 +120,7 @@
 }
 
 /*
- * Operator shell — void black + electric cyan.
+ * Operator shell — void black + electric red.
  * Pentester default: terminal/recon aesthetic, never brand-red chrome.
  * Red only for true failure (destructive), amber for HITL.
  */
@@ -131,22 +131,22 @@
   --card-foreground: oklch(0.94 0.02 200);
   --popover: oklch(0.13 0.014 220);
   --popover-foreground: oklch(0.94 0.02 200);
-  /* Electric cyan — classic operator / recon / wire */
-  --primary: oklch(0.84 0.14 205);
+  /* Electric red — classic operator / recon / wire */
+  --primary: oklch(0.62 0.22 25);
   --primary-foreground: oklch(0.12 0.03 220);
   --secondary: oklch(0.18 0.02 220);
   --secondary-foreground: oklch(0.9 0.03 200);
   --muted: oklch(0.18 0.015 220);
   --muted-foreground: oklch(0.62 0.03 210);
-  --accent: oklch(0.2 0.04 205);
+  --accent: oklch(0.2 0.06 25);
   --accent-foreground: oklch(0.88 0.12 200);
   --destructive: oklch(0.62 0.2 25);
   --warning: oklch(0.82 0.14 85);
   --info: oklch(0.78 0.1 250);
-  --border: oklch(0.84 0.1 205 / 12%);
-  --input: oklch(0.84 0.1 205 / 14%);
-  --ring: oklch(0.84 0.14 205 / 55%);
-  --chart-1: oklch(0.84 0.14 205);
+  --border: oklch(0.62 0.16 25 / 12%);
+  --input: oklch(0.62 0.16 25 / 14%);
+  --ring: oklch(0.62 0.22 25 / 55%);
+  --chart-1: oklch(0.62 0.22 25);
   --chart-2: oklch(0.62 0.2 25);
   --chart-3: oklch(0.82 0.14 85);
   --chart-4: oklch(0.78 0.1 250);
@@ -154,14 +154,14 @@
   --radius: 0.25rem;
   --sidebar: oklch(0.09 0.014 220);
   --sidebar-foreground: oklch(0.9 0.02 200);
-  --sidebar-primary: oklch(0.84 0.14 205);
+  --sidebar-primary: oklch(0.62 0.22 25);
   --sidebar-primary-foreground: oklch(0.12 0.03 220);
-  --sidebar-accent: oklch(0.16 0.04 205);
+  --sidebar-accent: oklch(0.16 0.05 25);
   --sidebar-accent-foreground: oklch(0.9 0.1 200);
-  --sidebar-border: oklch(0.84 0.1 205 / 10%);
-  --sidebar-ring: oklch(0.84 0.14 205 / 50%);
-  --op-glow: oklch(0.84 0.14 205 / 22%);
-  --op-glow-soft: oklch(0.84 0.14 205 / 8%);
+  --sidebar-border: oklch(0.62 0.16 25 / 10%);
+  --sidebar-ring: oklch(0.62 0.22 25 / 50%);
+  --op-glow: oklch(0.62 0.22 25 / 22%);
+  --op-glow-soft: oklch(0.62 0.22 25 / 8%);
 }
 
 .dark {
@@ -171,35 +171,35 @@
   --card-foreground: oklch(0.94 0.02 200);
   --popover: oklch(0.13 0.014 220);
   --popover-foreground: oklch(0.94 0.02 200);
-  --primary: oklch(0.84 0.14 205);
+  --primary: oklch(0.62 0.22 25);
   --primary-foreground: oklch(0.12 0.03 220);
   --secondary: oklch(0.18 0.02 220);
   --secondary-foreground: oklch(0.9 0.03 200);
   --muted: oklch(0.18 0.015 220);
   --muted-foreground: oklch(0.62 0.03 210);
-  --accent: oklch(0.2 0.04 205);
+  --accent: oklch(0.2 0.06 25);
   --accent-foreground: oklch(0.88 0.12 200);
   --destructive: oklch(0.62 0.2 25);
   --warning: oklch(0.82 0.14 85);
   --info: oklch(0.78 0.1 250);
-  --border: oklch(0.84 0.1 205 / 12%);
-  --input: oklch(0.84 0.1 205 / 14%);
-  --ring: oklch(0.84 0.14 205 / 55%);
-  --chart-1: oklch(0.84 0.14 205);
+  --border: oklch(0.62 0.16 25 / 12%);
+  --input: oklch(0.62 0.16 25 / 14%);
+  --ring: oklch(0.62 0.22 25 / 55%);
+  --chart-1: oklch(0.62 0.22 25);
   --chart-2: oklch(0.62 0.2 25);
   --chart-3: oklch(0.82 0.14 85);
   --chart-4: oklch(0.78 0.1 250);
   --chart-5: oklch(0.75 0.12 160);
   --sidebar: oklch(0.09 0.014 220);
   --sidebar-foreground: oklch(0.9 0.02 200);
-  --sidebar-primary: oklch(0.84 0.14 205);
+  --sidebar-primary: oklch(0.62 0.22 25);
   --sidebar-primary-foreground: oklch(0.12 0.03 220);
-  --sidebar-accent: oklch(0.16 0.04 205);
+  --sidebar-accent: oklch(0.16 0.05 25);
   --sidebar-accent-foreground: oklch(0.9 0.1 200);
-  --sidebar-border: oklch(0.84 0.1 205 / 10%);
-  --sidebar-ring: oklch(0.84 0.14 205 / 50%);
-  --op-glow: oklch(0.84 0.14 205 / 22%);
-  --op-glow-soft: oklch(0.84 0.14 205 / 8%);
+  --sidebar-border: oklch(0.62 0.16 25 / 10%);
+  --sidebar-ring: oklch(0.62 0.22 25 / 50%);
+  --op-glow: oklch(0.62 0.22 25 / 22%);
+  --op-glow-soft: oklch(0.62 0.22 25 / 8%);
 }
 
 .input-default {
@@ -326,7 +326,7 @@ input[type='number']::-webkit-outer-spin-button {
 /* Ambient CRT wash + vignette — operator room, not office UI */
 .app-scanlines {
   background:
-    radial-gradient(ellipse 120% 80% at 50% -20%, oklch(0.84 0.14 205 / 8%), transparent 55%),
+    radial-gradient(ellipse 120% 80% at 50% -20%, oklch(0.62 0.22 25 / 8%), transparent 55%),
     radial-gradient(ellipse 80% 50% at 100% 100%, oklch(0.7 0.1 250 / 5%), transparent 45%),
     var(--background);
 }
@@ -346,9 +346,9 @@ input[type='number']::-webkit-outer-spin-button {
   );
 }
 
-/* Targeting-HUD corner brackets — cyan wire */
+/* Targeting-HUD corner brackets — red wire */
 .hud-corners {
-  --hud-color: oklch(0.84 0.14 205 / 50%);
+  --hud-color: oklch(0.62 0.22 25 / 50%);
   --hud-size: 12px;
   --hud-thickness: 1.5px;
   position: relative;
@@ -381,7 +381,7 @@ input[type='number']::-webkit-outer-spin-button {
     var(--hud-size) var(--hud-thickness),
     var(--hud-thickness) var(--hud-size);
   box-shadow:
-    0 0 0 1px oklch(0.84 0.14 205 / 6%),
+    0 0 0 1px oklch(0.62 0.22 25 / 6%),
     0 8px 32px oklch(0 0 0 / 35%);
 }
 
@@ -389,7 +389,7 @@ input[type='number']::-webkit-outer-spin-button {
   --hud-color: oklch(0.82 0.14 85 / 65%);
 }
 
-.glow-cyan,
+.glow-red,
 .glow-green {
   box-shadow:
     0 0 16px var(--op-glow),
@@ -398,14 +398,14 @@ input[type='number']::-webkit-outer-spin-button {
 
 .text-glow {
   text-shadow:
-    0 0 8px oklch(0.84 0.14 205 / 60%),
-    0 0 24px oklch(0.84 0.14 205 / 28%);
+    0 0 8px oklch(0.62 0.22 25 / 60%),
+    0 0 24px oklch(0.62 0.22 25 / 28%);
 }
 
 .grid-bg {
   background-image:
-    linear-gradient(oklch(0.84 0.14 205 / 5%) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(0.84 0.14 205 / 5%) 1px, transparent 1px);
+    linear-gradient(oklch(0.62 0.22 25 / 5%) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.62 0.22 25 / 5%) 1px, transparent 1px);
   background-size: 28px 28px;
 }
 
@@ -423,8 +423,8 @@ input[type='number']::-webkit-outer-spin-button {
   pointer-events: none;
   opacity: 0.55;
   background-image:
-    linear-gradient(oklch(0.84 0.14 205 / 4%) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(0.84 0.14 205 / 4%) 1px, transparent 1px);
+    linear-gradient(oklch(0.62 0.22 25 / 4%) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.62 0.22 25 / 4%) 1px, transparent 1px);
   background-size: 40px 40px;
   mask-image: radial-gradient(ellipse 90% 70% at 50% 20%, black, transparent 85%);
 }
@@ -441,16 +441,16 @@ input[type='number']::-webkit-outer-spin-button {
 .op-header {
   background: oklch(0.11 0.014 220 / 92%);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid oklch(0.84 0.14 205 / 14%);
-  box-shadow: 0 1px 0 oklch(0.84 0.14 205 / 6%);
+  border-bottom: 1px solid oklch(0.62 0.22 25 / 14%);
+  box-shadow: 0 1px 0 oklch(0.62 0.22 25 / 6%);
 }
 
 .op-sidebar {
-  border-right: 1px solid oklch(0.84 0.14 205 / 10%);
+  border-right: 1px solid oklch(0.62 0.22 25 / 10%);
 }
 
 .op-footer {
-  border-top: 1px solid oklch(0.84 0.14 205 / 10%);
+  border-top: 1px solid oklch(0.62 0.22 25 / 10%);
   background: oklch(0.09 0.012 220 / 80%);
 }
 
@@ -529,18 +529,18 @@ input[type='number']::-webkit-outer-spin-button {
 
 /* Selection + scrollbar — operator feel */
 ::selection {
-  background: oklch(0.84 0.14 205 / 35%);
+  background: oklch(0.62 0.22 25 / 35%);
   color: oklch(0.98 0.02 200);
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: oklch(0.84 0.14 205 / 35%) transparent;
+  scrollbar-color: oklch(0.62 0.22 25 / 35%) transparent;
 }
 
 /* Production focus rings */
 :focus-visible {
-  outline: 2px solid oklch(0.84 0.14 205 / 70%);
+  outline: 2px solid oklch(0.62 0.22 25 / 70%);
   outline-offset: 2px;
 }
 

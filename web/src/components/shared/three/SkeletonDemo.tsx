@@ -6,7 +6,7 @@
  * - SkeletonUtils.clone for independent skinned instances
  * - Per-clone AnimationMixer (idle / walk / run)
  * - Optional shared-skeleton mode (DetachedBindMode)
- * - OrbitControls + cyan operator lighting
+ * - OrbitControls + red operator lighting
  *
  * Model: web/public/showcase/models/Soldier.glb
  * (https://threejs.org/examples/models/gltf/Soldier.glb)
@@ -65,15 +65,15 @@ const SkeletonDemo = ({
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.shadowMap.enabled = true
 
-    // Operator cyan key + fill (not red)
-    const hemi = new THREE.HemisphereLight(0xa5f3fc, 0x0c1220, 1.1)
+    // Operator red key + fill (red-only theme)
+    const hemi = new THREE.HemisphereLight(0xfca5a5, 0x0c1220, 1.1)
     scene.add(hemi)
-    const dir = new THREE.DirectionalLight(0x22d3ee, 2.2)
+    const dir = new THREE.DirectionalLight(0xef4444, 2.2)
     dir.position.set(4, 8, 3)
     dir.castShadow = true
     dir.shadow.mapSize.set(1024, 1024)
     scene.add(dir)
-    const fill = new THREE.DirectionalLight(0x7dd3fc, 0.6)
+    const fill = new THREE.DirectionalLight(0xf87171, 0.6)
     fill.position.set(-3, 2, -2)
     scene.add(fill)
 
@@ -81,7 +81,7 @@ const SkeletonDemo = ({
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(12, 64),
       new THREE.MeshStandardMaterial({
-        color: 0x0a1218,
+        color: 0x140505,
         roughness: 0.9,
         metalness: 0.2,
         transparent: true,
@@ -92,7 +92,7 @@ const SkeletonDemo = ({
     ground.receiveShadow = true
     scene.add(ground)
 
-    const grid = new THREE.GridHelper(16, 32, 0x22d3ee, 0x0e3a4a)
+    const grid = new THREE.GridHelper(16, 32, 0xef4444, 0x4c1414)
     grid.position.y = 0.01
     ;(grid.material as THREE.Material).transparent = true
     ;(grid.material as THREE.Material).opacity = 0.35
@@ -102,7 +102,7 @@ const SkeletonDemo = ({
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(3.2, 3.28, 96),
       new THREE.MeshBasicMaterial({
-        color: 0x22d3ee,
+        color: 0xef4444,
         transparent: true,
         opacity: 0.45,
         side: THREE.DoubleSide

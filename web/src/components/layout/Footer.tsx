@@ -5,7 +5,7 @@ const Footer = () => {
         <p>
           TALON <span className='text-primary'>//</span> OPERATOR — RECON · EXPLOIT · POST · JUDGE
         </p>
-        <p className='text-primary/70 max-sm:hidden'>AUTHORIZED TARGETS ONLY · CYAN OPERATOR SHELL</p>
+        <p className='text-primary/70 max-sm:hidden'>AUTHORIZED TARGETS ONLY · RED OPERATOR SHELL</p>
       </div>
     </footer>
   )

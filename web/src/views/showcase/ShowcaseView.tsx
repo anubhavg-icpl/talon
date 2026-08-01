@@ -66,7 +66,7 @@ const REEL: ReelItem[] = [
   {
     id: 'globe-still',
     title: 'C2 HUD still',
-    blurb: 'Marketing still of the operator globe — same cyan wire aesthetic as the live scene.',
+    blurb: 'Marketing still of the operator globe — same red wire aesthetic as the live scene.',
     poster: '/showcase/operator-globe-hud.webp',
     tags: ['three.js', 'hud']
   },

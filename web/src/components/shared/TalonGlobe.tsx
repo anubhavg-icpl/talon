@@ -24,8 +24,8 @@ type TalonGlobeProps = {
   onClick?: () => void
 }
 
-const CYAN = 0x22d3ee
-const MINT = 0xa5f3fc
+const RED = 0xef4444
+const BLUSH = 0xfca5a5
 const DEEP = 0x060a0e
 
 function fibonacciSphere(n: number, radius: number): THREE.Vector3[] {
@@ -111,14 +111,14 @@ const TalonGlobe = ({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isBg ? 1.75 : 2))
     renderer.setClearColor(0x000000, 0)
 
-    const key = new THREE.DirectionalLight(0x7dd3fc, 1.15)
+    const key = new THREE.DirectionalLight(0xf87171, 1.15)
     key.position.set(2.5, 1.8, 3)
     scene.add(key)
-    const rim = new THREE.DirectionalLight(0x22d3ee, 0.55)
+    const rim = new THREE.DirectionalLight(0xef4444, 0.55)
     rim.position.set(-2, -0.5, -1.5)
     scene.add(rim)
-    scene.add(new THREE.AmbientLight(0x0e7490, 0.4))
-    const point = new THREE.PointLight(0x22d3ee, 0.85, 14, 2)
+    scene.add(new THREE.AmbientLight(0x991b1b, 0.4))
+    const point = new THREE.PointLight(0xef4444, 0.85, 14, 2)
     point.position.set(0, 0.5, 2.5)
     scene.add(point)
 
@@ -151,7 +151,7 @@ const TalonGlobe = ({
     globe.add(core)
 
     const atmoMat = new THREE.MeshBasicMaterial({
-      color: CYAN,
+      color: RED,
       transparent: true,
       opacity: isBg ? 0.1 : 0.07,
       side: THREE.BackSide,
@@ -163,11 +163,11 @@ const TalonGlobe = ({
     // Inner energy core
     const energy = new THREE.Mesh(
       new THREE.SphereGeometry(0.22, 24, 24),
-      new THREE.MeshBasicMaterial({ color: MINT, transparent: true, opacity: 0.55 })
+      new THREE.MeshBasicMaterial({ color: BLUSH, transparent: true, opacity: 0.55 })
     )
     globe.add(energy)
 
-    const wireMat = new THREE.LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.42 })
+    const wireMat = new THREE.LineBasicMaterial({ color: RED, transparent: true, opacity: 0.42 })
     const wire = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(1.0, 36, 28)), wireMat)
     globe.add(wire)
 
@@ -189,11 +189,11 @@ const TalonGlobe = ({
     root.add(ringGroup)
     const ringMats: THREE.MeshBasicMaterial[] = []
     const ringConfigs = [
-      { r: 1.22, tilt: Math.PI / 2.15, color: CYAN, opacity: 0.5 },
-      { r: 1.34, tilt: Math.PI / 2.6, color: MINT, opacity: 0.28 },
-      { r: 1.48, tilt: Math.PI / 1.75, color: CYAN, opacity: 0.18 },
+      { r: 1.22, tilt: Math.PI / 2.15, color: RED, opacity: 0.5 },
+      { r: 1.34, tilt: Math.PI / 2.6, color: BLUSH, opacity: 0.28 },
+      { r: 1.48, tilt: Math.PI / 1.75, color: RED, opacity: 0.18 },
       ...(isHero || isBg
-        ? [{ r: 1.62, tilt: Math.PI / 3.1, color: MINT, opacity: 0.12 }]
+        ? [{ r: 1.62, tilt: Math.PI / 3.1, color: BLUSH, opacity: 0.12 }]
         : [])
     ]
     for (const cfg of ringConfigs) {
@@ -213,7 +213,7 @@ const TalonGlobe = ({
     const waves: THREE.Mesh[] = []
     for (let i = 0; i < 3; i++) {
       const mat = new THREE.MeshBasicMaterial({
-        color: MINT,
+        color: BLUSH,
         transparent: true,
         opacity: 0,
         side: THREE.DoubleSide,
@@ -229,7 +229,7 @@ const TalonGlobe = ({
     const beacons = fibonacciSphere(beaconN, 1.02)
     const beaconGroup = new THREE.Group()
     globe.add(beaconGroup)
-    const beaconMat = new THREE.MeshBasicMaterial({ color: MINT, transparent: true, opacity: 0.9 })
+    const beaconMat = new THREE.MeshBasicMaterial({ color: BLUSH, transparent: true, opacity: 0.9 })
     const beaconGeo = new THREE.SphereGeometry(0.018, 10, 10)
     for (const p of beacons) {
       const m = new THREE.Mesh(beaconGeo, beaconMat)
@@ -247,7 +247,7 @@ const TalonGlobe = ({
       const geo = greatCircle(a, b, 56)
       disposables.push(geo)
       const mat = new THREE.LineBasicMaterial({
-        color: i % 2 === 0 ? CYAN : MINT,
+        color: i % 2 === 0 ? RED : BLUSH,
         transparent: true,
         opacity: 0.35
       })
@@ -268,14 +268,14 @@ const TalonGlobe = ({
       globe.add(
         new THREE.LineLoop(
           g,
-          new THREE.LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.22 })
+          new THREE.LineBasicMaterial({ color: RED, transparent: true, opacity: 0.22 })
         )
       )
     }
 
     const reticle = new THREE.Group()
     if (!isBg) root.add(reticle)
-    const retMat = new THREE.LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.35 })
+    const retMat = new THREE.LineBasicMaterial({ color: RED, transparent: true, opacity: 0.35 })
     const retRing = new THREE.LineLoop(
       new THREE.BufferGeometry().setFromPoints(
         Array.from({ length: 64 }, (_, i) => {
@@ -334,15 +334,15 @@ const TalonGlobe = ({
       } else if (s === 'thinking' || s === 'running') {
         speed = prefersReduced ? 0 : 0.032
         targetOpacity = 0.78
-        wireMat.color.setHex(MINT)
+        wireMat.color.setHex(BLUSH)
       } else if (s === 'speaking') {
         speed = prefersReduced ? 0 : 0.01
         targetOpacity = 0.65
-        wireMat.color.setHex(CYAN)
+        wireMat.color.setHex(RED)
       } else {
         speed = baseSpeed
         targetOpacity = 0.45
-        wireMat.color.setHex(CYAN)
+        wireMat.color.setHex(RED)
       }
       if (controls) {
         controls.autoRotateSpeed = s === 'running' || s === 'thinking' ? 1.4 : isHero ? 0.6 : 0.35

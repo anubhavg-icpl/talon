@@ -106,7 +106,7 @@ const Login = () => {
           <Button
             type='submit'
             disabled={busy}
-            className='glow-cyan mt-2 font-mono text-xs font-semibold tracking-widest uppercase'
+            className='glow-red mt-2 font-mono text-xs font-semibold tracking-widest uppercase'
           >
             {busy ? '[ ⟳ LINKING… ]' : '[ ENTER C2 ]'}
           </Button>
