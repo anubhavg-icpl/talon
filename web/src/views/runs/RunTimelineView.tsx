@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils'
 const STAGE_ORDER = ['recon', 'exploit', 'post_exploit', 'codegen', 'report', 'other'] as const
 
 const stageMeta: Record<string, { label: string; icon: LucideIcon; tone: string }> = {
-  recon: { label: 'Recon', icon: Radar, tone: 'text-sky-400 border-sky-500/40 bg-sky-500/10' },
+  recon: { label: 'Recon', icon: Radar, tone: 'text-red-400 border-red-500/40 bg-red-500/10' },
   exploit: { label: 'Exploit', icon: Crosshair, tone: 'text-orange-400 border-orange-500/40 bg-orange-500/10' },
   post_exploit: { label: 'Post-exploit', icon: Shield, tone: 'text-violet-400 border-violet-500/40 bg-violet-500/10' },
   codegen: { label: 'Codegen', icon: Terminal, tone: 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10' },
@@ -38,7 +38,7 @@ const sevTone = (sev?: string) => {
   if (s === 'critical') return 'bg-red-500/15 text-red-400 border-red-500/40'
   if (s === 'high') return 'bg-orange-500/15 text-orange-400 border-orange-500/40'
   if (s === 'medium') return 'bg-amber-500/15 text-amber-400 border-amber-500/40'
-  if (s === 'low') return 'bg-sky-500/15 text-sky-400 border-sky-500/40'
+  if (s === 'low') return 'bg-red-300/20 text-red-300 border-red-300/40'
   return 'bg-muted text-muted-foreground border-border'
 }
 

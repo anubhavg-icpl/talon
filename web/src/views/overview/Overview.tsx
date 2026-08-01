@@ -18,7 +18,7 @@ import LiveDot from '@/components/shared/LiveDot'
 import Logo from '@/components/shared/Logo'
 import PageHeader from '@/components/shared/PageHeader'
 import StatusBadge from '@/components/shared/StatusBadge'
-import Lazy3D from '@/components/shared/Lazy3D'
+import GlobeWallpaper from '@/components/shared/GlobeWallpaper'
 import { TalonGlobe } from '@/components/shared/three'
 import UtcClock from '@/components/shared/UtcClock'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -168,7 +168,7 @@ const Overview = () => {
             </p>
             {stats.active > 0 && (
               <p className='text-primary micro-label mt-1 flex items-center gap-2'>
-                <LiveDot tone='cyan' /> {stats.active} ACTIVE · C2 LIVE
+                <LiveDot tone='green' /> {stats.active} ACTIVE · C2 LIVE
               </p>
             )}
             <Link
@@ -178,19 +178,23 @@ const Overview = () => {
               OPEN PRODUCT SHOWCASE →
             </Link>
           </div>
-          <div className='relative mx-auto aspect-square w-full max-w-[280px] overflow-hidden rounded-sm border border-primary/20 bg-black/40 lg:max-w-[300px]'>
-            <Lazy3D className='h-full w-full' label='LIVE ENGAGEMENT GLOBE'>
-              <TalonGlobe
-                className='h-full w-full'
-                variant='hero'
-                interactive
-                state={globeState}
-                activityLevel={globeLevel}
-                onClick={() => {
-                  window.location.assign('/runs/new')
-                }}
-              />
-            </Lazy3D>
+          <div className='relative mx-auto w-full max-w-[300px] lg:max-w-[320px]'>
+            <GlobeWallpaper
+              compact
+              label='ENGAGEMENT GLOBE'
+              live3d={
+                <TalonGlobe
+                  className='h-full w-full'
+                  variant='hero'
+                  interactive
+                  state={globeState}
+                  activityLevel={globeLevel}
+                  onClick={() => {
+                    window.location.assign('/runs/new')
+                  }}
+                />
+              }
+            />
           </div>
         </div>
       </div>

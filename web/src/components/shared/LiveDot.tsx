@@ -1,13 +1,12 @@
 // Util Imports
 import { cn } from '@/lib/utils'
 
-type Tone = 'green' | 'red' | 'amber' | 'cyan' | 'muted'
+type Tone = 'green' | 'red' | 'amber' | 'muted'
 
 const toneClasses: Record<Tone, string> = {
   green: 'bg-primary',
   red: 'bg-destructive',
   amber: 'bg-warning',
-  cyan: 'bg-primary',
   muted: 'bg-muted-foreground'
 }
 

@@ -111,7 +111,7 @@ const Header = () => {
             <span className='text-muted-foreground'>LINK …</span>
           ) : coreUp ? (
             <span className='text-primary flex items-center gap-2'>
-              <LiveDot tone='cyan' /> C2 LINK UP
+              <LiveDot tone='green' /> C2 LINK UP
             </span>
           ) : (
             <span className='text-destructive flex items-center gap-2'>

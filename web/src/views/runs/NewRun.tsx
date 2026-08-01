@@ -13,7 +13,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 
 // Component Imports
-import Lazy3D from '@/components/shared/Lazy3D'
+import GlobeWallpaper from '@/components/shared/GlobeWallpaper'
 import { TalonGlobe } from '@/components/shared/three'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -240,13 +240,17 @@ const NewRun = () => {
       <Card className='hud-corners hidden overflow-hidden lg:block'>
         <CardHeader className='pb-2'>
           <CardTitle className='micro-label'>TARGET HUD</CardTitle>
-          <CardDescription className='font-mono text-[10px]'>Three.js · compact globe</CardDescription>
+          <CardDescription className='font-mono text-[10px]'>Dark planet wallpaper · optional Live 3D</CardDescription>
         </CardHeader>
         <CardContent className='flex justify-center p-2 pb-4'>
-          <div className='aspect-square w-full max-w-[240px]'>
-            <Lazy3D className='h-full w-full' label='TARGET HUD' poster='/showcase/operator-globe-hud.webp'>
-              <TalonGlobe className='h-full w-full' variant='compact' state='thinking' activityLevel={0.45} interactive />
-            </Lazy3D>
+          <div className='w-full max-w-[280px]'>
+            <GlobeWallpaper
+              compact
+              label='TARGET HUD'
+              live3d={
+                <TalonGlobe className='h-full w-full' variant='compact' state='thinking' activityLevel={0.45} interactive />
+              }
+            />
           </div>
         </CardContent>
       </Card>

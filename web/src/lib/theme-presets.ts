@@ -5,7 +5,6 @@
 export const THEME_PRESETS = [
   { id: 'talon', label: 'TALON', swatch: 'oklch(0.87 0.2 145)' },
   { id: 'amber', label: 'AMBER', swatch: 'oklch(0.8 0.15 85)' },
-  { id: 'cyan', label: 'CYAN', swatch: 'oklch(0.82 0.12 200)' },
   { id: 'violet', label: 'VIOLET', swatch: 'oklch(0.72 0.18 300)' },
   { id: 'crimson', label: 'CRIMSON', swatch: 'oklch(0.7 0.2 20)' }
 ] as const

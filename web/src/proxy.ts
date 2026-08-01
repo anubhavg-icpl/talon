@@ -23,5 +23,8 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!login|api/talon/auth/login|_next/static|_next/image|favicon.webp|.*\\.webp|.*\\.svg).*)']
+  // Public: login, auth API, Next static, and media under /public (globe video wallpaper, posters, textures)
+  matcher: [
+    '/((?!login|api/talon/auth/login|_next/static|_next/image|favicon\\.webp|globe/|wallpaper/|showcase/|.*\\.(?:webp|svg|png|jpe?g|gif|ico|mp4|webm|woff2?|ttf|map)$).*)'
+  ]
 }

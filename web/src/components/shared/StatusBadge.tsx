@@ -10,7 +10,7 @@ import type { RunStatus } from '@/lib/api'
 
 const statusConfig: Record<
   string,
-  { label: string; tone: 'green' | 'red' | 'amber' | 'cyan' | 'muted'; pulse: boolean; className: string }
+  { label: string; tone: 'green' | 'red' | 'amber' | 'muted'; pulse: boolean; className: string }
 > = {
   running: {
     label: 'RUNNING',
@@ -38,7 +38,7 @@ const statusConfig: Record<
   },
   initializing: {
     label: 'INITIALIZING',
-    tone: 'cyan',
+    tone: 'green',
     pulse: true,
     className: 'border-primary/40 bg-primary/10 text-primary'
   },

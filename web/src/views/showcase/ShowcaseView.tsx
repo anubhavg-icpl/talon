@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import Link from 'next/link'
 
-import Lazy3D from '@/components/shared/Lazy3D'
+import GlobeWallpaper from '@/components/shared/GlobeWallpaper'
 import PageHeader from '@/components/shared/PageHeader'
 import { ExamplesStage } from '@/components/shared/three'
 import { Badge } from '@/components/ui/badge'
@@ -129,10 +129,13 @@ const ShowcaseView = () => {
         }
       />
 
-      {/* Single primary WebGL stage — gated so the page always loads first */}
-      <Lazy3D className='min-h-[360px] w-full' label='SHOWCASE THREE.JS STAGE' poster='/showcase/operator-globe-hud.webp'>
-        <ExamplesStage className='min-h-[360px] w-full' />
-      </Lazy3D>
+      {/* Wallpaper globe first; Live 3D optional for the Three.js stage */}
+      <GlobeWallpaper
+        className='min-h-[360px] w-full'
+        label='SHOWCASE GLOBE'
+        compact={false}
+        live3d={<ExamplesStage className='min-h-[360px] h-full w-full' />}
+      />
 
       {/* Product still/video reel — no extra WebGL */}
       <div className='grid gap-4 lg:grid-cols-[1fr_220px]'>

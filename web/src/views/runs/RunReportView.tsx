@@ -15,7 +15,7 @@ const sevTone = (sev: string) => {
   if (s === 'critical') return 'bg-red-500/15 text-red-400 border-red-500/40'
   if (s === 'high') return 'bg-orange-500/15 text-orange-400 border-orange-500/40'
   if (s === 'medium') return 'bg-amber-500/15 text-amber-400 border-amber-500/40'
-  if (s === 'low') return 'bg-sky-500/15 text-sky-400 border-sky-500/40'
+  if (s === 'low') return 'bg-red-300/20 text-red-300 border-red-300/40'
   return 'bg-muted text-muted-foreground border-border'
 }
 
