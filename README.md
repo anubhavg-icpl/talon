@@ -78,7 +78,7 @@ before the scan runs (CLI: `talon run approve|reject|edit`).
 | **`talon-arsenal`** | MCP stdio → Arsenal Engine (nmap, nuclei, …) |
 | **`talon-strike`** | MCP stdio → Metasploit RPC (12 tools) |
 | **Talon Forge** | Codegen sandbox (Docker) inside the orchestrator |
-| **arsenal-engine** | Flask tool runner (Kali-based image) |
+| **arsenal-engine** | Flask tool runner (BlackArch-based image) |
 | **msf_rpc** | `msfrpcd` (Kali image) |
 | **rabbitmq** | Broker for relay |
 | **postgres** | Run history + dashboard users/sessions (auth) + runtime config |
@@ -99,7 +99,7 @@ Core and relay spawn arsenal + strike as **local MCP stdio children**
 |------|-----------------|--------|
 | **`Dockerfile`** | `talon:latest` → **talon-core** + **talon-relay** | All Go bins; one image, two commands |
 | **`kali-msf/Dockerfile`** | **metasploit** (`msf_rpc`) | `msfrpcd` |
-| **`arsenal-engine/Dockerfile`** | **arsenal-engine** | Kali tool runner |
+| **`arsenal-engine/Dockerfile`** | **arsenal-engine** | BlackArch tool runner |
 | **`vuln-target/Dockerfile`** | **vuln-target** (profile `vuln`) | Targets: **`real`** (default) \| **`mimic`** |
 | **`web/Dockerfile`** | **dashboard** | Next.js standalone build |
 
@@ -260,7 +260,7 @@ Login with `TALON_ADMIN_USERNAME` / `TALON_ADMIN_PASSWORD` from `.env`
 | `/skills` | CyberStrike + builtin skills catalog (~7.6k) — browse / search / inject |
 | `/ops` | Engagements: scope, targets, schedules, webhooks, credentials, evidence, budget, retest |
 | `/agents` · `/playbooks` · `/intel` · `/compare` | Multi-agent view, playbooks, intel feed, run compare |
-| `/terminal` | SSO'd web shell into the arsenal (Kali) container |
+| `/terminal` | SSO'd web shell into the arsenal (BlackArch) container |
 | `/settings` | Live service health (7 probes), **config editor** (LLM/attacker/features, DB-backed), **MCP servers** panel |
 
 Architecture: the browser only talks to the dashboard; a server-side proxy
@@ -634,7 +634,7 @@ internal/arsenal     engine proxy + tool tables
 internal/forge       codegen sandbox
 internal/llm         bedrock | openai | ollama
 vuln-target/         lab images (real + mimic)
-arsenal-engine/      Kali tool runner
+arsenal-engine/      BlackArch tool runner
 kali-msf/            msfrpcd image
 docker-compose.yml   single compose file (profiles: vuln, ollama)
 ```

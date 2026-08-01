@@ -1,5 +1,5 @@
 #!/bin/sh
-# Talon Kali shell (ttyd) — carbon black + electric red xterm theme.
+# Talon arsenal shell (ttyd on BlackArch) — carbon black + electric red theme.
 # Loopback-only; SSO enforced by talon-core /shell reverse proxy.
 
 set -eu
