@@ -52,8 +52,7 @@ const Login = () => {
         className='pointer-events-none absolute inset-0 opacity-80'
         aria-hidden
         style={{
-          backgroundImage:
-            'radial-gradient(ellipse at 50% 30%, oklch(0.62 0.22 25 / 0.08), oklch(0.06 0 0) 70%)',
+          backgroundImage: 'url(/globe/operator-globe-hud.webp)',
           backgroundSize: 'cover',
           backgroundPosition: 'center'
         }}

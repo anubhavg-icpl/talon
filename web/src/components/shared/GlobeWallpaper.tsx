@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils'
 /** Prefer WebM (VP9); MP4 kept as fallback for older engines */
 const VIDEO_SRC_WEBM = '/globe/dark-planet.webm'
 const VIDEO_SRC_MP4 = '/globe/dark-planet.mp4'
-const POSTER_SRC = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC'
+const POSTER_SRC = '/globe/operator-globe-hud.webp'
 
 type GlobeWallpaperProps = {
   className?: string
