@@ -1,25 +1,24 @@
 'use client'
 
-// React Imports
+/**
+ * Talon operator sidebar — shadcn Sidebar composition (collapsible icon mode).
+ * Structure: SidebarProvider (Providers) → Sidebar + Rail | SidebarInset (layout)
+ */
+
 import { type ComponentType } from 'react'
 
-// Next Imports
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 
-// Third-party Imports
 import * as Icon from 'lucide-react'
-import { ChevronRightIcon, SquareArrowOutUpRightIcon } from 'lucide-react'
+import { ChevronRightIcon, CrosshairIcon, SettingsIcon, SquareArrowOutUpRightIcon } from 'lucide-react'
 
-// Type Imports
 import type { MenuGroupSubItem, MenuItem, MenuSubItem } from '@/configs/navConfig'
-
-// Component Imports
-import Logo from '@/components/shared/Logo'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -30,14 +29,12 @@ import {
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarMenuSubButton,
-  SidebarMenuSubItem
+  SidebarMenuSubItem,
+  SidebarRail,
+  useSidebar
 } from '@/components/ui/sidebar'
-
-// Config Imports
 import { navItems } from '@/configs/navConfig'
 import themeConfig from '@/configs/themeConfig'
-
-// Util Imports
 import { cn } from '@/lib/utils'
 
 const isSubGroup = (item: MenuSubItem): item is MenuGroupSubItem => 'childItems' in item
@@ -56,18 +53,16 @@ function isLinkActive(
 
   if (href.includes('?')) {
     const [hrefPath, hrefQuery] = href.split('?')
-
     if (pathname !== hrefPath) return false
-
     const hrefParams = new URLSearchParams(hrefQuery)
-
     for (const [key, value] of hrefParams.entries()) {
       if (searchParams.get(key) !== value) return false
     }
-
     return true
   }
 
+  // Nested routes: /runs/xyz should highlight Runs when activePath not set
+  if (href !== '/' && pathname.startsWith(href + '/')) return true
   return pathname === href
 }
 
@@ -85,14 +80,14 @@ const SidebarGroupedMenuItems = ({
   return (
     <SidebarGroup>
       {groupLabel && (
-        <SidebarGroupLabel className='text-sidebar-foreground/50 tracking-wider uppercase'>
+        <SidebarGroupLabel className='text-sidebar-foreground/45 font-mono text-[10px] tracking-[0.18em] uppercase group-data-[collapsible=icon]:hidden'>
           {groupLabel}
         </SidebarGroupLabel>
       )}
       <SidebarGroupContent>
         <SidebarMenu>
           {data.map(item => {
-            const Tag = item.icon ? (Icon[item.icon] as ComponentType) : null
+            const Tag = item.icon ? (Icon[item.icon] as ComponentType<{ className?: string }>) : null
 
             const isChildActive =
               item.childItems?.some(subItem =>
@@ -101,145 +96,124 @@ const SidebarGroupedMenuItems = ({
                   : isLinkActive(subItem.href, subItem.activePath, pathname, searchParams)
               ) ?? false
 
-            return item.childItems ? (
-              <Collapsible className='group/collapsible' key={item.label}>
-                <SidebarMenuItem>
-                  <CollapsibleTrigger
-                    render={
-                      <SidebarMenuButton
-                        tooltip={item.label}
-                        isActive={isChildActive}
-                        className='data-active:bg-primary/5!'
-                      />
-                    }
-                  >
-                    {Tag && <Tag />}
-                    <span className={cn('min-w-0 flex-1 truncate', item.badge && 'pr-14')}>{item.label}</span>
-                    {item.badge && (
-                      <SidebarMenuBadge
-                        className={cn(
-                          'bg-primary/10 max-w-24 truncate rounded-full px-1.5 font-normal',
-                          item.badgeClassName
-                        )}
-                      >
-                        {item.badge}
-                      </SidebarMenuBadge>
-                    )}
-                    <ChevronRightIcon className='ml-auto transition-transform duration-200 group-data-open/collapsible:rotate-90' />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className='h-(--collapsible-panel-height) overflow-hidden transition-all duration-200 data-ending-style:h-0 data-starting-style:h-0'>
-                    <SidebarMenuSub>
-                      {item.childItems.map(subItem =>
-                        isSubGroup(subItem) ? (
-                          <Collapsible className='group/subcollapsible' key={subItem.label}>
-                            <SidebarMenuSubItem>
-                              <CollapsibleTrigger
-                                nativeButton={false}
-                                render={
-                                  <SidebarMenuSubButton
-                                    className='data-active:bg-primary/10! justify-between'
-                                    isActive={subItem.childItems.some(leaf =>
-                                      isLinkActive(leaf.href, leaf.activePath, pathname, searchParams)
-                                    )}
-                                  />
-                                }
-                              >
-                                {subItem.label}
-                                <ChevronRightIcon className='ml-auto shrink-0 transition-transform duration-200 group-data-open/subcollapsible:rotate-90' />
-                              </CollapsibleTrigger>
-                              <CollapsibleContent className='h-(--collapsible-panel-height) overflow-hidden transition-all duration-200 data-ending-style:h-0 data-starting-style:h-0'>
-                                <SidebarMenuSub className='mx-0'>
-                                  {subItem.childItems.map(leaf => (
-                                    <SidebarMenuSubItem key={leaf.label}>
-                                      <SidebarMenuSubButton
-                                        className='data-active:bg-primary/10! justify-between'
-                                        render={<Link href={leaf.href} target={leaf.target} />}
-                                        isActive={isLinkActive(leaf.href, leaf.activePath, pathname, searchParams)}
-                                      >
-                                        <span
-                                          className={cn(
-                                            'min-w-0 flex-1 truncate',
-                                            leaf.badge && isExternalLink(leaf.href) && 'pr-8',
-                                            leaf.badge && !isExternalLink(leaf.href) && 'pr-14',
-                                            !leaf.badge && isExternalLink(leaf.href) && 'pr-6'
-                                          )}
-                                        >
-                                          {leaf.label}
-                                        </span>
-                                        {leaf.badge && (
-                                          <SidebarMenuBadge
-                                            className={cn(
-                                              'bg-primary/10 max-w-24 truncate rounded-full px-1.5 font-normal',
-                                              isExternalLink(leaf.href) && 'right-6',
-                                              leaf.badgeClassName
-                                            )}
-                                          >
-                                            {leaf.badge}
-                                          </SidebarMenuBadge>
-                                        )}
-                                        {isExternalLink(leaf.href) && (
-                                          <SquareArrowOutUpRightIcon className='ml-auto size-3.5! shrink-0 opacity-50' />
-                                        )}
-                                      </SidebarMenuSubButton>
-                                    </SidebarMenuSubItem>
-                                  ))}
-                                </SidebarMenuSub>
-                              </CollapsibleContent>
-                            </SidebarMenuSubItem>
-                          </Collapsible>
-                        ) : (
-                          <SidebarMenuSubItem key={subItem.label}>
-                            <SidebarMenuSubButton
-                              className='data-active:bg-primary/10! justify-between'
-                              render={<Link href={subItem.href} target={subItem.target} />}
-                              isActive={isLinkActive(subItem.href, subItem.activePath, pathname, searchParams)}
-                            >
-                              <span
-                                className={cn(
-                                  'min-w-0 flex-1 truncate',
-                                  subItem.badge && isExternalLink(subItem.href) && 'pr-8',
-                                  subItem.badge && !isExternalLink(subItem.href) && 'pr-14',
-                                  !subItem.badge && isExternalLink(subItem.href) && 'pr-6'
-                                )}
-                              >
-                                {subItem.label}
-                              </span>
-                              {subItem.badge && (
-                                <SidebarMenuBadge
-                                  className={cn(
-                                    'bg-primary/10 max-w-24 truncate rounded-full px-1.5 font-normal',
-                                    isExternalLink(subItem.href) && 'right-6',
-                                    subItem.badgeClassName
-                                  )}
-                                >
-                                  {subItem.badge}
-                                </SidebarMenuBadge>
-                              )}
-                              {isExternalLink(subItem.href) && (
-                                <SquareArrowOutUpRightIcon className='ml-auto size-3.5! shrink-0 opacity-50' />
-                              )}
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        )
+            if (item.childItems) {
+              return (
+                <Collapsible key={item.label} className='group/collapsible' defaultOpen={isChildActive}>
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger
+                      render={
+                        <SidebarMenuButton
+                          tooltip={item.label}
+                          isActive={isChildActive}
+                          className='data-active:bg-primary/10 data-active:text-primary'
+                        />
+                      }
+                    >
+                      {Tag && <Tag className='size-4 shrink-0' />}
+                      <span className={cn('min-w-0 flex-1 truncate', item.badge && 'pr-12')}>{item.label}</span>
+                      {item.badge && (
+                        <SidebarMenuBadge
+                          className={cn(
+                            'bg-primary/15 text-primary max-w-20 truncate rounded-sm px-1.5 font-mono text-[9px] tracking-wide',
+                            item.badgeClassName
+                          )}
+                        >
+                          {item.badge}
+                        </SidebarMenuBadge>
                       )}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
-            ) : (
+                      <ChevronRightIcon className='ml-auto size-4 shrink-0 transition-transform duration-200 group-data-open/collapsible:rotate-90 group-data-[collapsible=icon]:hidden' />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className='h-(--collapsible-panel-height) overflow-hidden transition-all duration-200 data-ending-style:h-0 data-starting-style:h-0 group-data-[collapsible=icon]:hidden'>
+                      <SidebarMenuSub>
+                        {item.childItems.map(subItem =>
+                          isSubGroup(subItem) ? (
+                            <Collapsible key={subItem.label} className='group/subcollapsible' defaultOpen>
+                              <SidebarMenuSubItem>
+                                <CollapsibleTrigger
+                                  nativeButton={false}
+                                  render={
+                                    <SidebarMenuSubButton
+                                      className='data-active:bg-primary/10 data-active:text-primary justify-between'
+                                      isActive={subItem.childItems.some(leaf =>
+                                        isLinkActive(leaf.href, leaf.activePath, pathname, searchParams)
+                                      )}
+                                    />
+                                  }
+                                >
+                                  {subItem.label}
+                                  <ChevronRightIcon className='ml-auto size-3.5 shrink-0 transition-transform duration-200 group-data-open/subcollapsible:rotate-90' />
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className='h-(--collapsible-panel-height) overflow-hidden transition-all duration-200 data-ending-style:h-0 data-starting-style:h-0'>
+                                  <SidebarMenuSub className='mx-0'>
+                                    {subItem.childItems.map(leaf => (
+                                      <SidebarMenuSubItem key={leaf.label}>
+                                        <SidebarMenuSubButton
+                                          className='data-active:bg-primary/10 data-active:text-primary justify-between'
+                                          render={<Link href={leaf.href} target={leaf.target} />}
+                                          isActive={isLinkActive(leaf.href, leaf.activePath, pathname, searchParams)}
+                                        >
+                                          <span className='min-w-0 flex-1 truncate'>{leaf.label}</span>
+                                          {leaf.badge && (
+                                            <SidebarMenuBadge className='bg-primary/15 text-primary rounded-sm px-1.5 font-mono text-[9px]'>
+                                              {leaf.badge}
+                                            </SidebarMenuBadge>
+                                          )}
+                                          {isExternalLink(leaf.href) && (
+                                            <SquareArrowOutUpRightIcon className='ml-auto size-3.5 shrink-0 opacity-50' />
+                                          )}
+                                        </SidebarMenuSubButton>
+                                      </SidebarMenuSubItem>
+                                    ))}
+                                  </SidebarMenuSub>
+                                </CollapsibleContent>
+                              </SidebarMenuSubItem>
+                            </Collapsible>
+                          ) : (
+                            <SidebarMenuSubItem key={subItem.label}>
+                              <SidebarMenuSubButton
+                                className='data-active:bg-primary/10 data-active:text-primary justify-between'
+                                render={<Link href={subItem.href} target={subItem.target} />}
+                                isActive={isLinkActive(subItem.href, subItem.activePath, pathname, searchParams)}
+                              >
+                                <span className='min-w-0 flex-1 truncate'>{subItem.label}</span>
+                                {subItem.badge && (
+                                  <SidebarMenuBadge
+                                    className={cn(
+                                      'bg-primary/15 text-primary max-w-20 truncate rounded-sm px-1.5 font-mono text-[9px]',
+                                      subItem.badgeClassName
+                                    )}
+                                  >
+                                    {subItem.badge}
+                                  </SidebarMenuBadge>
+                                )}
+                                {isExternalLink(subItem.href) && (
+                                  <SquareArrowOutUpRightIcon className='ml-auto size-3.5 shrink-0 opacity-50' />
+                                )}
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          )
+                        )}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              )
+            }
+
+            return (
               <SidebarMenuItem key={item.label}>
                 <SidebarMenuButton
                   tooltip={item.label}
                   render={<Link href={item.href} target={item.target} />}
                   isActive={isLinkActive(item.href, item.activePath, pathname, searchParams)}
-                  className='data-active:bg-primary/10!'
+                  className='data-active:bg-primary/10 data-active:text-primary'
                 >
-                  {Tag && <Tag />}
+                  {Tag && <Tag className='size-4 shrink-0' />}
                   <span
                     className={cn(
                       'min-w-0 flex-1 truncate',
                       item.badge && isExternalLink(item.href) && 'pr-8',
-                      item.badge && !isExternalLink(item.href) && 'pr-14',
+                      item.badge && !isExternalLink(item.href) && 'pr-12',
                       !item.badge && isExternalLink(item.href) && 'pr-6'
                     )}
                   >
@@ -248,7 +222,7 @@ const SidebarGroupedMenuItems = ({
                   {item.badge && (
                     <SidebarMenuBadge
                       className={cn(
-                        'bg-primary/10 max-w-24 truncate rounded-full px-1.5 font-normal',
+                        'bg-primary/15 text-primary max-w-20 truncate rounded-sm px-1.5 font-mono text-[9px] tracking-wide',
                         isExternalLink(item.href) && 'right-6',
                         item.badgeClassName
                       )}
@@ -257,7 +231,7 @@ const SidebarGroupedMenuItems = ({
                     </SidebarMenuBadge>
                   )}
                   {isExternalLink(item.href) && (
-                    <SquareArrowOutUpRightIcon className='ml-auto size-3.5! shrink-0 opacity-50' />
+                    <SquareArrowOutUpRightIcon className='ml-auto size-3.5 shrink-0 opacity-50' />
                   )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -269,38 +243,76 @@ const SidebarGroupedMenuItems = ({
   )
 }
 
+const SidebarBrand = () => {
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          size='lg'
+          tooltip='Talon Operator'
+          className='hover:bg-sidebar-accent/80 data-[slot=sidebar-menu-button]:p-2!'
+          render={<Link href={themeConfig.homePageUrl} />}
+        >
+          <div className='bg-primary/15 text-primary ring-primary/25 flex aspect-square size-8 shrink-0 items-center justify-center rounded-md ring-1'>
+            <CrosshairIcon className='size-4 drop-shadow-[0_0_8px_var(--op-glow)]' />
+          </div>
+          <div className='grid min-w-0 flex-1 text-left text-sm leading-tight'>
+            <span className='truncate font-mono text-[12px] font-semibold tracking-[0.16em] uppercase'>
+              Talon <span className='text-primary'>//</span> Op
+            </span>
+            <span className='text-muted-foreground truncate font-mono text-[10px] tracking-widest uppercase'>
+              Red operator shell
+            </span>
+          </div>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  )
+}
+
 const SidebarLayout = () => {
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const { state } = useSidebar()
 
   return (
-    <Sidebar collapsible='icon' variant='sidebar'>
-      <SidebarHeader>
+    <Sidebar collapsible='icon' variant='sidebar' side='left' className='border-sidebar-border'>
+      <SidebarHeader className='border-sidebar-border/80 border-b'>
+        <SidebarBrand />
+      </SidebarHeader>
+
+      <SidebarContent className='gap-0 overflow-x-hidden'>
+        {navItems.map((navItem, index) => (
+          <SidebarGroupedMenuItems
+            key={navItem.groupLabel || index}
+            data={navItem.items}
+            groupLabel={navItem.groupLabel}
+            pathname={pathname}
+            searchParams={searchParams}
+          />
+        ))}
+      </SidebarContent>
+
+      <SidebarFooter className='border-sidebar-border/80 border-t'>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              size='lg'
-              className='gap-2.5 bg-transparent! hover:bg-transparent!'
-              render={<Link href={`${themeConfig.homePageUrl}`} />}
+              tooltip='Settings'
+              isActive={pathname.startsWith('/settings')}
+              render={<Link href='/settings' />}
+              className='data-active:bg-primary/10 data-active:text-primary'
             >
-              <Logo compact />
+              <SettingsIcon className='size-4 shrink-0' />
+              <span>Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent className='group-data-[collapsible=icon]:overflow-y-auto'>
-        {navItems.map((navItem, index) => {
-          return (
-            <SidebarGroupedMenuItems
-              key={navItem.groupLabel || index}
-              data={navItem.items}
-              groupLabel={navItem.groupLabel}
-              pathname={pathname}
-              searchParams={searchParams}
-            />
-          )
-        })}
-      </SidebarContent>
+        <div className='text-muted-foreground group-data-[collapsible=icon]:hidden px-2 pb-1 font-mono text-[9px] tracking-widest uppercase'>
+          {state === 'expanded' ? '⌘B collapse' : '⌘B expand'} · authorized only
+        </div>
+      </SidebarFooter>
+
+      <SidebarRail className='hover:after:bg-primary/40' />
     </Sidebar>
   )
 }

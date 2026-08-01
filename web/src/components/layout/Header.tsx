@@ -78,7 +78,10 @@ const Header = () => {
     <header className='op-header sticky top-0 z-50'>
       <div className='mx-auto flex max-w-360 items-center justify-between gap-6 px-4 py-2.5 sm:px-6'>
         <div className='flex items-center gap-4'>
-          <SidebarTrigger className='text-primary/80 hover:text-primary [&_svg]:size-5!' />
+          <SidebarTrigger
+            className='text-primary/80 hover:text-primary border-primary/15 hover:bg-primary/10 size-8 border [&_svg]:size-4!'
+            title='Toggle sidebar (⌘B)'
+          />
           <Separator orientation='vertical' className='bg-primary/20 hidden h-4! data-vertical:self-center sm:block' />
           <Breadcrumb className='hidden sm:block'>
             <BreadcrumbList className='font-mono text-[10px] tracking-widest uppercase'>
