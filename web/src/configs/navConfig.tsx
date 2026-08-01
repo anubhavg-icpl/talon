@@ -68,6 +68,26 @@ export const navItems: NavItem[] = [
         icon: 'Crosshair',
         label: 'New Operation',
         href: '/runs/new'
+      },
+      {
+        icon: 'Bug',
+        label: 'Findings',
+        href: '/findings'
+      }
+    ]
+  },
+  {
+    groupLabel: 'Intelligence',
+    items: [
+      {
+        icon: 'Bot',
+        label: 'Agents',
+        href: '/agents'
+      },
+      {
+        icon: 'BookOpen',
+        label: 'Skills',
+        href: '/skills'
       }
     ]
   },

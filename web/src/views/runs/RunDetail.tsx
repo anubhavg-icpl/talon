@@ -7,11 +7,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 // Type Imports
-import type { Interrupt, RunSummary, StatusResponse, ToolCallRecord } from '@/lib/api'
+import type {
+  Finding,
+  Interrupt,
+  KillChainAnalysis,
+  MethodologyState,
+  RunSummary,
+  StatusResponse,
+  StructuredReport,
+  ToolCallRecord
+} from '@/lib/api'
 
 // Component Imports
 import Elapsed from '@/components/shared/Elapsed'
 import StatusBadge from '@/components/shared/StatusBadge'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -28,8 +38,90 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 
 // Util Imports
-import { analyzeRun, getStatus, getTools, getTraces, listRuns, resumeRun, streamRun } from '@/lib/api'
+import {
+  analyzeRun,
+  getFindings,
+  getKillChain,
+  getMethodology,
+  getReport,
+  getStatus,
+  getTools,
+  getTraces,
+  listRuns,
+  resumeRun,
+  streamRun,
+  triageFinding
+} from '@/lib/api'
 import { shortId } from '@/lib/format'
+
+const severityVariant = (sev: string): 'destructive' | 'default' | 'secondary' | 'outline' => {
+  switch (sev.toLowerCase()) {
+    case 'critical':
+    case 'high':
+      return 'destructive'
+    case 'medium':
+      return 'default'
+    case 'low':
+      return 'secondary'
+    default:
+      return 'outline'
+  }
+}
+
+const FindingCard = ({ finding }: { finding: Finding }) => (
+  <Card className='border-border/60'>
+    <CardHeader className='pb-2'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <Badge variant={severityVariant(finding.severity)} className='font-mono text-[10px] tracking-widest uppercase'>
+          {finding.severity}
+        </Badge>
+        {finding.evidence?.passed && (
+          <Badge variant='outline' className='border-primary/50 text-primary font-mono text-[10px] tracking-widest uppercase'>
+            3-GATE PASS
+          </Badge>
+        )}
+        {finding.stage && (
+          <span className='text-muted-foreground font-mono text-[10px] tracking-widest uppercase'>{finding.stage}</span>
+        )}
+        <span className='text-muted-foreground ml-auto font-mono text-[10px]'>{finding.id}</span>
+      </div>
+      <CardTitle className='mt-2 font-mono text-sm font-semibold tracking-wide'>{finding.title}</CardTitle>
+    </CardHeader>
+    <CardContent className='space-y-2 font-mono text-xs'>
+      {finding.description && <p className='text-muted-foreground leading-relaxed'>{finding.description}</p>}
+      <div className='text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-[10px] tracking-widest uppercase'>
+        {finding.endpoint && <span>EP: {finding.endpoint}</span>}
+        {finding.cwe_id && <span>REF: {finding.cwe_id}</span>}
+        {finding.source && <span>SRC: {finding.source}</span>}
+      </div>
+      {(finding.evidence?.baseline || finding.evidence?.attack || finding.evidence?.diff) && (
+        <div className='border-border/40 bg-muted/20 mt-2 space-y-1 rounded border p-2 text-[11px]'>
+          <p className='micro-label'>3-GATE EVIDENCE</p>
+          {finding.evidence.baseline && (
+            <p>
+              <span className='text-primary'>1. BASELINE:</span> {finding.evidence.baseline}
+            </p>
+          )}
+          {finding.evidence.attack && (
+            <p>
+              <span className='text-primary'>2. ATTACK:</span> {finding.evidence.attack}
+            </p>
+          )}
+          {finding.evidence.diff && (
+            <p>
+              <span className='text-primary'>3. DIFF:</span> {finding.evidence.diff}
+            </p>
+          )}
+        </div>
+      )}
+      {finding.recommendation && (
+        <p className='text-muted-foreground'>
+          <span className='text-foreground'>REMEDY:</span> {finding.recommendation}
+        </p>
+      )}
+    </CardContent>
+  </Card>
+)
 
 const isActive = (status?: string) => status === 'running' || status === 'awaiting_approval' || status === 'initializing'
 
@@ -239,8 +331,68 @@ const RunDetail = ({ runId }: { runId: string }) => {
   const [analysis, setAnalysis] = useState<string | null>(null)
   const [analysisBusy, setAnalysisBusy] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [findings, setFindings] = useState<Finding[]>([])
+  const [report, setReport] = useState<StructuredReport | null>(null)
+  const [killchain, setKillchain] = useState<KillChainAnalysis | null>(null)
+  const [methodology, setMethodology] = useState<MethodologyState | null>(null)
 
   const seenToolIndexes = useRef<Set<number>>(new Set())
+
+  const loadFindingsReport = useCallback(async () => {
+    const [fRes, rRes, kRes, mRes] = await Promise.allSettled([
+      getFindings(runId),
+      getReport(runId),
+      getKillChain(runId),
+      getMethodology(runId)
+    ])
+    if (fRes.status === 'fulfilled') setFindings(fRes.value.findings ?? [])
+    if (rRes.status === 'fulfilled') setReport(rRes.value)
+    if (kRes.status === 'fulfilled') setKillchain(kRes.value)
+    if (mRes.status === 'fulfilled') setMethodology(mRes.value)
+  }, [runId])
+
+  const exportReport = () => {
+    const md = report?.markdown || status?.output || ''
+    if (!md) {
+      toast.error('No report to export')
+      return
+    }
+    const blob = new Blob([md], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `talon-report-${runId.slice(0, 8)}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('Report exported')
+  }
+
+  const exportFindingsJSON = () => {
+    if (!findings.length) {
+      toast.error('No findings to export')
+      return
+    }
+    const blob = new Blob([JSON.stringify({ run_id: runId, findings }, null, 2)], {
+      type: 'application/json'
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `talon-findings-${runId.slice(0, 8)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('Findings JSON exported')
+  }
+
+  const handleTriage = async (id: string, st: string) => {
+    try {
+      await triageFinding(runId, id, st)
+      toast.success(`Triaged ${id} → ${st}`)
+      await loadFindingsReport()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Triage failed')
+    }
+  }
 
   const ingestTool = useCallback((tool: ToolCallRecord) => {
     if (seenToolIndexes.current.has(tool.Index)) return
@@ -284,6 +436,15 @@ const RunDetail = ({ runId }: { runId: string }) => {
     }
   }, [runId])
 
+  // Structured findings + report once the run is terminal (or has a report flag).
+  useEffect(() => {
+    if (!loaded) return
+    const st = status?.status
+    if (st === 'completed' || st === 'error' || status?.has_report || (status?.findings_count ?? 0) > 0) {
+      void loadFindingsReport()
+    }
+  }, [loaded, status?.status, status?.has_report, status?.findings_count, loadFindingsReport])
+
   // Live stream (with polling fallback handled by streamRun)
   const currentStatus = status?.status
 
@@ -296,6 +457,9 @@ const RunDetail = ({ runId }: { runId: string }) => {
       onTool: ingestTool,
       onStatus: s => {
         setStatus(prev => ({ ...prev, ...s }))
+        if (s.status === 'completed' || s.status === 'error') {
+          void loadFindingsReport()
+        }
 
         if (!isActive(s.status)) {
           getTraces(runId)
@@ -303,11 +467,23 @@ const RunDetail = ({ runId }: { runId: string }) => {
             .catch(() => {})
         }
       },
+      onFindings: payload => {
+        if (payload.findings) setFindings(payload.findings)
+        setStatus(prev =>
+          prev
+            ? {
+                ...prev,
+                findings_count: payload.findings_count,
+                findings_summary: payload.findings_summary
+              }
+            : prev
+        )
+      },
       onError: err => setLoadError(err.message)
     })
 
     return stop
-  }, [loaded, runId, currentStatus, ingestTool])
+  }, [loaded, runId, currentStatus, ingestTool, loadFindingsReport])
 
   const handleDecision = useCallback(
     async (decision: 'approve' | 'reject' | 'edit', editedArgs?: Record<string, unknown>) => {
@@ -403,6 +579,10 @@ const RunDetail = ({ runId }: { runId: string }) => {
           className='w-full justify-start overflow-x-auto border-b font-mono text-xs tracking-widest uppercase'
         >
           <TabsTrigger value='terminal'>Terminal</TabsTrigger>
+          <TabsTrigger value='findings'>
+            Findings{findings.length > 0 ? ` (${findings.length})` : status?.findings_count ? ` (${status.findings_count})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value='killchain'>Kill Chain</TabsTrigger>
           <TabsTrigger value='report'>Report</TabsTrigger>
           <TabsTrigger value='analysis'>AI Analysis</TabsTrigger>
           <TabsTrigger value='traces'>Traces</TabsTrigger>
@@ -411,6 +591,142 @@ const RunDetail = ({ runId }: { runId: string }) => {
 
         <TabsContent value='terminal' className='pt-4'>
           {!loaded ? <Skeleton className='h-[32rem] w-full' /> : <Terminal tools={tools} active={isActive(status?.status)} />}
+        </TabsContent>
+
+        <TabsContent value='findings' className='flex flex-col gap-4 pt-4'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            {status?.findings_summary ? (
+              <div className='flex flex-wrap gap-2 font-mono text-[10px] tracking-widest uppercase'>
+                <Badge variant='outline'>TOTAL {status.findings_summary.total}</Badge>
+                {status.findings_summary.critical > 0 && (
+                  <Badge variant='destructive'>CRIT {status.findings_summary.critical}</Badge>
+                )}
+                {status.findings_summary.high > 0 && (
+                  <Badge variant='destructive'>HIGH {status.findings_summary.high}</Badge>
+                )}
+                {status.findings_summary.medium > 0 && (
+                  <Badge variant='default'>MED {status.findings_summary.medium}</Badge>
+                )}
+                {status.findings_summary.low > 0 && (
+                  <Badge variant='secondary'>LOW {status.findings_summary.low}</Badge>
+                )}
+                {status.findings_summary.info > 0 && (
+                  <Badge variant='outline'>INFO {status.findings_summary.info}</Badge>
+                )}
+                <Badge variant='outline' className='border-primary/40 text-primary'>
+                  3-GATE {status.findings_summary.confirmed}
+                </Badge>
+              </div>
+            ) : (
+              <span />
+            )}
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={exportFindingsJSON}
+              className='font-mono text-[10px] tracking-widest uppercase'
+            >
+              Export JSON
+            </Button>
+          </div>
+          {!loaded ? (
+            <Skeleton className='h-48 w-full' />
+          ) : findings.length === 0 ? (
+            <p className='micro-label py-8 text-center'>
+              {isActive(status?.status)
+                ? 'FINDINGS PENDING — OPERATION IN PROGRESS'
+                : 'NO STRUCTURED FINDINGS — COMPLETE A RUN TO EXTRACT EVIDENCE'}
+            </p>
+          ) : (
+            <div className='flex flex-col gap-3'>
+              {findings.map(f => (
+                <div key={f.id} className='flex flex-col gap-2'>
+                  <FindingCard finding={f} />
+                  {f.status === 'new' && (
+                    <div className='flex gap-2'>
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        className='font-mono text-[10px] tracking-widest uppercase'
+                        onClick={() => handleTriage(f.id, 'approved')}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        className='font-mono text-[10px] tracking-widest uppercase'
+                        onClick={() => handleTriage(f.id, 'duplicate')}
+                      >
+                        Mark Duplicate
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value='killchain' className='flex flex-col gap-4 pt-4'>
+          {methodology && (
+            <Card>
+              <CardHeader>
+                <CardTitle className='micro-label'>
+                  METHODOLOGY COVERAGE — {methodology.percent}% ({methodology.covered_count}/{methodology.total_count})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className='space-y-2 font-mono text-xs'>
+                {methodology.items?.map(it => (
+                  <div key={it.stage} className='flex flex-wrap items-center gap-2'>
+                    <span>{it.covered ? '☑' : '☐'}</span>
+                    <span>{it.label}</span>
+                    {it.tools && it.tools.length > 0 && (
+                      <span className='text-muted-foreground'>({it.tools.join(', ')})</span>
+                    )}
+                    {it.notes && <span className='text-muted-foreground text-[10px]'>{it.notes}</span>}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+          <Card>
+            <CardHeader>
+              <CardTitle className='micro-label'>
+                KILL CHAIN{killchain?.max_severity ? ` — MAX ${killchain.max_severity.toUpperCase()}` : ''}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!killchain ? (
+                <p className='micro-label py-6 text-center'>KILL CHAIN PENDING</p>
+              ) : (
+                <div className='space-y-3 font-mono text-xs'>
+                  {(killchain.chains ?? []).length === 0 ? (
+                    <p className='text-muted-foreground'>No multi-stage chains detected yet.</p>
+                  ) : (
+                    killchain.chains.map((c, i) => (
+                      <div key={i} className='border-border/50 rounded border p-2'>
+                        <span className='text-primary uppercase'>{c.severity}</span>:{' '}
+                        <code>
+                          {c.from} → {c.to}
+                        </code>
+                        <p className='text-muted-foreground mt-1'>{c.reason}</p>
+                      </div>
+                    ))
+                  )}
+                  {killchain.next_steps && killchain.next_steps.length > 0 && (
+                    <p>
+                      <span className='micro-label'>NEXT STEPS: </span>
+                      {killchain.next_steps.join(', ')}
+                    </p>
+                  )}
+                  {killchain.summary && (
+                    <pre className='text-muted-foreground max-h-48 overflow-auto whitespace-pre-wrap'>{killchain.summary}</pre>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value='report' className='flex flex-col gap-4 pt-4'>
@@ -426,11 +742,33 @@ const RunDetail = ({ runId }: { runId: string }) => {
           )}
           <Card>
             <CardHeader>
-              <CardTitle className='micro-label'>FINAL REPORT</CardTitle>
+              <div className='flex flex-wrap items-center justify-between gap-2'>
+                <div>
+                  <CardTitle className='micro-label'>STRUCTURED VALIDATION REPORT</CardTitle>
+                  {report?.stages_covered && report.stages_covered.length > 0 && (
+                    <p className='micro-label mt-1'>STAGES: {report.stages_covered.join(' → ')}</p>
+                  )}
+                  {status?.agent_mode && (
+                    <p className='micro-label mt-1'>AGENT MODE: {status.agent_mode.toUpperCase()}</p>
+                  )}
+                </div>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  onClick={exportReport}
+                  className='font-mono text-[10px] tracking-widest uppercase'
+                >
+                  Export .md
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {!loaded ? (
                 <Skeleton className='h-48 w-full' />
+              ) : report?.markdown ? (
+                <pre className='max-h-[32rem] overflow-auto font-mono text-xs leading-relaxed whitespace-pre-wrap'>
+                  {report.markdown}
+                </pre>
               ) : status?.output ? (
                 <pre className='max-h-[32rem] overflow-auto font-mono text-xs leading-relaxed whitespace-pre-wrap'>
                   {status.output}

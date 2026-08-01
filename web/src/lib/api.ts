@@ -15,6 +15,8 @@ export type RunSummary = {
   status: RunStatus
   judge_verdict?: boolean
   tool_calls: number
+  findings_count?: number
+  agent_mode?: string
   started_at: string // RFC3339
 }
 
@@ -32,6 +34,7 @@ export type StartRunRequest = {
   description?: string
   lhost?: string
   lport?: number
+  agent_mode?: string
 }
 
 export type StartRunResponse = {
@@ -45,11 +48,58 @@ export type Interrupt = {
   Args: Record<string, unknown>
 }
 
+export type FindingsSummary = {
+  total: number
+  critical: number
+  high: number
+  medium: number
+  low: number
+  info: number
+  confirmed: number
+}
+
 export type StatusResponse = {
   status: RunStatus
   output: string
   interrupt: Interrupt | null
   judge_verdict?: boolean
+  findings_summary?: FindingsSummary
+  findings_count?: number
+  has_report?: boolean
+  agent_mode?: string
+  methodology_percent?: number
+}
+
+export type GateEvidence = {
+  baseline?: string
+  attack?: string
+  diff?: string
+  passed: boolean
+}
+
+export type Finding = {
+  id: string
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info' | string
+  title: string
+  description: string
+  cwe_id?: string
+  endpoint?: string
+  attack_vector?: string
+  steps_to_reproduce?: string
+  business_impact?: string
+  recommendation?: string
+  poc?: string
+  evidence: GateEvidence
+  status: string
+  source: string
+  stage?: string
+  created_at?: string
+}
+
+export type FindingsResponse = {
+  run_id: string
+  findings: Finding[]
+  summary: FindingsSummary
 }
 
 export type ResumeDecision = 'approve' | 'reject' | 'edit'
@@ -171,7 +221,16 @@ export type MCPServerInfo = {
   tools: string[]
 }
 
-export const getMCPServers = () => request<{ servers: MCPServerInfo[] }>('/mcp/servers')
+export type MCPServersResponse = {
+  servers: MCPServerInfo[]
+  skill_stats?: Record<string, number>
+  agent_to_agent?: {
+    model?: string
+    notes?: string[]
+  }
+}
+
+export const getMCPServers = () => request<MCPServersResponse>('/mcp/servers')
 
 export const startRun = (body: StartRunRequest) =>
   request<StartRunResponse>('/input/start', { method: 'POST', body: JSON.stringify(body) })
@@ -185,6 +244,138 @@ export const getTools = (runId: string) => request<ToolsResponse>(`/monitor/tool
 
 export const getTraces = (runId: string) => request<TracesResponse>(`/monitor/traces/${runId}`)
 
+export type StructuredReport = {
+  markdown: string
+  generated_at?: string
+  sections?: string[]
+  findings?: Finding[]
+  summary?: FindingsSummary
+  judge_verdict?: boolean
+  target?: string
+  cve_id?: string
+  stages_covered?: string[]
+  message?: string
+}
+
+export const getFindings = (runId: string) => request<FindingsResponse>(`/runs/${runId}/findings`)
+
+export const getReport = (runId: string) => request<StructuredReport>(`/runs/${runId}/report`)
+
+export type Skill = {
+  id: string
+  name: string
+  stage: string
+  category?: string
+  body?: string
+  source?: string
+  path?: string
+}
+
+export type CategoryCount = {
+  name: string
+  count: number
+}
+
+export type SkillsListResponse = {
+  skills: Skill[]
+  count: number
+  total: number
+  offset: number
+  limit: number
+  stats?: Record<string, number>
+  categories?: CategoryCount[]
+}
+
+export type SkillsQuery = {
+  brief?: boolean
+  full?: boolean
+  stage?: string
+  category?: string
+  q?: string
+  limit?: number
+  offset?: number
+}
+
+export const getSkills = (opts?: SkillsQuery) => {
+  const params = new URLSearchParams()
+  if (opts?.brief) params.set('brief', '1')
+  if (opts?.full) params.set('full', '1')
+  if (opts?.stage) params.set('stage', opts.stage)
+  if (opts?.category) params.set('category', opts.category)
+  if (opts?.q) params.set('q', opts.q)
+  if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
+  if (opts?.offset !== undefined) params.set('offset', String(opts.offset))
+  const qs = params.toString()
+  return request<SkillsListResponse>(`/skills${qs ? `?${qs}` : ''}`)
+}
+
+export const getSkill = (id: string) => request<Skill>(`/skills/${encodeURIComponent(id)}`)
+
+export type AgentInfo = {
+  id: string
+  name: string
+  codename: string
+  focus: string
+  description: string
+  delegates: string[]
+}
+
+export const getAgents = () => request<{ agents: AgentInfo[]; count: number }>('/agents')
+
+export type KillChainLink = {
+  from: string
+  to: string
+  severity: string
+  reason: string
+}
+
+export type KillChainAnalysis = {
+  chains: KillChainLink[]
+  next_steps: string[]
+  summary: string
+  max_severity: string
+}
+
+export const getKillChain = (runId: string) => request<KillChainAnalysis>(`/runs/${runId}/killchain`)
+
+export type CoverageItem = {
+  stage: string
+  label: string
+  covered: boolean
+  tools?: string[]
+  notes?: string
+}
+
+export type MethodologyState = {
+  items: CoverageItem[]
+  covered_count: number
+  total_count: number
+  percent: number
+  agent_mode?: string
+}
+
+export const getMethodology = (runId: string) => request<MethodologyState>(`/runs/${runId}/methodology`)
+
+export const triageFinding = (runId: string, findingId: string, status: string, duplicateOf?: string) =>
+  request<Finding>(`/runs/${runId}/findings/${findingId}/triage`, {
+    method: 'POST',
+    body: JSON.stringify({ status, ...(duplicateOf ? { duplicate_of: duplicateOf } : {}) })
+  })
+
+export type GlobalFinding = {
+  run_id: string
+  target: string
+  finding: Finding
+}
+
+export const getGlobalFindings = (opts?: { severity?: string; limit?: number }) => {
+  const params = new URLSearchParams()
+  if (opts?.severity) params.set('severity', opts.severity)
+  if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
+  const qs = params.toString()
+  return request<{ findings: GlobalFinding[]; count: number }>(`/findings${qs ? `?${qs}` : ''}`)
+}
+
 export type AnalyzeResponse = {
   run_id: string
   analysis: string
@@ -194,9 +385,16 @@ export type AnalyzeResponse = {
 export const analyzeRun = (runId: string) =>
   request<AnalyzeResponse>(`/analyze/${runId}`, { method: 'POST' })
 
+export type FindingsStreamPayload = {
+  findings_count: number
+  findings_summary?: FindingsSummary
+  findings?: Finding[]
+}
+
 export type StreamRunHandlers = {
   onTool?: (tool: ToolCallRecord) => void
   onStatus?: (status: StatusResponse) => void
+  onFindings?: (payload: FindingsStreamPayload) => void
   onError?: (error: Error) => void
 }
 
@@ -205,8 +403,6 @@ const TERMINAL_STATUSES: RunStatus[] = ['completed', 'error', 'not_found']
 /**
  * Live-follow a run with a resilience chain:
  *   WebSocket (direct to talon-core /monitor/ws) → SSE (proxied /monitor/stream) → 3s polling.
- * Each tier falls through to the next on error before a terminal status, so a
- * broken WS or SSE path never breaks the view. Returns an unsubscribe function.
  */
 export const streamRun = (runId: string, handlers: StreamRunHandlers): (() => void) => {
   let stopped = false
@@ -263,12 +459,24 @@ export const streamRun = (runId: string, handlers: StreamRunHandlers): (() => vo
       if (stopped) return
 
       try {
-        const [status, tools] = await Promise.all([getStatus(runId), getTools(runId)])
+        const [status, tools, findingsRes] = await Promise.all([
+          getStatus(runId),
+          getTools(runId),
+          getFindings(runId).catch(() => null)
+        ])
 
         if (stopped) return
 
         for (const tool of tools.tool_log ?? []) {
           if (tool.Index > lastToolIndex) handleTool(tool)
+        }
+
+        if (findingsRes) {
+          handlers.onFindings?.({
+            findings_count: findingsRes.findings?.length ?? 0,
+            findings_summary: findingsRes.summary,
+            findings: findingsRes.findings ?? []
+          })
         }
 
         if (handleStatus(status)) return
@@ -304,8 +512,15 @@ export const streamRun = (runId: string, handlers: StreamRunHandlers): (() => vo
         }
       })
 
+      es.addEventListener('findings', ev => {
+        try {
+          handlers.onFindings?.(JSON.parse((ev as MessageEvent).data) as FindingsStreamPayload)
+        } catch {
+          // ignore
+        }
+      })
+
       es.onerror = () => {
-        // SSE endpoint unreachable or dropped — switch to polling
         es?.close()
         es = null
 
@@ -329,9 +544,11 @@ export const streamRun = (runId: string, handlers: StreamRunHandlers): (() => vo
           const msg = JSON.parse(ev.data as string) as
             | { type: 'tool'; data: ToolCallRecord }
             | { type: 'status'; data: StatusResponse }
+            | { type: 'findings'; data: FindingsStreamPayload }
 
           if (msg.type === 'tool') handleTool(msg.data)
           else if (msg.type === 'status') handleStatus(msg.data)
+          else if (msg.type === 'findings') handlers.onFindings?.(msg.data)
         } catch {
           // ignore malformed messages
         }
@@ -343,9 +560,6 @@ export const streamRun = (runId: string, handlers: StreamRunHandlers): (() => vo
 
       ws.onclose = () => {
         ws = null
-
-        // Clean close after terminal status sets stopped=true; any other
-        // close means WS is unavailable — degrade to SSE.
         if (!stopped) startSSE()
       }
     } catch {

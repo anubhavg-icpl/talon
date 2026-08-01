@@ -1,7 +1,10 @@
 'use client'
 
+// React Imports
+import { useEffect, useState } from 'react'
+
 // Next Imports
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 // Third-party Imports
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -14,10 +17,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
 // Util Imports
-import { startRun } from '@/lib/api'
+import type { AgentInfo } from '@/lib/api'
+import { getAgents, startRun } from '@/lib/api'
 
 const schema = z.object({
   ip: z
@@ -34,7 +39,8 @@ const schema = z.object({
   lhost: z.string().optional(),
   lport: z
     .union([z.literal(''), z.coerce.number().int().min(1).max(65535)])
-    .optional()
+    .optional(),
+  agent_mode: z.string().optional()
 })
 
 type FormValues = z.infer<typeof schema>
@@ -57,6 +63,17 @@ const Field = ({
 
 const NewRun = () => {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const [agents, setAgents] = useState<AgentInfo[]>([])
+  const [agentMode, setAgentMode] = useState('full')
+
+  useEffect(() => {
+    const mode = searchParams.get('mode')
+    if (mode) setAgentMode(mode)
+    getAgents()
+      .then(res => setAgents(res.agents ?? []))
+      .catch(() => {})
+  }, [searchParams])
 
   const {
     register,
@@ -64,7 +81,7 @@ const NewRun = () => {
     formState: { errors, isSubmitting }
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { ip: '', cve_id: '', service_name: '', description: '', lhost: '', lport: '' }
+    defaultValues: { ip: '', cve_id: '', service_name: '', description: '', lhost: '', lport: '', agent_mode: 'full' }
   })
 
   const onSubmit = async (values: FormValues) => {
@@ -75,7 +92,8 @@ const NewRun = () => {
         ...(values.service_name ? { service_name: values.service_name } : {}),
         ...(values.description ? { description: values.description } : {}),
         ...(values.lhost ? { lhost: values.lhost } : {}),
-        ...(values.lport ? { lport: Number(values.lport) } : {})
+        ...(values.lport ? { lport: Number(values.lport) } : {}),
+        agent_mode: agentMode || 'full'
       })
 
       toast.success(`Operation launched — ${res.run_id}`)
@@ -103,6 +121,31 @@ const NewRun = () => {
           <form onSubmit={handleSubmit(onSubmit)} className='flex flex-col gap-4' noValidate>
             <Field label='TARGET IP *' error={errors.ip?.message}>
               <Input {...register('ip')} placeholder='10.10.10.5' className='font-mono' autoFocus />
+            </Field>
+
+            <Field label='AGENT MODE (SPECIALIST)'>
+              <Select value={agentMode} onValueChange={setAgentMode}>
+                <SelectTrigger className='font-mono'>
+                  <SelectValue placeholder='full' />
+                </SelectTrigger>
+                <SelectContent>
+                  {(agents.length
+                    ? agents
+                    : [
+                        { id: 'full', name: 'Full Pipeline', codename: 'COMMANDER' },
+                        { id: 'recon', name: 'Recon', codename: 'GHOST' },
+                        { id: 'web', name: 'Web Application', codename: 'STRIKER-WEB' },
+                        { id: 'network', name: 'Internal Network', codename: 'PHANTOM' },
+                        { id: 'exploit', name: 'Exploit', codename: 'STRIKER' },
+                        { id: 'post', name: 'Post-Exploit', codename: 'CIPHER' }
+                      ]
+                  ).map(a => (
+                    <SelectItem key={a.id} value={a.id} className='font-mono text-xs'>
+                      {a.codename} — {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
 
             <div className='grid gap-4 sm:grid-cols-2'>

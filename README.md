@@ -50,11 +50,12 @@ authorization** to test.
 
 | Stage | What happens |
 |--------|----------------|
-| **Recon** | Focused nmap (HITL gate), optional nuclei/smbmap |
+| **Recon** | Focused nmap (HITL gate), optional nuclei/smbmap — skills inject methodology budget |
 | **Exploit** | Metasploit module search + `run_exploit` with session poll |
 | **Post-exploit** | Shell commands on the session (proof of compromise) |
 | **Forge** | If modules fail: LLM writes Python, runs in Docker sandbox |
 | **Judge** | Second model returns whether compromise was real |
+| **Findings + report** | Structured findings with **3-gate evidence** (baseline → attack → diff), severity triage, multi-section markdown report |
 
 Human-in-the-loop: **`nmap_scan` is gated**. Approve, reject, or edit args
 before the scan runs (CLI: `talon run approve|reject|edit`).
@@ -244,7 +245,7 @@ Login with `TALON_ADMIN_USERNAME` / `TALON_ADMIN_PASSWORD` from `.env`
 | `/overview` | Fleet stats, run-activity chart, verdicts donut, live active operations |
 | `/runs` | Filterable/sortable table of every run (persisted across restarts) |
 | `/runs/new` | Launch a run: target IP, CVE, service, LHOST/LPORT |
-| `/runs/{id}` | Live terminal feed (WebSocket), **HITL approve/reject/edit gate**, report, **AI analysis**, traces |
+| `/runs/{id}` | Live terminal feed (WebSocket), **HITL approve/reject/edit gate**, **structured findings** (3-gate), report, **AI analysis**, traces |
 | `/settings` | Live service health (7 probes), **config editor** (LLM/attacker/features, DB-backed), **MCP servers** panel |
 
 Architecture: the browser only talks to the dashboard; a server-side proxy
@@ -397,9 +398,33 @@ Base URL: **`http://localhost:8000`** (host networking).
 | `GET` | `/config` | Effective config (DB overrides → env → default), secrets masked |
 | `PUT` | `/config` | Save whitelisted config keys to Postgres (FEATURE_* hot; LLM applies on restart) |
 | `GET` | `/mcp/servers` | Connected MCP servers + their tool lists |
-| `GET` | `/output/status/{run_id}` | `running` \| `awaiting_approval` \| `completed` \| … + optional `interrupt` / `output` |
+| `GET` | `/output/status/{run_id}` | `running` \| `awaiting_approval` \| `completed` \| … + optional `interrupt` / `output` / `findings_summary` |
 | `POST` | `/output/resume/{run_id}` | HITL: `{"decision":"approve"\|"reject"\|"edit","edited_args":{...}}` |
 | `POST` | `/analyze/{run_id}` | One-shot LLM analyst briefing (report + tool log → summary/kill-chain/findings/remediation) |
+| `GET` | `/runs/{run_id}/findings` | Structured findings with 3-gate evidence (`baseline` / `attack` / `diff`) + severity roll-up |
+| `POST` | `/runs/{run_id}/findings/{id}/triage` | Triage finding: `{status, duplicate_of?}` |
+| `GET` | `/runs/{run_id}/report` | Multi-section validation report (exec summary, findings, methodology, timeline, validation) |
+| `GET` | `/runs/{run_id}/killchain` | Derived attack-path analysis from findings |
+| `GET` | `/runs/{run_id}/methodology` | Stage coverage checklist for the run |
+| `GET` | `/findings` | Global findings registry (`?severity=&limit=`) |
+| `GET` | `/skills` | Full CyberStrike skill catalog (~7.6k) — paginated: `?brief=1&category=&q=&stage=&limit=&offset=` |
+| `GET` | `/skills/{id}` | Full skill body for UI detail / revisit |
+| `GET` | `/agents` | Specialist agent modes (full/recon/web/network/exploit/post) |
+| `POST` | `/input/start` | Also accepts `agent_mode` (`full`\|`recon`\|`exploit`\|`web`\|`network`\|`post`) |
+
+### Operator CLI (intelligence surface)
+
+```bash
+talon skills --brief                 # catalog (builtin + skills/*.md)
+talon agents                         # specialist modes
+talon findings --severity critical  # global findings registry
+talon run start --ip … --mode web    # agent mode
+talon run findings <run_id>          # per-run 3-gate findings
+talon run report <run_id>            # structured markdown report
+talon run killchain <run_id>
+talon run methodology <run_id>
+talon run triage <run_id> FIND-001 --status approved
+```
 | `GET` | `/monitor/tools?run_id=` | Tool call log |
 | `GET` | `/monitor/traces/{run_id}` | Message history |
 | `GET` | `/monitor/stream/{run_id}` | **SSE** live stream: `tool` + `status` events, closes on terminal state |

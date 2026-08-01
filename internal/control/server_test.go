@@ -19,6 +19,8 @@ func TestListRunsNewestFirst(t *testing.T) {
 	t.Parallel()
 	store := NewStore()
 	store.Create("r-old", core.RunInput{SessionID: "r-old", TargetIP: "1.1.1.1"})
+	// Ensure newer StartedAt so newest-first sort is deterministic.
+	time.Sleep(2 * time.Millisecond)
 	store.Create("r-new", core.RunInput{SessionID: "r-new", TargetIP: "2.2.2.2", CVEID: "CVE-2011-2523"})
 	store.SetStatus("r-new", "running")
 	store.SetResult("r-new", core.RunResult{FinalMessage: "done", JudgeVerdict: true})
@@ -401,5 +403,74 @@ func TestPersistenceRoundTrip(t *testing.T) {
 	// Non-terminal runs must be converted to error on reload.
 	if byID["r2"].Status != "error" {
 		t.Fatalf("r2 status=%q want error", byID["r2"].Status)
+	}
+}
+
+func TestFindingsAndReportAndSkills(t *testing.T) {
+	t.Parallel()
+	store := NewStore()
+	input := core.RunInput{SessionID: "r-find", TargetIP: "9.9.9.9", CVEID: "CVE-2011-2523"}
+	store.Create("r-find", input)
+	findings := core.ExtractFindings(input, []core.ToolCallRecord{
+		{Index: 0, ToolName: "run_exploit", Output: "Session 3 created\n"},
+	}, "rooted", true, true)
+	rep := core.BuildReport(input, nil, "rooted", findings, true, true)
+	store.SetResult("r-find", core.RunResult{
+		FinalMessage: "rooted",
+		JudgeVerdict: true,
+		JudgeSet:     true,
+		Findings:     findings,
+		Report:       &rep,
+	})
+	srv := NewServer(nil, store)
+
+	// Findings
+	req := httptest.NewRequest(http.MethodGet, "/runs/r-find/findings", nil)
+	w := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("findings status %d", w.Code)
+	}
+	var fBody map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&fBody); err != nil {
+		t.Fatal(err)
+	}
+	if fBody["findings"] == nil {
+		t.Fatal("missing findings")
+	}
+
+	// Report
+	req = httptest.NewRequest(http.MethodGet, "/runs/r-find/report", nil)
+	w = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("report status %d", w.Code)
+	}
+	var rBody core.StructuredReport
+	if err := json.NewDecoder(w.Body).Decode(&rBody); err != nil {
+		t.Fatal(err)
+	}
+	if rBody.Markdown == "" {
+		t.Fatal("empty report markdown")
+	}
+
+	// Skills
+	req = httptest.NewRequest(http.MethodGet, "/skills?brief=1", nil)
+	w = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("skills status %d", w.Code)
+	}
+
+	// Status includes findings_summary
+	req = httptest.NewRequest(http.MethodGet, "/output/status/r-find", nil)
+	w = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(w, req)
+	var st map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st["findings_summary"] == nil {
+		t.Fatal("expected findings_summary on status")
 	}
 }

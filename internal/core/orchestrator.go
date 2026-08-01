@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/anubhavg-icpl/talon/internal/llm"
@@ -54,6 +55,8 @@ var errBudgetExhausted = errors.New("agent: tool call budget exhausted")
 type tracker struct {
 	count int
 	log   []ToolCallRecord
+	// bag holds mid-run agent-reported findings (report_finding tool).
+	bag *FindingBag
 }
 
 func (t *tracker) allow() error {
@@ -100,6 +103,7 @@ type orchestratorSession struct {
 	pendingArgs          map[string]any
 	toolCallCount        int
 	toolLog              []ToolCallRecord
+	findingBag          *FindingBag
 }
 
 // pausedDelegate is what runDelegateBatch returns when one of the delegate
@@ -139,32 +143,38 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 	case "delegate_recon":
 		return subagentSpec{
 			model:        o.model,
-			systemPrompt: reconSystemPrompt,
-			tools:        o.tools.Subset("nmap_scan", "smbmap_scan", "nuclei_scan"),
+			systemPrompt: InjectSkills(reconSystemPrompt, "recon"),
+			tools:        withAgentTools(o.tools.Subset("nmap_scan", "smbmap_scan", "nuclei_scan")),
 			gate:         func(name string) bool { return name == "nmap_scan" },
-			exec:         func(tr *tracker) toolExecFunc { return mcpExec(o.tools, tr) },
-			maxTurns:     maxReconModelTurns,
+			exec: func(tr *tracker) toolExecFunc {
+				return hybridExec(mcpExec(o.tools, tr), tr.bag, "recon", tr)
+			},
+			maxTurns: maxReconModelTurns,
 		}, true
 	case "delegate_exploit":
 		return subagentSpec{
 			model:        o.model,
-			systemPrompt: exploitSystemPrompt,
-			tools: o.tools.Subset(
+			systemPrompt: InjectSkills(exploitSystemPrompt, "exploit"),
+			tools: withAgentTools(o.tools.Subset(
 				"list_exploits", "list_payloads", "generate_payload", "run_exploit",
 				"run_auxiliary_module", "run_post_module", "sqlmap_scan",
 				"arp_scan_discovery", "hydra_attack", "rustscan_fast_scan",
 				"responder_credential_harvest",
-			),
-			exec:     func(tr *tracker) toolExecFunc { return mcpExec(o.tools, tr) },
+			)),
+			exec: func(tr *tracker) toolExecFunc {
+				return hybridExec(mcpExec(o.tools, tr), tr.bag, "exploit", tr)
+			},
 			maxTurns: maxExploitModelTurns,
 		}, true
 	case "delegate_post_exploit":
 		return subagentSpec{
 			model:        o.model,
-			systemPrompt: postExploitSystemPrompt,
-			tools:        o.tools.Subset("list_active_sessions", "terminate_session", "send_session_command"),
-			exec:         func(tr *tracker) toolExecFunc { return mcpExec(o.tools, tr) },
-			maxTurns:     maxPostExploitModelTurns,
+			systemPrompt: InjectSkills(postExploitSystemPrompt, "post_exploit"),
+			tools:        withAgentTools(o.tools.Subset("list_active_sessions", "terminate_session", "send_session_command")),
+			exec: func(tr *tracker) toolExecFunc {
+				return hybridExec(mcpExec(o.tools, tr), tr.bag, "post_exploit", tr)
+			},
+			maxTurns: maxPostExploitModelTurns,
 		}, true
 	case "delegate_codegen":
 		if o.codegen == nil {
@@ -173,9 +183,9 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 		}
 		return subagentSpec{
 			model:        o.model,
-			systemPrompt: codeGenSystemPrompt,
+			systemPrompt: InjectSkills(codeGenSystemPrompt, "codegen"),
 			maxTurns:     maxCodegenModelTurns,
-			tools: []llm.ToolSpec{{
+			tools: withAgentTools([]llm.ToolSpec{{
 				Name:        o.codegen.Name(),
 				Description: o.codegen.Description(),
 				InputSchema: map[string]any{
@@ -188,28 +198,59 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 					},
 					"required": []string{"query"},
 				},
-			}},
-			exec: func(tr *tracker) toolExecFunc { return codegenExec(o.codegen, tr) },
+			}}),
+			exec: func(tr *tracker) toolExecFunc {
+				return hybridExec(codegenExec(o.codegen, tr), tr.bag, "codegen", tr)
+			},
 		}, true
 	case "delegate_report":
 		return subagentSpec{
 			model:        o.model,
-			systemPrompt: reportSystemPrompt,
+			systemPrompt: InjectSkills(reportSystemPrompt, "report"),
+			tools:        withAgentTools(nil),
 			exec: func(tr *tracker) toolExecFunc {
-				return func(ctx context.Context, call llm.ToolCall) (string, bool) {
-					return "agent: the report subagent has no tools available", true
-				}
+				return hybridExec(func(ctx context.Context, call llm.ToolCall) (string, bool) {
+					return "agent: report subagent supports report_finding, triage_finding, skill_search, skill_get only", true
+				}, tr.bag, "report", tr)
 			},
 		}, true
 	}
 	return subagentSpec{}, false
 }
 
+// finalizeResult attaches structured findings + multi-section report to a
+// completed (non-interrupted) RunResult. Interrupted results are returned as-is.
+func finalizeResult(input RunInput, result RunResult, bag *FindingBag) RunResult {
+	if result.Interrupted {
+		return result
+	}
+	extracted := ExtractFindings(input, result.ToolLog, result.FinalMessage, result.JudgeVerdict, result.JudgeSet)
+	reported := bag.Snapshot()
+	findings := MergeExtracted(reported, extracted)
+	report := BuildReport(input, result.ToolLog, result.FinalMessage, findings, result.JudgeVerdict, result.JudgeSet)
+	kc := AnalyzeKillChain(findings)
+	meth := ComputeMethodology(result.ToolLog, input.AgentMode)
+	// Embed kill chain + methodology into report markdown.
+	if report.Markdown != "" {
+		report.Markdown = report.Markdown + "\n" + kc.Summary + "\n" + FormatMethodologyMarkdown(meth)
+	}
+	result.Findings = findings
+	result.Report = &report
+	result.KillChain = &kc
+	result.Methodology = &meth
+	// Prefer structured markdown as the operator-facing final message when
+	// the agent left only a thin summary — still keep agent text inside the report.
+	if strings.TrimSpace(result.FinalMessage) == "" && report.Markdown != "" {
+		result.FinalMessage = report.Markdown
+	}
+	return result
+}
+
 // delegateToolSpecs is the synthetic tool surface exposed to the
 // orchestrator's own model -- one callable per subagent, taking a single
 // free-form "instructions" string, rather than handing the orchestrator
-// raw MCP tool access directly.
-func delegateToolSpecs() []llm.ToolSpec {
+// raw MCP tool access directly. Filtered by agent mode when mode is set.
+func delegateToolSpecs(mode string) []llm.ToolSpec {
 	const desc = "Detailed task instructions for the subagent, including any target/context details it needs."
 	schema := map[string]any{
 		"type": "object",
@@ -221,30 +262,45 @@ func delegateToolSpecs() []llm.ToolSpec {
 		},
 		"required": []string{"instructions"},
 	}
-	return []llm.ToolSpec{
+	all := []llm.ToolSpec{
 		{Name: "delegate_recon", Description: "Verifies if the target service is running on the IP.", InputSchema: schema},
 		{Name: "delegate_exploit", Description: "Searches and executes exploits against the verified service.", InputSchema: schema},
 		{Name: "delegate_post_exploit", Description: "After an exploit is deployed, uses meterpreter to interact with the session.", InputSchema: schema},
 		{Name: "delegate_codegen", Description: "If by using tools you are not able to exploit, then use this agent.", InputSchema: schema},
-		{Name: "delegate_report", Description: "Generates final validation report upon confirmed exploit success.", InputSchema: schema},
+		{Name: "delegate_report", Description: "Generates final validation report upon confirmed exploit success. May use report_finding.", InputSchema: schema},
 	}
+	allowed := AllowedDelegates(mode)
+	out := make([]llm.ToolSpec, 0, len(all))
+	for _, t := range all {
+		if allowed[t.Name] {
+			out = append(out, t)
+		}
+	}
+	if len(out) == 0 {
+		return all
+	}
+	return out
 }
 
 // seedPrompt builds the initial user message describing the target and
 // attacker context.
 func seedPrompt(input RunInput) string {
+	mode := NormalizeAgentMode(input.AgentMode)
 	return fmt.Sprintf(
 		"Target Info:\n"+
 			"- IP: %s\n"+
 			"- CVE ID: %s\n"+
 			"- Service Name: %s\n"+
-			"- Description: %s\n\n"+
+			"- Description: %s\n"+
+			"- Agent Mode: %s\n\n"+
 			"Attacker Context:\n"+
 			"- LHOST: %s\n"+
 			"- LPORT: %d\n\n"+
-			"Begin the validation workflow now.",
-		input.TargetIP, input.CVEID, input.ServiceName, input.Description,
+			"%s\n\n"+
+			"Begin the validation workflow now. Use report_finding with 3-gate evidence for real vulns.",
+		input.TargetIP, input.CVEID, input.ServiceName, input.Description, mode,
 		input.Context.LHOST, input.Context.LPORT,
+		AgentModePrompt(mode),
 	)
 }
 
@@ -312,14 +368,16 @@ func trimContext(messages []llm.Message) []llm.Message {
 // orchestrator loop; a resumed call looks up the parked orchestratorSession
 // for this exact RunInput and continues from wherever it paused.
 func (o *Orchestrator) run(ctx context.Context, input RunInput, resume *Decision) (RunResult, error) {
+	input.AgentMode = NormalizeAgentMode(input.AgentMode)
 	if resume == nil {
 		messages := []llm.Message{llm.UserMessage(seedPrompt(input))}
-		return o.orchestrateLoop(ctx, input, messages, &tracker{})
+		return o.orchestrateLoop(ctx, input, messages, &tracker{bag: NewFindingBag()})
 	}
 	return o.resumeRun(ctx, input, *resume)
 }
 
 func (o *Orchestrator) resumeRun(ctx context.Context, input RunInput, decision Decision) (RunResult, error) {
+	input.AgentMode = NormalizeAgentMode(input.AgentMode)
 	key := sessionKey(input)
 	o.mu.Lock()
 	sess, ok := o.sessions[key]
@@ -331,7 +389,11 @@ func (o *Orchestrator) resumeRun(ctx context.Context, input RunInput, decision D
 		return RunResult{}, errors.New("agent: no pending interrupt to resume for this session")
 	}
 
-	tr := &tracker{count: sess.toolCallCount, log: sess.toolLog}
+	bag := sess.findingBag
+	if bag == nil {
+		bag = NewFindingBag()
+	}
+	tr := &tracker{count: sess.toolCallCount, log: sess.toolLog, bag: bag}
 	resumeState := &delegateBatchResume{
 		resolvedSoFar: sess.resolvedDelegates,
 		currentCallID: sess.delegateCallID,
@@ -349,7 +411,7 @@ func (o *Orchestrator) resumeRun(ctx context.Context, input RunInput, decision D
 	resolved, paused, err := o.runDelegateBatch(ctx, nil, tr, resumeState)
 	if err != nil {
 		if errors.Is(err, errBudgetExhausted) {
-			return RunResult{FinalMessage: lastAssistantText(sess.orchestratorMessages), ToolLog: tr.log}, nil
+			return finalizeResult(input, RunResult{FinalMessage: lastAssistantText(sess.orchestratorMessages), ToolLog: tr.log}, tr.bag), nil
 		}
 		return RunResult{}, err
 	}
@@ -372,21 +434,25 @@ func (o *Orchestrator) resumeRun(ctx context.Context, input RunInput, decision D
 // final text with no more tool calls (then the judge runs) or the run gets
 // interrupted or exhausts its tool-call budget.
 func (o *Orchestrator) orchestrateLoop(ctx context.Context, input RunInput, messages []llm.Message, tr *tracker) (RunResult, error) {
-	specs := delegateToolSpecs()
+	if tr.bag == nil {
+		tr.bag = NewFindingBag()
+	}
+	specs := delegateToolSpecs(input.AgentMode)
+	sys := orchestratorSystemPrompt + "\n\n" + AgentModePrompt(input.AgentMode)
 	for turn := 0; turn < maxOrchestratorTurns; turn++ {
-		log.Printf("talon-core: orchestrator turn %d/%d tools_so_far=%d target=%s",
-			turn+1, maxOrchestratorTurns, tr.count, input.TargetIP)
+		log.Printf("talon-core: orchestrator turn %d/%d tools_so_far=%d target=%s mode=%s",
+			turn+1, maxOrchestratorTurns, tr.count, input.TargetIP, NormalizeAgentMode(input.AgentMode))
 
-		msg, err := converseWithTimeout(ctx, o.model, orchestratorSystemPrompt, messages, specs)
+		msg, err := converseWithTimeout(ctx, o.model, sys, messages, specs)
 		if err != nil {
 			// Soft-fail on LLM timeout/errors after some progress: return
 			// what we have rather than leaving the run stuck "running".
 			if tr.count > 0 && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
 				log.Printf("talon-core: orchestrator LLM timeout after progress: %v", err)
-				return RunResult{
+				return finalizeResult(input, RunResult{
 					FinalMessage: lastAssistantText(messages) + "\n[orchestrator stopped: LLM timeout]",
 					ToolLog:      tr.log,
-				}, nil
+				}, tr.bag), nil
 			}
 			return RunResult{}, err
 		}
@@ -397,9 +463,9 @@ func (o *Orchestrator) orchestrateLoop(ctx context.Context, input RunInput, mess
 			verdict, err := judgeOutput(ctx, o.judge, msg.Text)
 			if err != nil {
 				log.Printf("talon-core: judge failed (returning without verdict): %v", err)
-				return RunResult{FinalMessage: msg.Text, ToolLog: tr.log}, nil
+				return finalizeResult(input, RunResult{FinalMessage: msg.Text, ToolLog: tr.log}, tr.bag), nil
 			}
-			return RunResult{FinalMessage: msg.Text, ToolLog: tr.log, JudgeVerdict: verdict}, nil
+			return finalizeResult(input, RunResult{FinalMessage: msg.Text, ToolLog: tr.log, JudgeVerdict: verdict, JudgeSet: true}, tr.bag), nil
 		}
 
 		names := make([]string, 0, len(msg.ToolCalls))
@@ -413,14 +479,14 @@ func (o *Orchestrator) orchestrateLoop(ctx context.Context, input RunInput, mess
 		if err != nil {
 			if errors.Is(err, errBudgetExhausted) {
 				log.Printf("talon-core: tool budget exhausted (tools=%d)", tr.count)
-				return RunResult{FinalMessage: lastAssistantText(messages), ToolLog: tr.log}, nil
+				return finalizeResult(input, RunResult{FinalMessage: lastAssistantText(messages), ToolLog: tr.log}, tr.bag), nil
 			}
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				log.Printf("talon-core: delegate batch timeout: %v", err)
-				return RunResult{
+				return finalizeResult(input, RunResult{
 					FinalMessage: lastAssistantText(messages) + "\n[orchestrator stopped: delegate timeout]",
 					ToolLog:      tr.log,
-				}, nil
+				}, tr.bag), nil
 			}
 			return RunResult{}, err
 		}
@@ -437,10 +503,10 @@ func (o *Orchestrator) orchestrateLoop(ctx context.Context, input RunInput, mess
 		messages = trimContext(messages)
 	}
 	log.Printf("talon-core: orchestrator turn budget exhausted (tools=%d)", tr.count)
-	return RunResult{
+	return finalizeResult(input, RunResult{
 		FinalMessage: lastAssistantText(messages) + "\n[orchestrator stopped: turn budget reached]",
 		ToolLog:      tr.log,
-	}, nil
+	}, tr.bag), nil
 }
 
 // converseWithTimeout wraps ChatModel.Converse with llmTurnTimeout so a hung
@@ -477,10 +543,12 @@ func (o *Orchestrator) runDelegateBatch(ctx context.Context, calls []llm.ToolCal
 		calls = resume.remaining
 	}
 
+	// agentMode is not on the batch; mode filtering is enforced via tool specs.
+	// Still reject unknown names.
 	for i, tc := range calls {
 		sub, ok := o.subagentConfig(tc.Name)
 		if !ok {
-			resolved = append(resolved, llm.ToolResult{ToolCallID: tc.ID, Name: tc.Name, Content: fmt.Sprintf("agent: unknown delegate tool %q", tc.Name), IsError: true})
+			resolved = append(resolved, llm.ToolResult{ToolCallID: tc.ID, Name: tc.Name, Content: fmt.Sprintf("agent: unknown or disabled delegate tool %q", tc.Name), IsError: true})
 			continue
 		}
 		if err := tr.allow(); err != nil {
@@ -521,5 +589,6 @@ func (o *Orchestrator) parkSession(input RunInput, messages []llm.Message, resol
 		pendingArgs:          paused.subInterrupt.args,
 		toolCallCount:        tr.count,
 		toolLog:              tr.log,
+		findingBag:          tr.bag,
 	}
 }

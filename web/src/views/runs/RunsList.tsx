@@ -92,6 +92,22 @@ const columns: ColumnDef<RunSummary>[] = [
     cell: ({ row }) => <span className='font-mono text-sm'>{row.original.tool_calls}</span>
   },
   {
+    accessorKey: 'findings_count',
+    header: () => <span className='micro-label text-right'>FINDINGS</span>,
+    cell: ({ row }) => (
+      <span className='font-mono text-sm'>{row.original.findings_count ?? 0}</span>
+    )
+  },
+  {
+    accessorKey: 'agent_mode',
+    header: () => <span className='micro-label'>MODE</span>,
+    cell: ({ row }) => (
+      <span className='text-muted-foreground font-mono text-[10px] uppercase'>
+        {row.original.agent_mode || 'full'}
+      </span>
+    )
+  },
+  {
     id: 'verdict',
     header: () => <span className='micro-label'>VERDICT</span>,
     cell: ({ row }) => <Verdict run={row.original} />

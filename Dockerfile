@@ -23,8 +23,11 @@ RUN CGO_ENABLED=0 go build -o /out/talon-core ./cmd/talon-core \
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates docker-cli
 COPY --from=build /out/ /app/
+# Methodology skill pack (GET /skills + agent prompt injection).
+COPY --from=build /src/skills /app/skills
 WORKDIR /app
 ENV HEXSTRIKE_MCP_PATH=/app/talon-arsenal \
-    METASPLOIT_MCP_PATH=/app/talon-strike
+    METASPLOIT_MCP_PATH=/app/talon-strike \
+    TALON_SKILLS_DIR=/app/skills
 # Default command is core; compose overrides for relay.
 CMD ["/app/talon-core"]

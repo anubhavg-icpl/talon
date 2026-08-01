@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -117,6 +118,16 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /config", s.handleGetConfig)
 	mux.HandleFunc("PUT /config", s.handlePutConfig)
 	mux.HandleFunc("GET /mcp/servers", s.handleMCPServers)
+	// Structured findings + report (CyberStrike-inspired) + skills catalog.
+	mux.HandleFunc("GET /runs/{run_id}/findings", s.handleFindings)
+	mux.HandleFunc("POST /runs/{run_id}/findings/{finding_id}/triage", s.handleTriageFinding)
+	mux.HandleFunc("GET /runs/{run_id}/report", s.handleReport)
+	mux.HandleFunc("GET /runs/{run_id}/killchain", s.handleKillChain)
+	mux.HandleFunc("GET /runs/{run_id}/methodology", s.handleMethodology)
+	mux.HandleFunc("GET /findings", s.handleGlobalFindings)
+	mux.HandleFunc("GET /skills", s.handleSkills)
+	mux.HandleFunc("GET /skills/{id}", s.handleSkillByID)
+	mux.HandleFunc("GET /agents", s.handleAgents)
 	return mux
 }
 
@@ -161,6 +172,8 @@ type targetRequest struct {
 	Description string `json:"description"`
 	LHOST       string `json:"lhost"`
 	LPORT       int    `json:"lport"`
+	// AgentMode: full|recon|exploit|web|network|post (CyberStrike-style specialist).
+	AgentMode string `json:"agent_mode"`
 }
 
 // resumeRequest is the POST /output/resume/{run_id} request body.
@@ -212,6 +225,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		CVEID:       req.CVEID,
 		ServiceName: req.ServiceName,
 		Description: req.Description,
+		AgentMode:   core.NormalizeAgentMode(req.AgentMode),
 		Context:     config.Context{LHOST: req.LHOST, LPORT: req.LPORT},
 	}
 	s.store.Create(runID, input)
@@ -223,8 +237,9 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	go s.runWorkflow(runID, input)
 
 	writeJSON(w, http.StatusOK, map[string]string{
-		"run_id":  runID,
-		"message": "Agent execution started",
+		"run_id":     runID,
+		"message":    "Agent execution started",
+		"agent_mode": input.AgentMode,
 	})
 }
 
@@ -233,6 +248,9 @@ func (s *Server) runWorkflow(runID string, input core.RunInput) {
 	defer cancel()
 	ctx = core.WithProgress(ctx, func(toolLog []core.ToolCallRecord) {
 		s.store.SetToolLog(runID, toolLog)
+	})
+	ctx = core.WithFindingsProgress(ctx, func(findings []core.Finding) {
+		s.store.SetFindings(runID, findings)
 	})
 
 	s.store.SetStatus(runID, "running")
@@ -245,14 +263,45 @@ func (s *Server) runWorkflow(runID string, input core.RunInput) {
 		if (ctx.Err() != nil) && len(result.ToolLog) > 0 {
 			result.FinalMessage = strings.TrimSpace(result.FinalMessage + "\n[run stopped: wall-clock timeout]")
 			result.Interrupted = false
-			s.store.SetResult(runID, result)
+			s.store.SetResult(runID, ensureFindings(input, result))
 			return
 		}
 		s.store.SetError(runID, err)
 		return
 	}
-	log.Printf("talon-core: run %s finished interrupted=%v tools=%d", runID, result.Interrupted, len(result.ToolLog))
-	s.store.SetResult(runID, result)
+	log.Printf("talon-core: run %s finished interrupted=%v tools=%d findings=%d",
+		runID, result.Interrupted, len(result.ToolLog), len(result.Findings))
+	s.store.SetResult(runID, ensureFindings(input, result))
+}
+
+// ensureFindings attaches structured findings/report if the orchestrator
+// returned a completed result without them (timeout soft-fail paths).
+func ensureFindings(input core.RunInput, result core.RunResult) core.RunResult {
+	if result.Interrupted {
+		return result
+	}
+	if result.Report != nil && result.Findings != nil && result.KillChain != nil && result.Methodology != nil {
+		return result
+	}
+	findings := result.Findings
+	if findings == nil {
+		findings = core.ExtractFindings(input, result.ToolLog, result.FinalMessage, result.JudgeVerdict, result.JudgeSet)
+	}
+	rep := core.BuildReport(input, result.ToolLog, result.FinalMessage, findings, result.JudgeVerdict, result.JudgeSet)
+	kc := core.AnalyzeKillChain(findings)
+	meth := core.ComputeMethodology(result.ToolLog, input.AgentMode)
+	if rep.Markdown != "" && result.KillChain == nil {
+		rep.Markdown = rep.Markdown + "\n" + kc.Summary + "\n" + core.FormatMethodologyMarkdown(meth)
+	}
+	result.Findings = findings
+	result.Report = &rep
+	if result.KillChain == nil {
+		result.KillChain = &kc
+	}
+	if result.Methodology == nil {
+		result.Methodology = &meth
+	}
+	return result
 }
 
 // handleTraces is GET /monitor/traces/{run_id}.
@@ -293,14 +342,192 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]any{
-		"status":    sess.Status,
-		"output":    sess.Output,
-		"interrupt": sess.PendingInterrupt,
+		"status":     sess.Status,
+		"output":     sess.Output,
+		"interrupt":  sess.PendingInterrupt,
+		"agent_mode": sess.RunInput.AgentMode,
 	}
 	if sess.JudgeSet {
 		body["judge_verdict"] = sess.JudgeVerdict
 	}
+	if len(sess.Findings) > 0 {
+		body["findings_summary"] = core.SummarizeFindings(sess.Findings)
+		body["findings_count"] = len(sess.Findings)
+	}
+	if sess.Report != nil {
+		body["has_report"] = true
+	}
+	if sess.Methodology != nil {
+		body["methodology_percent"] = sess.Methodology.Percent
+	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+// handleFindings is GET /runs/{run_id}/findings — structured findings list.
+func (s *Server) handleFindings(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("run_id")
+	sess, ok := s.store.Get(runID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "Run not found")
+		return
+	}
+	findings := sess.Findings
+	if findings == nil {
+		findings = []core.Finding{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"run_id":   runID,
+		"findings": findings,
+		"summary":  core.SummarizeFindings(findings),
+	})
+}
+
+// handleReport is GET /runs/{run_id}/report — structured multi-section report.
+func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("run_id")
+	sess, ok := s.store.Get(runID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "Run not found")
+		return
+	}
+	// Lazy-build report for older sessions that only have tool log + output.
+	if sess.Report == nil && sess.Status == "completed" {
+		findings := sess.Findings
+		if findings == nil {
+			findings = core.ExtractFindings(sess.RunInput, sess.ToolLog, sess.Output, sess.JudgeVerdict, sess.JudgeSet)
+		}
+		rep := core.BuildReport(sess.RunInput, sess.ToolLog, sess.Output, findings, sess.JudgeVerdict, sess.JudgeSet)
+		writeJSON(w, http.StatusOK, rep)
+		return
+	}
+	if sess.Report == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"markdown": "",
+			"findings": []core.Finding{},
+			"summary":  core.FindingsSummary{},
+			"target":   sess.RunInput.TargetIP,
+			"message":  "report not available yet — run still in progress",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, sess.Report)
+}
+
+// handleSkills is GET /skills — paginated catalog (CyberStrike pack + builtins).
+// Query: brief=1, stage=, category=, q=, limit=, offset=
+func (s *Server) handleSkills(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	// Default brief for large catalogs when limit not set to avoid huge payloads.
+	brief := q.Get("brief") == "1" || q.Get("brief") == "true"
+	if q.Get("brief") == "" && q.Get("full") != "1" {
+		brief = true // default: metadata only (bodies via GET /skills/{id})
+	}
+	if limit == 0 {
+		limit = 100
+	}
+	result := core.QuerySkills(core.SkillQuery{
+		Stage:    q.Get("stage"),
+		Category: q.Get("category"),
+		Q:        q.Get("q"),
+		Brief:    brief,
+		Limit:    limit,
+		Offset:   offset,
+	})
+	writeJSON(w, http.StatusOK, result)
+}
+
+// handleSkillByID is GET /skills/{id} — full skill body for UI detail pane.
+func (s *Server) handleSkillByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	// IDs may contain path-like segments; PathValue gets the full {id} for Go 1.22+
+	// when registered as {id} — for IDs with slashes we'd need {...id}. Our ids use dashes.
+	sk, ok := core.GetSkill(id)
+	if !ok {
+		// try URL-decoded
+		if u, err := url.PathUnescape(id); err == nil {
+			sk, ok = core.GetSkill(u)
+		}
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "skill not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, sk)
+}
+
+// handleAgents is GET /agents — specialist agent catalog.
+func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
+	agents := core.ListAgents()
+	writeJSON(w, http.StatusOK, map[string]any{"agents": agents, "count": len(agents)})
+}
+
+// handleKillChain is GET /runs/{run_id}/killchain.
+func (s *Server) handleKillChain(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("run_id")
+	sess, ok := s.store.Get(runID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "Run not found")
+		return
+	}
+	if sess.KillChain != nil {
+		writeJSON(w, http.StatusOK, sess.KillChain)
+		return
+	}
+	findings := sess.Findings
+	if findings == nil {
+		findings = core.ExtractFindings(sess.RunInput, sess.ToolLog, sess.Output, sess.JudgeVerdict, sess.JudgeSet)
+	}
+	writeJSON(w, http.StatusOK, core.AnalyzeKillChain(findings))
+}
+
+// handleMethodology is GET /runs/{run_id}/methodology.
+func (s *Server) handleMethodology(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("run_id")
+	sess, ok := s.store.Get(runID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "Run not found")
+		return
+	}
+	if sess.Methodology != nil {
+		writeJSON(w, http.StatusOK, sess.Methodology)
+		return
+	}
+	writeJSON(w, http.StatusOK, core.ComputeMethodology(sess.ToolLog, sess.RunInput.AgentMode))
+}
+
+// handleTriageFinding is POST /runs/{run_id}/findings/{finding_id}/triage.
+func (s *Server) handleTriageFinding(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("run_id")
+	findingID := r.PathValue("finding_id")
+	var body struct {
+		Status      string `json:"status"`
+		DuplicateOf string `json:"duplicate_of"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	f, err := s.store.TriageFinding(runID, findingID, body.Status, body.DuplicateOf)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, f)
+}
+
+// handleGlobalFindings is GET /findings — aggregate across all runs.
+func (s *Server) handleGlobalFindings(w http.ResponseWriter, r *http.Request) {
+	sev := strings.ToLower(r.URL.Query().Get("severity"))
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+	items := s.store.AllFindings(limit, sev)
+	writeJSON(w, http.StatusOK, map[string]any{"findings": items, "count": len(items)})
 }
 
 // handleResume is POST /output/resume/{run_id}. The decision is normalized
@@ -348,6 +575,9 @@ func (s *Server) resumeWorkflow(runID string, input core.RunInput, decision core
 	ctx = core.WithProgress(ctx, func(toolLog []core.ToolCallRecord) {
 		s.store.SetToolLog(runID, toolLog)
 	})
+	ctx = core.WithFindingsProgress(ctx, func(findings []core.Finding) {
+		s.store.SetFindings(runID, findings)
+	})
 
 	log.Printf("talon-core: resume %s decision=%s", runID, decision.Type)
 	result, err := s.orch.Resume(ctx, input, decision)
@@ -356,23 +586,51 @@ func (s *Server) resumeWorkflow(runID string, input core.RunInput, decision core
 		if ctx.Err() != nil && len(result.ToolLog) > 0 {
 			result.FinalMessage = strings.TrimSpace(result.FinalMessage + "\n[run stopped: wall-clock timeout]")
 			result.Interrupted = false
-			s.store.SetResult(runID, result)
+			s.store.SetResult(runID, ensureFindings(input, result))
 			return
 		}
 		s.store.SetError(runID, err)
 		return
 	}
-	log.Printf("talon-core: resume %s finished interrupted=%v tools=%d", runID, result.Interrupted, len(result.ToolLog))
-	s.store.SetResult(runID, result)
+	log.Printf("talon-core: resume %s finished interrupted=%v tools=%d findings=%d",
+		runID, result.Interrupted, len(result.ToolLog), len(result.Findings))
+	s.store.SetResult(runID, ensureFindings(input, result))
 }
 
-// handleMCPServers is GET /mcp/servers — connected MCP servers + their tools.
+// handleMCPServers is GET /mcp/servers — connected MCP servers + their tools,
+// plus the in-process "talon-core" virtual tools (skills, findings, A2A delegates).
 func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
-	if s.tools == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"servers": []any{}})
-		return
+	var servers []mcpclient.ServerInfo
+	if s.tools != nil {
+		servers = s.tools.Servers()
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"servers": s.tools.Servers()})
+	// Virtual in-process agent tools (not separate MCP processes).
+	coreTools := []string{
+		"skill_search", "skill_get",
+		"report_finding", "triage_finding",
+		"delegate_recon", "delegate_exploit", "delegate_post_exploit",
+		"delegate_codegen", "delegate_report",
+	}
+	servers = append(servers, mcpclient.ServerInfo{
+		Name:  "talon-core (in-process)",
+		Tools: coreTools,
+	})
+	// Skill pack availability for operators.
+	stats := core.SkillStats()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"servers":     servers,
+		"skill_stats": stats,
+		"agent_to_agent": map[string]any{
+			"model": "orchestrator → subagents via delegate_* tools",
+			"notes": []string{
+				"Subagents do not call each other directly.",
+				"Orchestrator sequences recon → exploit → post_exploit → codegen → report.",
+				"Subagents share context only through orchestrator instructions + return text.",
+				"CyberStrike skills: skill_search / skill_get on every subagent.",
+				"MCP tool servers: hexstrike (arsenal) + metasploit (strike) over stdio.",
+			},
+		},
+	})
 }
 
 // handleListRuns is GET /runs — paginated summaries, newest first.
@@ -443,6 +701,7 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	sentTools := 0
 	lastStatus := ""
+	lastFindings := -1
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
@@ -463,12 +722,40 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 			sentTools = len(sess.ToolLog)
 		}
 
+		// Live findings stream (mid-run report_finding). Skip initial empty snapshot.
+		if found {
+			nFind := len(sess.Findings)
+			if nFind != lastFindings {
+				if nFind > 0 || lastFindings > 0 {
+					body := map[string]any{
+						"findings_count":   nFind,
+						"findings_summary": core.SummarizeFindings(sess.Findings),
+						"findings":         sess.Findings,
+					}
+					if data, err := json.Marshal(body); err == nil {
+						fmt.Fprintf(w, "event: findings\ndata: %s\n\n", data)
+					}
+				}
+				lastFindings = nFind
+			}
+		}
+
 		if status != lastStatus {
 			body := map[string]any{"status": status}
+			if found {
+				body["agent_mode"] = sess.RunInput.AgentMode
+				body["findings_count"] = len(sess.Findings)
+				if len(sess.Findings) > 0 {
+					body["findings_summary"] = core.SummarizeFindings(sess.Findings)
+				}
+			}
 			if found && terminalStatus(status) {
 				body["output"] = sess.Output
 				if sess.JudgeSet {
 					body["judge_verdict"] = sess.JudgeVerdict
+				}
+				if sess.Report != nil {
+					body["has_report"] = true
 				}
 			}
 			if found && status == "awaiting_approval" {
@@ -528,6 +815,7 @@ func (s *Server) handleStreamWS(w http.ResponseWriter, r *http.Request) {
 
 	sentTools := 0
 	lastStatus := ""
+	lastFindings := -1
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
@@ -547,12 +835,39 @@ func (s *Server) handleStreamWS(w http.ResponseWriter, r *http.Request) {
 			sentTools = len(sess.ToolLog)
 		}
 
+		if found {
+			nFind := len(sess.Findings)
+			if nFind != lastFindings {
+				if nFind > 0 || lastFindings > 0 {
+					body := map[string]any{
+						"findings_count":   nFind,
+						"findings_summary": core.SummarizeFindings(sess.Findings),
+						"findings":         sess.Findings,
+					}
+					if err := send(wsMessage{Type: "findings", Data: body}); err != nil {
+						return
+					}
+				}
+				lastFindings = nFind
+			}
+		}
+
 		if status != lastStatus {
 			body := map[string]any{"status": status}
+			if found {
+				body["agent_mode"] = sess.RunInput.AgentMode
+				body["findings_count"] = len(sess.Findings)
+				if len(sess.Findings) > 0 {
+					body["findings_summary"] = core.SummarizeFindings(sess.Findings)
+				}
+			}
 			if found && terminalStatus(status) {
 				body["output"] = sess.Output
 				if sess.JudgeSet {
 					body["judge_verdict"] = sess.JudgeVerdict
+				}
+				if sess.Report != nil {
+					body["has_report"] = true
 				}
 			}
 			if found && status == "awaiting_approval" {

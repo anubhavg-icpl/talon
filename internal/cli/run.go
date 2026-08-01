@@ -25,23 +25,28 @@ func newRunCmd(opts *RootOptions) *cobra.Command {
 	cmd.AddCommand(newRunEditCmd(opts))
 	cmd.AddCommand(newRunToolsCmd(opts))
 	cmd.AddCommand(newRunTracesCmd(opts))
+	cmd.AddCommand(newRunFindingsCmd(opts))
+	cmd.AddCommand(newRunReportCmd(opts))
+	cmd.AddCommand(newRunKillChainCmd(opts))
+	cmd.AddCommand(newRunMethodologyCmd(opts))
+	cmd.AddCommand(newRunTriageCmd(opts))
 	return cmd
 }
 
 func newRunStartCmd(opts *RootOptions) *cobra.Command {
 	var (
-		ip, cve, service, description, lhost string
-		lport                                int
-		watch                                bool
-		interval                             time.Duration
-		autoApprove                          bool
+		ip, cve, service, description, lhost, agentMode string
+		lport                                           int
+		watch                                           bool
+		interval                                        time.Duration
+		autoApprove                                     bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start a new validation run",
 		Example: `  talon run start --ip 127.0.0.1 --cve CVE-2011-2523 --lhost 192.168.0.176
-  talon run start --ip 10.0.0.5 --service "vsftpd 2.3.4" --watch --auto-approve`,
+  talon run start --ip 10.0.0.5 --service "vsftpd 2.3.4" --mode web --watch --auto-approve`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(ip) == "" {
 				return withExitCode(ExitUsage, "--ip is required")
@@ -54,6 +59,7 @@ func newRunStartCmd(opts *RootOptions) *cobra.Command {
 				Description: description,
 				LHOST:       lhost,
 				LPORT:       lport,
+				AgentMode:   agentMode,
 			}
 			resp, err := opts.Client.Start(ctx, req)
 			if err != nil {
@@ -65,10 +71,14 @@ func newRunStartCmd(opts *RootOptions) *cobra.Command {
 					fmt.Fprintln(w, resp.RunID)
 					return nil
 				}
-				return KeyValueTable(w, [][2]string{
+				rows := [][2]string{
 					{"run_id", resp.RunID},
 					{"message", resp.Message},
-				})
+				}
+				if resp.AgentMode != "" {
+					rows = append(rows, [2]string{"agent_mode", resp.AgentMode})
+				}
+				return KeyValueTable(w, rows)
 			}); err != nil {
 				return err
 			}
@@ -86,6 +96,7 @@ func newRunStartCmd(opts *RootOptions) *cobra.Command {
 	cmd.Flags().StringVar(&description, "description", "", "free-text target description")
 	cmd.Flags().StringVar(&lhost, "lhost", "", "attacker LHOST for reverse payloads")
 	cmd.Flags().IntVar(&lport, "lport", 0, "attacker LPORT (default 4444 on server)")
+	cmd.Flags().StringVar(&agentMode, "mode", "full", "agent mode: full|recon|exploit|web|network|post")
 	cmd.Flags().BoolVar(&watch, "watch", false, "poll status until the run finishes")
 	cmd.Flags().DurationVar(&interval, "interval", 3*time.Second, "poll interval when --watch is set")
 	cmd.Flags().BoolVar(&autoApprove, "auto-approve", false, "auto-approve HITL interrupts while watching (authorized lab use only)")
@@ -224,6 +235,148 @@ func newRunToolsCmd(opts *RootOptions) *cobra.Command {
 	}
 }
 
+func newRunFindingsCmd(opts *RootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "findings <run_id>",
+		Short: "Show structured findings (3-gate) for a run",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resp, err := opts.Client.Findings(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return opts.Printer.PrintValue(resp, func(w io.Writer) error {
+				fmt.Fprintf(w, "run_id=%s  findings=%d\n", args[0], len(resp.Findings))
+				if resp.Summary != nil {
+					if t, ok := resp.Summary["total"]; ok {
+						fmt.Fprintf(w, "summary total=%v confirmed=%v\n", t, resp.Summary["confirmed"])
+					}
+				}
+				for _, f := range resp.Findings {
+					sev, _ := f["severity"].(string)
+					title, _ := f["title"].(string)
+					id, _ := f["id"].(string)
+					gate := ""
+					if ev, ok := f["evidence"].(map[string]any); ok {
+						if p, _ := ev["passed"].(bool); p {
+							gate = " 3-gate=PASS"
+						}
+					}
+					fmt.Fprintf(w, "  [%s] %s (%s)%s\n", strings.ToUpper(sev), title, id, gate)
+				}
+				if len(resp.Findings) == 0 {
+					fmt.Fprintln(w, "(no findings yet)")
+				}
+				return nil
+			})
+		},
+	}
+}
+
+func newRunReportCmd(opts *RootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "report <run_id>",
+		Short: "Show structured validation report (markdown)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rep, err := opts.Client.Report(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return opts.Printer.PrintValue(rep, func(w io.Writer) error {
+				if md, ok := rep["markdown"].(string); ok && md != "" {
+					fmt.Fprintln(w, md)
+					return nil
+				}
+				fmt.Fprintln(w, "(no report markdown yet)")
+				return nil
+			})
+		},
+	}
+}
+
+func newRunKillChainCmd(opts *RootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "killchain <run_id>",
+		Short: "Show kill-chain analysis for a run",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			kc, err := opts.Client.KillChain(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return opts.Printer.PrintValue(kc, func(w io.Writer) error {
+				if s, ok := kc["summary"].(string); ok && s != "" {
+					fmt.Fprintln(w, s)
+					return nil
+				}
+				fmt.Fprintln(w, "(no kill chain yet)")
+				return nil
+			})
+		},
+	}
+}
+
+func newRunMethodologyCmd(opts *RootOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "methodology <run_id>",
+		Short: "Show methodology coverage checklist for a run",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			m, err := opts.Client.Methodology(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return opts.Printer.PrintValue(m, func(w io.Writer) error {
+				pct, _ := m["percent"].(float64)
+				cov, _ := m["covered_count"].(float64)
+				tot, _ := m["total_count"].(float64)
+				fmt.Fprintf(w, "coverage=%.0f%% (%.0f/%.0f)\n", pct, cov, tot)
+				if items, ok := m["items"].([]any); ok {
+					for _, it := range items {
+						row, _ := it.(map[string]any)
+						if row == nil {
+							continue
+						}
+						mark := "☐"
+						if c, _ := row["covered"].(bool); c {
+							mark = "☑"
+						}
+						fmt.Fprintf(w, "  %s %v\n", mark, row["label"])
+					}
+				}
+				return nil
+			})
+		},
+	}
+}
+
+func newRunTriageCmd(opts *RootOptions) *cobra.Command {
+	var status, dupOf string
+	cmd := &cobra.Command{
+		Use:   "triage <run_id> <finding_id>",
+		Short: "Triage a finding (approved|duplicate|open|ignored|fixed)",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if status == "" {
+				return withExitCode(ExitUsage, "--status is required")
+			}
+			out, err := opts.Client.TriageFinding(cmd.Context(), args[0], args[1], status, dupOf)
+			if err != nil {
+				return err
+			}
+			return opts.Printer.PrintValue(out, func(w io.Writer) error {
+				fmt.Fprintf(w, "triaged %s → %s\n", args[1], status)
+				return nil
+			})
+		},
+	}
+	cmd.Flags().StringVar(&status, "status", "", "approved|duplicate|open|ignored|fixed|new")
+	cmd.Flags().StringVar(&dupOf, "duplicate-of", "", "finding id when status=duplicate")
+	_ = cmd.MarkFlagRequired("status")
+	return cmd
+}
+
 func newRunTracesCmd(opts *RootOptions) *cobra.Command {
 	return &cobra.Command{
 		Use:   "traces <run_id>",
@@ -279,13 +432,19 @@ func resumeDecision(ctx context.Context, opts *RootOptions, runID string, body R
 
 func printStatus(opts *RootOptions, runID string, st *StatusResponse) error {
 	payload := map[string]any{
-		"run_id":    runID,
-		"status":    st.Status,
-		"output":    st.Output,
-		"interrupt": st.Interrupt,
+		"run_id":         runID,
+		"status":         st.Status,
+		"output":         st.Output,
+		"interrupt":      st.Interrupt,
+		"findings_count": st.FindingsCount,
+		"agent_mode":     st.AgentMode,
+		"has_report":     st.HasReport,
 	}
 	if st.JudgeVerdict != nil {
 		payload["judge_verdict"] = *st.JudgeVerdict
+	}
+	if st.FindingsSummary != nil {
+		payload["findings_summary"] = st.FindingsSummary
 	}
 	return opts.Printer.PrintValue(payload, func(w io.Writer) error {
 		th := NewTheme(w)
@@ -302,6 +461,18 @@ func printStatus(opts *RootOptions, runID string, st *StatusResponse) error {
 		rows := [][2]string{
 			{"run_id", runID},
 			{"status", st.Status},
+		}
+		if st.AgentMode != "" {
+			rows = append(rows, [2]string{"agent_mode", st.AgentMode})
+		}
+		if st.FindingsCount > 0 {
+			rows = append(rows, [2]string{"findings", fmt.Sprintf("%d", st.FindingsCount)})
+		}
+		if st.MethodologyPercent > 0 {
+			rows = append(rows, [2]string{"methodology", fmt.Sprintf("%d%%", st.MethodologyPercent)})
+		}
+		if st.HasReport {
+			rows = append(rows, [2]string{"report", "yes"})
 		}
 		if st.Interrupt != nil {
 			rows = append(rows, [2]string{"interrupt.tool", st.Interrupt.ToolName})

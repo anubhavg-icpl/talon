@@ -149,7 +149,10 @@ func (db *DB) listRunsPaginated(ctx context.Context, limit, offset int) ([]RunSu
 	}
 	rows, err := db.pool.Query(ctx,
 		`SELECT run_id, COALESCE(target,''), COALESCE(cve_id,''), COALESCE(service_name,''),
-		        COALESCE(status,''), judge_verdict, COALESCE(tool_calls,0), COALESCE(started_at, updated_at)
+		        COALESCE(status,''), judge_verdict, COALESCE(tool_calls,0),
+		        COALESCE(jsonb_array_length(data->'Findings'), 0),
+		        COALESCE(data->'RunInput'->>'AgentMode', ''),
+		        COALESCE(started_at, updated_at)
 		 FROM runs ORDER BY started_at DESC NULLS LAST, updated_at DESC LIMIT $1 OFFSET $2`,
 		limit, offset)
 	if err != nil {
@@ -159,7 +162,7 @@ func (db *DB) listRunsPaginated(ctx context.Context, limit, offset int) ([]RunSu
 	out := []RunSummary{}
 	for rows.Next() {
 		var s RunSummary
-		if err := rows.Scan(&s.RunID, &s.Target, &s.CVEID, &s.ServiceName, &s.Status, &s.JudgeVerdict, &s.ToolCalls, &s.StartedAt); err != nil {
+		if err := rows.Scan(&s.RunID, &s.Target, &s.CVEID, &s.ServiceName, &s.Status, &s.JudgeVerdict, &s.ToolCalls, &s.FindingsCount, &s.AgentMode, &s.StartedAt); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, s)

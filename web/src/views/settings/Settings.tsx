@@ -18,8 +18,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 
+// Next Imports
+import Link from 'next/link'
+
 // Util Imports
-import { getConfig, getMCPServers, putConfig, serviceHealth } from '@/lib/api'
+import { getAgents, getConfig, getMCPServers, getSkills, putConfig, serviceHealth } from '@/lib/api'
 
 const StatusPill = ({ status }: { status: ServiceHealth['status'] | 'loading' }) => {
   if (status === 'loading') return <Skeleton className='size-2 rounded-full' />
@@ -328,13 +331,20 @@ const MCPServerCard = ({ server }: { server: MCPServerInfo }) => {
 
 const MCPPanel = () => {
   const [servers, setServers] = useState<MCPServerInfo[] | null>(null)
+  const [a2a, setA2a] = useState<{ model?: string; notes?: string[] } | null>(null)
+  const [skillStats, setSkillStats] = useState<Record<string, number> | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
 
     getMCPServers()
-      .then(res => mounted && setServers(res.servers ?? []))
+      .then(res => {
+        if (!mounted) return
+        setServers(res.servers ?? [])
+        setA2a(res.agent_to_agent ?? null)
+        setSkillStats(res.skill_stats ?? null)
+      })
       .catch(err => mounted && setError(err instanceof Error ? err.message : String(err)))
 
     return () => {
@@ -345,9 +355,32 @@ const MCPPanel = () => {
   return (
     <div className='flex flex-col gap-4'>
       <div>
-        <h2 className='font-mono text-sm font-semibold tracking-widest'>MCP SERVERS</h2>
-        <p className='micro-label mt-1'>TOOL SERVERS REGISTERED WITH TALON-CORE</p>
+        <h2 className='font-mono text-sm font-semibold tracking-widest'>MCP + AGENT-TO-AGENT</h2>
+        <p className='micro-label mt-1'>
+          STDIO MCP (ARSENAL / STRIKE) · IN-PROCESS SKILLS & FINDINGS · ORCHESTRATOR DELEGATES
+        </p>
       </div>
+      {a2a && (
+        <Card className='border-primary/30'>
+          <CardHeader className='pb-2'>
+            <CardTitle className='micro-label'>AGENT COMMUNICATION</CardTitle>
+            <CardDescription className='font-mono text-xs'>{a2a.model}</CardDescription>
+          </CardHeader>
+          <CardContent className='space-y-1 font-mono text-[11px]'>
+            {(a2a.notes ?? []).map((n, i) => (
+              <p key={i} className='text-muted-foreground'>
+                ▸ {n}
+              </p>
+            ))}
+            {skillStats && (
+              <p className='text-primary mt-2'>
+                CyberStrike skills loaded: {skillStats.total ?? 0} (disk {skillStats.src_disk ?? 0} · builtin{' '}
+                {skillStats.src_builtin ?? 0}) — agents call skill_search / skill_get
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
       {error ? (
         <p className='text-destructive font-mono text-xs tracking-widest uppercase'>MCP SERVERS UNAVAILABLE — {error}</p>
       ) : servers === null ? (
@@ -364,6 +397,70 @@ const MCPPanel = () => {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ------------------------------ INTELLIGENCE ------------------------------- */
+
+const IntelligencePanel = () => {
+  const [skillsCount, setSkillsCount] = useState<number | null>(null)
+  const [agentsCount, setAgentsCount] = useState<number | null>(null)
+
+  useEffect(() => {
+    getSkills({ brief: true })
+      .then(r => setSkillsCount(r.count ?? 0))
+      .catch(() => setSkillsCount(0))
+    getAgents()
+      .then(r => setAgentsCount(r.count ?? 0))
+      .catch(() => setAgentsCount(0))
+  }, [])
+
+  return (
+    <div className='flex flex-col gap-4'>
+      <div>
+        <h2 className='font-mono text-sm font-semibold tracking-widest'>INTELLIGENCE LAYER</h2>
+        <p className='micro-label mt-1'>SKILLS · AGENTS · FINDINGS — FULL API ↔ UI WIRING</p>
+      </div>
+      <div className='grid gap-4 sm:grid-cols-3'>
+        <Card className='hud-corners'>
+          <CardHeader>
+            <CardTitle className='micro-label'>SKILLS</CardTitle>
+            <CardDescription className='font-mono text-xs'>
+              {skillsCount === null ? '…' : `${skillsCount} loaded`} — methodology pack injected into agents
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant='outline' size='sm' className='font-mono text-[10px] tracking-widest uppercase'>
+              <Link href='/skills'>Open Skills</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className='hud-corners'>
+          <CardHeader>
+            <CardTitle className='micro-label'>AGENTS</CardTitle>
+            <CardDescription className='font-mono text-xs'>
+              {agentsCount === null ? '…' : `${agentsCount} modes`} — full / recon / web / network / exploit / post
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant='outline' size='sm' className='font-mono text-[10px] tracking-widest uppercase'>
+              <Link href='/agents'>Open Agents</Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className='hud-corners'>
+          <CardHeader>
+            <CardTitle className='micro-label'>FINDINGS</CardTitle>
+            <CardDescription className='font-mono text-xs'>Global 3-gate findings registry across runs</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant='outline' size='sm' className='font-mono text-[10px] tracking-widest uppercase'>
+              <Link href='/findings'>Open Findings</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
@@ -429,6 +526,8 @@ const Settings = () => {
       </div>
 
       <ConfigPanel />
+
+      <IntelligencePanel />
 
       <MCPPanel />
 
