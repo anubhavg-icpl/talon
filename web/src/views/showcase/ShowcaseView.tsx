@@ -112,7 +112,7 @@ const ShowcaseView = () => {
     <div className='flex flex-col gap-6'>
       <PageHeader
         title='SHOWCASE'
-        description='SkeletonUtils · GLTF · operator globe · product reel'
+        description='Live operator globe · SkeletonUtils + GLTF · product reel — the Three.js surface, end to end'
         actions={
           <>
             <Link href='/runs/new' className={cn(buttonVariants(), 'font-mono text-xs tracking-widest uppercase')}>
@@ -257,8 +257,8 @@ const ShowcaseView = () => {
             <CardTitle className='micro-label'>WHERE IT RUNS</CardTitle>
           </CardHeader>
           <CardContent className='text-muted-foreground font-mono text-xs leading-relaxed'>
-            Login (background globe) · all pages (ambient starfield) · Overview hero · Showcase hero + reel · New run ·
-            Engagements
+            Login (background globe) · all pages (ambient starfield) · Overview · New run · Engagements · Findings ·
+            Skills · Runs — every hub via the shared &lt;GlobePanel&gt;
           </CardContent>
         </Card>
         <Card>

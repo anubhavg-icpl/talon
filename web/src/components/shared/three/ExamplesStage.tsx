@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
 export type ExampleId = 'globe' | 'skeleton'
 
 const ExamplesStage = ({ className }: { className?: string }) => {
-  const [example, setExample] = useState<ExampleId>('skeleton')
+  const [example, setExample] = useState<ExampleId>('globe')
   const [skeletonMode, setSkeletonMode] = useState<SkeletonMode>('independent')
 
   return (
@@ -26,20 +26,12 @@ const ExamplesStage = ({ className }: { className?: string }) => {
       <CardHeader className='pb-2'>
         <div className='flex flex-wrap items-start justify-between gap-3'>
           <div>
-            <CardTitle className='micro-label text-primary'>THREE.JS EXAMPLES (FROM YOUR LIST)</CardTitle>
+            <CardTitle className='micro-label text-primary'>OPERATOR GLOBE · LIVE WEBGL STAGE</CardTitle>
             <CardDescription className='font-mono text-[11px]'>
-              SkeletonUtils.clone + AnimationMixer · OrbitControls · GLTFLoader · operator globe
+              Procedural C2 HUD · OrbitControls · starfield · great-circle arcs · SkeletonUtils + GLTF
             </CardDescription>
           </div>
           <div className='flex flex-wrap gap-2'>
-            <Button
-              size='sm'
-              variant={example === 'skeleton' ? 'default' : 'outline'}
-              className='font-mono text-[10px] tracking-widest uppercase'
-              onClick={() => setExample('skeleton')}
-            >
-              SkeletonUtils
-            </Button>
             <Button
               size='sm'
               variant={example === 'globe' ? 'default' : 'outline'}
@@ -47,6 +39,14 @@ const ExamplesStage = ({ className }: { className?: string }) => {
               onClick={() => setExample('globe')}
             >
               Operator globe
+            </Button>
+            <Button
+              size='sm'
+              variant={example === 'skeleton' ? 'default' : 'outline'}
+              className='font-mono text-[10px] tracking-widest uppercase'
+              onClick={() => setExample('skeleton')}
+            >
+              SkeletonUtils
             </Button>
           </div>
         </div>
