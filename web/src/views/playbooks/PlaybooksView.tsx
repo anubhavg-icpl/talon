@@ -6,10 +6,11 @@ import Link from 'next/link'
 
 import type { Playbook } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getPlaybooks } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
 const PlaybooksView = () => {
   const [playbooks, setPlaybooks] = useState<Playbook[] | null>(null)
@@ -57,9 +58,12 @@ const PlaybooksView = () => {
                     </Badge>
                   ))}
                 </div>
-                <Button asChild size='sm' className='font-mono text-[10px] tracking-widest uppercase'>
-                  <Link href={`/runs/new?playbook=${pb.id}&mode=${pb.agent_mode}`}>Launch playbook</Link>
-                </Button>
+                <Link
+                  href={`/runs/new?playbook=${pb.id}&mode=${pb.agent_mode}`}
+                  className={cn(buttonVariants({ size: 'sm' }), 'font-mono text-[10px] tracking-widest uppercase')}
+                >
+                  Launch playbook
+                </Link>
               </CardContent>
             </Card>
           ))}

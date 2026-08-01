@@ -6,10 +6,11 @@ import Link from 'next/link'
 
 import type { AgentInfo } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getAgents } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
 const AgentsView = () => {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null)
@@ -30,9 +31,9 @@ const AgentsView = () => {
             SPECIALIST MODES · A2A VIA ORCHESTRATOR DELEGATES · CYBERSTRIKE skill_search / skill_get
           </p>
         </div>
-        <Button asChild className='font-mono text-xs tracking-widest uppercase'>
-          <Link href='/runs/new'>New Operation</Link>
-        </Button>
+        <Link href='/runs/new' className={cn(buttonVariants(), 'font-mono text-xs tracking-widest uppercase')}>
+          New Operation
+        </Link>
       </div>
 
       {error && (
@@ -66,9 +67,15 @@ const AgentsView = () => {
                     </Badge>
                   ))}
                 </div>
-                <Button asChild variant='outline' size='sm' className='mt-4 font-mono text-[10px] tracking-widest uppercase'>
-                  <Link href={`/runs/new?mode=${a.id}`}>Launch as {a.codename}</Link>
-                </Button>
+                <Link
+                  href={`/runs/new?mode=${a.id}`}
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'mt-4 font-mono text-[10px] tracking-widest uppercase'
+                  )}
+                >
+                  Launch as {a.codename}
+                </Link>
               </CardContent>
             </Card>
           ))}

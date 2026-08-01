@@ -136,3 +136,21 @@ Session persistence (JSON + Postgres jsonb) stores `Findings` and `Report`.
 - CyberStrike HackBrowser + 8 live proxy testers
 - 7,600 signed skill files + Bolt multi-host fleet
 - Full VRT methodology database
+
+## Product longevity (shipped baseline)
+
+Canonical long-lived E2E surface: **[PRODUCT.md](PRODUCT.md)**.
+
+Shipped waves above are **done**. The following need **separate product /
+infra decisions** — do not land as half-wired stubs on `main`:
+
+| Item | Reality today |
+|------|----------------|
+| Full RBAC multi-team | Single admin session auth |
+| Interactive Meterpreter UI | Session commands via agents / tools |
+| Real browser/proxy testers | Skills + Arsenal tools, not Burp-class |
+| Token $ cost from LLM provider | Counters only (not invoices) |
+| True video generation | Showcase WebP stills + optional MP4 slots |
+
+**Rule:** keep `go test ./...` green; never commit unfinished control-plane
+files that reference missing Server fields.

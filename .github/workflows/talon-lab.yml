@@ -21,13 +21,18 @@ jobs:
         with:
           go-version: '1.25'
       - name: Unit tests
-        run: go test ./internal/core/ ./internal/control/ ./internal/cli/ -count=1
+        run: go test ./... -count=1
       - name: Build bins
         run: |
           go build -o /tmp/talon-core ./cmd/talon-core
           go build -o /tmp/talon ./cmd/talon
+          go build -o /tmp/talon-arsenal ./cmd/talon-arsenal
+          go build -o /tmp/talon-strike ./cmd/talon-strike
+          go build -o /tmp/talon-relay ./cmd/talon-relay
       - name: Skills pack present
         run: test -d skills && find skills -name '*.md' | head -5
+      - name: Product docs present
+        run: test -f docs/PRODUCT.md && test -f docs/FEATURE_MAP.md
 
   # Optional: only when you provide a self-hosted runner with lab access.
   # engage:

@@ -153,7 +153,7 @@ const NewRun = () => {
               <Field label='PLAYBOOK (OPTIONAL)'>
                 <Select
                   value={playbookId || '__none__'}
-                  onValueChange={v => setPlaybookId(v === '__none__' ? '' : v)}
+                  onValueChange={v => setPlaybookId(!v || v === '__none__' ? '' : v)}
                 >
                   <SelectTrigger className='font-mono'>
                     <SelectValue placeholder='None' />
@@ -173,7 +173,7 @@ const NewRun = () => {
             )}
 
             <Field label='AGENT MODE (SPECIALIST)'>
-              <Select value={agentMode} onValueChange={setAgentMode}>
+              <Select value={agentMode} onValueChange={v => setAgentMode(v ?? 'full')}>
                 <SelectTrigger className='font-mono'>
                   <SelectValue placeholder='full' />
                 </SelectTrigger>

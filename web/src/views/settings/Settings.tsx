@@ -11,7 +11,7 @@ import type { ConfigEntry, MCPServerInfo, ServiceHealth } from '@/lib/api'
 
 // Component Imports
 import LiveDot from '@/components/shared/LiveDot'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -23,6 +23,7 @@ import Link from 'next/link'
 
 // Util Imports
 import { getAgents, getConfig, getMCPServers, getSkills, putConfig, serviceHealth } from '@/lib/api'
+import { cn } from '@/lib/utils'
 
 const StatusPill = ({ status }: { status: ServiceHealth['status'] | 'loading' }) => {
   if (status === 'loading') return <Skeleton className='size-2 rounded-full' />
@@ -431,9 +432,15 @@ const IntelligencePanel = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild variant='outline' size='sm' className='font-mono text-[10px] tracking-widest uppercase'>
-              <Link href='/skills'>Open Skills</Link>
-            </Button>
+            <Link
+              href='/skills'
+              className={cn(
+                buttonVariants({ variant: 'outline', size: 'sm' }),
+                'font-mono text-[10px] tracking-widest uppercase'
+              )}
+            >
+              Open Skills
+            </Link>
           </CardContent>
         </Card>
         <Card className='hud-corners'>
@@ -444,9 +451,15 @@ const IntelligencePanel = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild variant='outline' size='sm' className='font-mono text-[10px] tracking-widest uppercase'>
-              <Link href='/agents'>Open Agents</Link>
-            </Button>
+            <Link
+              href='/agents'
+              className={cn(
+                buttonVariants({ variant: 'outline', size: 'sm' }),
+                'font-mono text-[10px] tracking-widest uppercase'
+              )}
+            >
+              Open Agents
+            </Link>
           </CardContent>
         </Card>
         <Card className='hud-corners'>
@@ -455,9 +468,15 @@ const IntelligencePanel = () => {
             <CardDescription className='font-mono text-xs'>Global 3-gate findings registry across runs</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild variant='outline' size='sm' className='font-mono text-[10px] tracking-widest uppercase'>
-              <Link href='/findings'>Open Findings</Link>
-            </Button>
+            <Link
+              href='/findings'
+              className={cn(
+                buttonVariants({ variant: 'outline', size: 'sm' }),
+                'font-mono text-[10px] tracking-widest uppercase'
+              )}
+            >
+              Open Findings
+            </Link>
           </CardContent>
         </Card>
       </div>

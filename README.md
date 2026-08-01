@@ -111,6 +111,8 @@ All product art is **WebP** under [`assets/`](assets/).
 14. [Security & responsible use](#security--responsible-use)
 15. [License](#license)
 
+**Long-lived product baseline (what ships E2E):** [docs/PRODUCT.md](docs/PRODUCT.md) · feature waves: [docs/FEATURE_MAP.md](docs/FEATURE_MAP.md)
+
 ---
 
 ## What it does

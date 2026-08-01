@@ -5,9 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import TalonGlobe from '@/components/shared/TalonGlobe'
+import { cn } from '@/lib/utils'
 
 type ReelItem = {
   id: string
@@ -99,12 +100,15 @@ const ShowcaseView = () => {
           <p className='micro-label mt-1'>PRODUCT REEL · GLOBE · PIPELINE · SKILLS — ALIGNED E2E DEMO SURFACE</p>
         </div>
         <div className='flex flex-wrap gap-2'>
-          <Button asChild className='font-mono text-xs tracking-widest uppercase'>
-            <Link href='/runs/new'>Launch operation</Link>
-          </Button>
-          <Button asChild variant='outline' className='font-mono text-xs tracking-widest uppercase'>
-            <Link href='/skills'>Browse skills</Link>
-          </Button>
+          <Link href='/runs/new' className={cn(buttonVariants(), 'font-mono text-xs tracking-widest uppercase')}>
+            Launch operation
+          </Link>
+          <Link
+            href='/skills'
+            className={cn(buttonVariants({ variant: 'outline' }), 'font-mono text-xs tracking-widest uppercase')}
+          >
+            Browse skills
+          </Link>
         </div>
       </div>
 
