@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Showcase stage for the Three.js examples the user provided:
+ * Optional Three.js stage (beacons / arcs / rings) — used only if Live 3D is opted in:
  * 1) Operator globe (procedural HUD)
  * 2) SkeletonUtils multi-instance skinned mesh (official Soldier.glb)
  */

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 
 import type { Playbook } from '@/lib/api'
+import HudStill from '@/components/shared/HudStill'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,6 +29,14 @@ const PlaybooksView = () => {
         <h1 className='font-mono text-xl font-semibold tracking-widest'>PLAYBOOKS</h1>
         <p className='micro-label mt-1'>ENGAGEMENT TEMPLATES — LAUNCH WITH PRESET AGENT MODE + PROMPT</p>
       </div>
+
+      <HudStill
+        src='/showcase/talon-pipeline-agents.webp'
+        alt='Engagement pipeline templates'
+        variant='banner'
+        className='max-h-32'
+      />
+
       {error && (
         <div className='border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-4 py-3 font-mono text-xs'>
           {error}

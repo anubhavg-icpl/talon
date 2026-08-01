@@ -11,6 +11,7 @@ import { toast } from 'sonner'
 import type { ConfigEntry, MCPServerInfo, ServiceHealth } from '@/lib/api'
 
 // Component Imports
+import HudStill from '@/components/shared/HudStill'
 import LiveDot from '@/components/shared/LiveDot'
 import PageHeader from '@/components/shared/PageHeader'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -536,6 +537,13 @@ const Settings = () => {
             <p className='micro-label'>LAST PROBE {lastProbe.toLocaleTimeString('en-GB', { hour12: false })}</p>
           )
         }
+      />
+
+      <HudStill
+        src='/showcase/talon-dashboard-product.webp'
+        alt='Operator console'
+        variant='banner'
+        className='max-h-28'
       />
 
       {probeError && (

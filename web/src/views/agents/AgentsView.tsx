@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 
 import type { AgentInfo } from '@/lib/api'
+import HudStill from '@/components/shared/HudStill'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -34,6 +35,11 @@ const AgentsView = () => {
         <Link href='/runs/new' className={cn(buttonVariants(), 'font-mono text-xs tracking-widest uppercase')}>
           New Operation
         </Link>
+      </div>
+
+      <div className='grid gap-3 md:grid-cols-2'>
+        <HudStill src='/showcase/talon-agent-filmstrip.webp' alt='Agent modes filmstrip' variant='filmstrip' />
+        <HudStill src='/showcase/talon-pipeline-agents.webp' alt='Multi-agent pipeline' variant='banner' />
       </div>
 
       {error && (

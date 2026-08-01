@@ -155,28 +155,46 @@ const Overview = () => {
         }
       />
 
-      {/* Hero + single WebGL globe (prod: no matrix rain stack) */}
+      {/* Hero + engagement globe */}
       <div className='hud-corners relative overflow-hidden rounded-sm border border-primary/15'>
         <div className='scanlines pointer-events-none absolute inset-0 opacity-60' />
+        {/* Brand still under the copy — not a separate Showcase page */}
+        <div
+          className='pointer-events-none absolute inset-0 opacity-[0.12]'
+          aria-hidden
+          style={{
+            backgroundImage: 'url(/showcase/talon-hero-raptor.webp)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'left center'
+          }}
+        />
         <div className='relative grid items-center gap-6 px-6 py-8 md:grid-cols-[1fr_minmax(200px,280px)] lg:grid-cols-[1fr_300px]'>
           <div className='flex flex-col gap-2'>
             <p className='micro-label'>AI PENTEST ORCHESTRATION</p>
             <Logo className='text-2xl sm:text-3xl [&_svg]:size-7' />
             <UtcClock className='text-muted-foreground font-mono text-xs tracking-widest' />
             <p className='text-muted-foreground mt-2 max-w-md font-mono text-[11px] leading-relaxed'>
-              Operator globe tracks active runs · CyberStrike skills + multi-agent pipeline · drag to orbit
+              Operator globe tracks active runs · CyberStrike skills + multi-agent pipeline · wallpaper or Live 3D
             </p>
             {stats.active > 0 && (
               <p className='text-primary micro-label mt-1 flex items-center gap-2'>
                 <LiveDot tone='green' /> {stats.active} ACTIVE · C2 LIVE
               </p>
             )}
-            <Link
-              href='/showcase'
-              className='text-primary micro-label mt-3 inline-flex w-fit tracking-widest underline-offset-4 hover:underline'
-            >
-              OPEN PRODUCT SHOWCASE →
-            </Link>
+            <div className='mt-3 flex flex-wrap gap-3'>
+              <Link
+                href='/runs/new'
+                className='text-primary micro-label inline-flex w-fit tracking-widest underline-offset-4 hover:underline'
+              >
+                LAUNCH OPERATION →
+              </Link>
+              <Link
+                href='/assist'
+                className='text-muted-foreground micro-label inline-flex w-fit tracking-widest underline-offset-4 hover:text-primary hover:underline'
+              >
+                SLM ASSIST →
+              </Link>
+            </div>
           </div>
           <div className='relative mx-auto w-full max-w-[300px] lg:max-w-[320px]'>
             <GlobeWallpaper

@@ -52,7 +52,7 @@ const Login = () => {
         className='pointer-events-none absolute inset-0 opacity-80'
         aria-hidden
         style={{
-          backgroundImage: 'url(/showcase/operator-globe-hud.webp)',
+          backgroundImage: 'url(/globe/operator-globe-hud.webp)',
           backgroundSize: 'cover',
           backgroundPosition: 'center'
         }}
@@ -62,6 +62,14 @@ const Login = () => {
 
       <div className='hud-corners bg-card/90 relative z-10 w-full max-w-md rounded-sm border border-primary/20 p-8 shadow-[0_0_48px_oklch(0.84_0.14_205/0.08)] backdrop-blur-md'>
         <div className='mb-8 flex flex-col items-center gap-3'>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src='/showcase/talon-brand-mark.webp'
+            alt=''
+            className='mb-1 size-14 object-contain opacity-90'
+            width={56}
+            height={56}
+          />
           <Logo />
           <p className='micro-label text-primary/80 text-center'>AUTHORIZED OPERATORS ONLY</p>
         </div>

@@ -3,7 +3,7 @@
 /**
  * Gate heavy WebGL until the operator opts in.
  * Prevents Chrome "This page couldn't load" tab crashes on low-RAM hosts
- * when Overview / Showcase / multi-globe hubs all spin up at once.
+ * when Overview / multi-globe hubs all spin up at once.
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
@@ -59,7 +59,7 @@ export function usePrefer3D(remember = true): [boolean, (v: boolean) => void] {
 const Lazy3D = ({
   children,
   className,
-  poster = '/showcase/operator-globe-hud.webp',
+  poster = '/globe/operator-globe-hud.webp',
   label = 'OPERATOR GLOBE',
   remember = true,
   compact = false

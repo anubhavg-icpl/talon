@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { CategoryCount, Skill } from '@/lib/api'
 import GlobePanel from '@/components/shared/GlobePanel'
+import HudStill from '@/components/shared/HudStill'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -135,6 +136,13 @@ const SkillsView = () => {
           </div>
         )}
       </div>
+
+      <HudStill
+        src='/showcase/talon-knowledge-panel.webp'
+        alt='CyberStrike skills knowledge panel'
+        variant='banner'
+        className='max-h-28 shrink-0'
+      />
 
       {error && (
         <div className='border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-4 py-3 font-mono text-xs'>
