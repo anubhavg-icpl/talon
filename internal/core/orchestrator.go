@@ -36,6 +36,13 @@ const (
 	maxOrchestratorTurns = 8
 	// llmTurnTimeout bounds a single Converse call inside the agent loop.
 	llmTurnTimeout = 90 * time.Second
+	// toolExecTimeout bounds a single real tool call (MCP tool / codegen).
+	// Legitimate tools (nmap/nuclei/sqlmap/run_exploit) run 30-90s, but an
+	// LLM-crafted exploit (custom_exploit) or a hung upstream MCP server can
+	// block forever and stall the whole run -- the failure that hung the DVWA
+	// run. A bounded call is aborted at the deadline and surfaces a clear
+	// message the agent can react to (report partial / try another path).
+	toolExecTimeout = 3 * time.Minute
 )
 
 // contextTrimTrigger/contextTrimKeep bound the running conversation size:

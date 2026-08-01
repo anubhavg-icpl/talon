@@ -2,7 +2,10 @@ package core
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/anubhavg-icpl/talon/internal/llm"
@@ -45,6 +48,28 @@ func codegenExec(codegen CodegenTool, tr *tracker) toolExecFunc {
 	}
 }
 
+// execBounded runs one tool call under a per-call deadline (toolExecTimeout).
+// A tool that overruns -- e.g. an LLM-crafted custom_exploit whose upstream
+// model call hangs -- is aborted at the deadline and surfaces a clear message
+// the model can react to (report partial evidence / try another path) instead
+// of blocking the run forever. Any partial output the tool produced before the
+// deadline is preserved alongside the timeout notice.
+func execBounded(ctx context.Context, exec toolExecFunc, call llm.ToolCall) (string, bool) {
+	tctx, cancel := context.WithTimeout(ctx, toolExecTimeout)
+	out, isErr := exec(tctx, call)
+	cancel()
+	if errors.Is(tctx.Err(), context.DeadlineExceeded) {
+		notice := fmt.Sprintf("tool %s timed out after %s and was aborted; treat as inconclusive and proceed with evidence gathered so far", call.Name, toolExecTimeout)
+		if strings.TrimSpace(out) == "" {
+			out = notice
+		} else {
+			out = out + "\n" + notice
+		}
+		isErr = true
+	}
+	return out, isErr
+}
+
 // subagentResume carries a paused nested subagent loop across the
 // Run()/Resume() boundary -- see orchestrator.go's orchestratorSession for
 // how this rides along on the Orchestrator between calls.
@@ -80,7 +105,7 @@ func applyDecision(ctx context.Context, call llm.ToolCall, decision Decision, ex
 		if err := tr.allow(); err != nil {
 			return llm.ToolResult{}, err
 		}
-		out, isErr := exec(ctx, llm.ToolCall{ID: call.ID, Name: call.Name, Args: args})
+		out, isErr := execBounded(ctx, exec, llm.ToolCall{ID: call.ID, Name: call.Name, Args: args})
 		return llm.ToolResult{ToolCallID: call.ID, Name: call.Name, Content: out, IsError: isErr}, nil
 	case "reject":
 		return llm.ToolResult{ToolCallID: call.ID, Name: call.Name, Content: "Human reviewer rejected this tool call.", IsError: true}, nil
@@ -172,7 +197,7 @@ func runSubagent(ctx context.Context, model llm.ChatModel, systemPrompt string, 
 			}
 			log.Printf("talon-core: subagent tool %s", tc.Name)
 			t0 := time.Now()
-			out, isErr := exec(ctx, tc)
+			out, isErr := execBounded(ctx, exec, tc)
 			log.Printf("talon-core: subagent tool %s done err=%v ms=%d", tc.Name, isErr, time.Since(t0).Milliseconds())
 			pendingResults = append(pendingResults, llm.ToolResult{ToolCallID: tc.ID, Name: tc.Name, Content: out, IsError: isErr})
 		}
