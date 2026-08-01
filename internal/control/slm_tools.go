@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anubhavg-icpl/talon/internal/core"
@@ -523,14 +524,31 @@ func (s *Server) execSLMTool(name string, args map[string]any) string {
 		return mustJSON(map[string]any{"targets": s.platform.ListTargets()})
 
 	case "service_health":
-		// Lightweight synchronous probes (same helpers as /health/services).
+		// Same probes as /health/services — run concurrent so assist stays snappy.
 		checks := []func() ServiceHealth{
 			checkCore, s.checkPostgres, s.checkRedis, checkArsenal, checkMSF,
 			checkRabbitMQ, checkOllama, checkONNXSLM,
 		}
-		out := make([]map[string]any, 0, len(checks))
-		for _, c := range checks {
-			h := c()
+		type row struct {
+			Name, Status, Detail, Endpoint string
+			LatencyMS                      int64
+		}
+		rows := make([]row, len(checks))
+		var wg sync.WaitGroup
+		for i, c := range checks {
+			wg.Add(1)
+			go func(i int, c func() ServiceHealth) {
+				defer wg.Done()
+				h := c()
+				rows[i] = row{
+					Name: h.Name, Status: h.Status, Detail: h.Detail,
+					Endpoint: h.Endpoint, LatencyMS: h.LatencyMS,
+				}
+			}(i, c)
+		}
+		wg.Wait()
+		out := make([]map[string]any, 0, len(rows))
+		for _, h := range rows {
 			out = append(out, map[string]any{
 				"name": h.Name, "status": h.Status, "detail": h.Detail,
 				"latency_ms": h.LatencyMS, "endpoint": h.Endpoint,

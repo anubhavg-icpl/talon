@@ -1,39 +1,175 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bot, Loader2, Send, Square, Wrench } from 'lucide-react'
+import {
+  Activity,
+  Bot,
+  CheckCircle2,
+  CircleDashed,
+  Loader2,
+  Send,
+  Sparkles,
+  Square,
+  Wrench,
+  XCircle
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import PageHeader from '@/components/shared/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import type { LLMStreamMessage, SLMToolDef } from '@/lib/api'
 import { listLLMTools, llmInfo, streamLLMAssist } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
-type ChatRole = 'user' | 'assistant' | 'system' | 'tool'
+type ChatRole = 'user' | 'assistant' | 'tool'
 
 type ChatItem = {
   id: string
   role: ChatRole
   content: string
   toolName?: string
+  toolArgs?: string
   ms?: number
   streaming?: boolean
+  /** tool lifecycle: running | done | error */
+  toolState?: 'running' | 'done' | 'error'
+}
+
+type HealthRow = {
+  name: string
+  status: string
+  detail: string
+  latency_ms?: number
+  endpoint?: string
 }
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
 const SUGGESTIONS = [
-  'What runs are active right now?',
   'Is the stack healthy (ollama, onnx-slm, msf)?',
+  'What runs are active right now?',
   'Search skills for SSRF methodology',
   'List agents and playbooks',
   'Summarize recent findings from intel feed'
 ]
+
+/** Insert item immediately before the streaming assistant bubble (chronological tools → answer). */
+const insertBeforeAssistant = (prev: ChatItem[], asstId: string, item: ChatItem): ChatItem[] => {
+  const idx = prev.findIndex(m => m.id === asstId)
+  if (idx < 0) return [...prev, item]
+  const next = [...prev]
+  next.splice(idx, 0, item)
+  return next
+}
+
+const tryParseHealth = (raw: string): HealthRow[] | null => {
+  try {
+    const j = JSON.parse(raw) as { services?: HealthRow[] }
+    if (Array.isArray(j.services) && j.services.length > 0) return j.services
+  } catch {
+    /* not health JSON */
+  }
+  return null
+}
+
+const StatusIcon = ({ status }: { status: string }) => {
+  const s = status.toLowerCase()
+  if (s === 'online') return <CheckCircle2 className='size-3.5 shrink-0 text-emerald-500' />
+  if (s === 'offline') return <XCircle className='size-3.5 shrink-0 text-red-400' />
+  return <CircleDashed className='text-muted-foreground size-3.5 shrink-0' />
+}
+
+const HealthTable = ({ rows }: { rows: HealthRow[] }) => (
+  <div className='mt-1 overflow-hidden rounded border border-border/70'>
+    <table className='w-full text-left font-mono text-[11px]'>
+      <thead className='bg-muted/50 text-muted-foreground'>
+        <tr>
+          <th className='px-2 py-1.5 font-medium tracking-wider uppercase'>Service</th>
+          <th className='px-2 py-1.5 font-medium tracking-wider uppercase'>Status</th>
+          <th className='hidden px-2 py-1.5 font-medium tracking-wider uppercase sm:table-cell'>ms</th>
+          <th className='px-2 py-1.5 font-medium tracking-wider uppercase'>Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(r => (
+          <tr key={r.name} className='border-t border-border/50'>
+            <td className='px-2 py-1.5 font-semibold'>{r.name}</td>
+            <td className='px-2 py-1.5'>
+              <span className='inline-flex items-center gap-1'>
+                <StatusIcon status={r.status} />
+                <span
+                  className={cn(
+                    'uppercase',
+                    r.status === 'online' && 'text-emerald-500',
+                    r.status === 'offline' && 'text-red-400',
+                    r.status === 'unconfigured' && 'text-muted-foreground'
+                  )}
+                >
+                  {r.status}
+                </span>
+              </span>
+            </td>
+            <td className='text-muted-foreground hidden px-2 py-1.5 sm:table-cell'>{r.latency_ms ?? '—'}</td>
+            <td className='text-muted-foreground max-w-[220px] truncate px-2 py-1.5' title={r.detail}>
+              {r.detail}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)
+
+const ToolCard = ({ m }: { m: ChatItem }) => {
+  const health = m.toolState === 'done' ? tryParseHealth(m.content) : null
+  const [open, setOpen] = useState(true)
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className='mr-4'>
+      <div
+        className={cn(
+          'rounded-md border border-dashed px-3 py-2 font-mono text-xs',
+          m.toolState === 'running' && 'border-primary/40 bg-primary/5',
+          m.toolState === 'done' && 'bg-muted/30 border-border/70',
+          m.toolState === 'error' && 'border-red-400/40 bg-red-500/5'
+        )}
+      >
+        <CollapsibleTrigger className='flex w-full items-center gap-2 text-left'>
+          {m.toolState === 'running' ? (
+            <Loader2 className='text-primary size-3.5 shrink-0 animate-spin' />
+          ) : (
+            <Wrench className='text-muted-foreground size-3.5 shrink-0' />
+          )}
+          <span className='font-semibold tracking-wide'>{m.toolName || 'tool'}</span>
+          {m.toolState === 'running' && (
+            <Badge variant='outline' className='h-5 font-mono text-[9px] tracking-wider uppercase'>
+              running
+            </Badge>
+          )}
+          {m.toolState === 'done' && m.ms != null && (
+            <span className='text-muted-foreground text-[10px]'>{m.ms}ms</span>
+          )}
+          {m.toolArgs && <span className='text-muted-foreground truncate text-[10px]'>{m.toolArgs}</span>}
+          <span className='text-muted-foreground ml-auto text-[10px]'>{open ? '▾' : '▸'}</span>
+        </CollapsibleTrigger>
+        <CollapsibleContent className='mt-2'>
+          {health ? (
+            <HealthTable rows={health} />
+          ) : (
+            <pre className='bg-background/60 max-h-48 overflow-auto rounded border border-border/50 p-2 text-[10px] leading-relaxed whitespace-pre-wrap'>
+              {m.content || (m.toolState === 'running' ? 'awaiting result…' : '')}
+            </pre>
+          )}
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  )
+}
 
 const AssistView = () => {
   const [items, setItems] = useState<ChatItem[]>([])
@@ -41,9 +177,12 @@ const AssistView = () => {
   const [busy, setBusy] = useState(false)
   const [tools, setTools] = useState<SLMToolDef[]>([])
   const [meta, setMeta] = useState<Record<string, unknown> | null>(null)
+  const [phase, setPhase] = useState<string | null>(null)
   const [info, setInfo] = useState<{ provider?: string; model?: string; tool_count?: number } | null>(null)
   const stopRef = useRef<(() => void) | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  /** Maps tool name → chat item id for the active running call (update in place). */
+  const toolRunRef = useRef<Map<string, string>>(new Map())
 
   useEffect(() => {
     listLLMTools()
@@ -56,13 +195,20 @@ const AssistView = () => {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [items, busy])
+  }, [items, busy, phase])
 
   const stop = useCallback(() => {
     stopRef.current?.()
     stopRef.current = null
     setBusy(false)
-    setItems(prev => prev.map(m => (m.streaming ? { ...m, streaming: false } : m)))
+    setPhase(null)
+    setItems(prev =>
+      prev.map(m =>
+        m.streaming || m.toolState === 'running'
+          ? { ...m, streaming: false, toolState: m.toolState === 'running' ? 'error' : m.toolState }
+          : m
+      )
+    )
   }, [])
 
   const send = useCallback(
@@ -74,12 +220,14 @@ const AssistView = () => {
       const asstId = uid()
       const asstMsg: ChatItem = { id: asstId, role: 'assistant', content: '', streaming: true }
 
+      toolRunRef.current = new Map()
+      // Order: user → (tools inserted before asst) → assistant answer
       setItems(prev => [...prev, userMsg, asstMsg])
       setDraft('')
       setBusy(true)
       setMeta(null)
+      setPhase('connecting…')
 
-      // Build history for the API (user/assistant only).
       const history: LLMStreamMessage[] = []
       for (const m of [...items, userMsg]) {
         if (m.role === 'user' || m.role === 'assistant') {
@@ -91,62 +239,86 @@ const AssistView = () => {
         { messages: history, max_rounds: 5 },
         {
           onMeta: m => setMeta(m),
+          onStatus: s => setPhase(s.message || s.phase || null),
           onToken: tok => {
-            setItems(prev =>
-              prev.map(m => (m.id === asstId ? { ...m, content: m.content + tok } : m))
-            )
+            setPhase(null)
+            setItems(prev => prev.map(m => (m.id === asstId ? { ...m, content: m.content + tok } : m)))
           },
           onToolStart: t => {
-            setItems(prev => [
-              ...prev,
-              {
-                id: uid(),
+            setPhase(`tool · ${t.name}`)
+            const tid = uid()
+            toolRunRef.current.set(t.name, tid)
+            const args = t.arguments ? JSON.stringify(t.arguments) : '{}'
+            setItems(prev =>
+              insertBeforeAssistant(prev, asstId, {
+                id: tid,
                 role: 'tool',
                 toolName: t.name,
-                content: `→ calling ${t.name}(${JSON.stringify(t.arguments ?? {})})`
-              }
-            ])
+                toolArgs: args,
+                toolState: 'running',
+                content: ''
+              })
+            )
           },
           onToolResult: t => {
-            setItems(prev => [
-              ...prev,
-              {
-                id: uid(),
-                role: 'tool',
-                toolName: t.name,
-                ms: t.ms,
-                content: t.result.slice(0, 4000)
-              }
-            ])
-          },
-          onDone: r => {
+            setPhase(`tool done · ${t.name} (${t.ms}ms)`)
+            const tid = toolRunRef.current.get(t.name)
             setItems(prev => {
-              const withoutEmptyAsst = prev.filter(m => !(m.id === asstId && !m.content && !r.text))
-              const hasAsst = withoutEmptyAsst.some(m => m.id === asstId)
-              if (hasAsst) {
-                return withoutEmptyAsst.map(m =>
-                  m.id === asstId
-                    ? { ...m, content: r.text || m.content, streaming: false, ms: r.ms }
+              if (tid && prev.some(m => m.id === tid)) {
+                return prev.map(m =>
+                  m.id === tid
+                    ? {
+                        ...m,
+                        toolState: 'done',
+                        ms: t.ms,
+                        content: t.result.slice(0, 8000)
+                      }
                     : m
                 )
               }
-              return [
-                ...withoutEmptyAsst,
-                { id: asstId, role: 'assistant', content: r.text || '(no reply)', streaming: false, ms: r.ms }
-              ]
+              // Fallback: insert completed tool before assistant
+              return insertBeforeAssistant(prev, asstId, {
+                id: uid(),
+                role: 'tool',
+                toolName: t.name,
+                toolState: 'done',
+                ms: t.ms,
+                content: t.result.slice(0, 8000)
+              })
             })
+            toolRunRef.current.delete(t.name)
+          },
+          onDone: r => {
+            setPhase(null)
+            setItems(prev =>
+              prev.map(m =>
+                m.id === asstId
+                  ? {
+                      ...m,
+                      content: (r.text && r.text.trim()) || m.content || '(no reply)',
+                      streaming: false,
+                      ms: r.ms
+                    }
+                  : m.toolState === 'running'
+                    ? { ...m, toolState: 'done' as const }
+                    : m
+              )
+            )
             setBusy(false)
             stopRef.current = null
             if (r.tool_calls) {
-              toast.success(`Assist done · ${r.tool_calls} tool call(s) · ${r.ms}ms`)
+              toast.success(`Assist · ${r.tool_calls} tool(s) · ${r.ms}ms`)
             }
           },
           onError: err => {
+            setPhase(null)
             setItems(prev =>
               prev.map(m =>
                 m.id === asstId
                   ? { ...m, content: m.content || err.message, streaming: false }
-                  : m
+                  : m.toolState === 'running'
+                    ? { ...m, toolState: 'error' as const }
+                    : m
               )
             )
             setBusy(false)
@@ -162,24 +334,54 @@ const AssistView = () => {
   return (
     <div className='flex h-full min-h-[70vh] flex-col gap-4'>
       <PageHeader
-        title='SLM Assist'
-        description='Local SmolLM / ONNX copilot with curated codebase tools — runs, skills, health, agents. Read-only; full exploits stay on agent runs.'
+        title={
+          <span className='inline-flex items-center gap-3'>
+            <img
+              src='/assist/slm-assist-mark.svg'
+              alt=''
+              width={36}
+              height={36}
+              className='size-9 rounded-md border border-border/60'
+            />
+            SLM Assist
+          </span>
+        }
+        description='Local / hosted copilot with curated codebase tools — runs, skills, health. Read-only; full exploits stay on agent runs.'
       />
+
+      <div className='from-primary/10 via-background to-background relative overflow-hidden rounded-lg border border-border/60 bg-linear-to-br p-3 sm:p-4'>
+        <img
+          src='/assist/slm-assist-banner.svg'
+          alt='SLM Assist pipeline'
+          className='pointer-events-none absolute inset-0 size-full object-cover opacity-40'
+        />
+        <div className='relative flex flex-wrap items-center gap-3'>
+          <Sparkles className='text-primary size-4' />
+          <p className='font-mono text-[11px] tracking-wide text-muted-foreground sm:text-xs'>
+            UI → <code className='text-primary'>/api/talon/llm/assist</code> → Go tools → provider · tokens stream as SSE
+          </p>
+          {info?.provider && (
+            <Badge variant='outline' className='ml-auto font-mono text-[10px] tracking-wider uppercase'>
+              {info.provider} · {info.model}
+            </Badge>
+          )}
+        </div>
+      </div>
 
       <div className='grid flex-1 gap-4 lg:grid-cols-[1fr_280px]'>
         <Card className='flex min-h-[560px] flex-col border-border/80'>
           <CardHeader className='flex flex-row items-center justify-between space-y-0 border-b py-3'>
-            <div className='flex items-center gap-2'>
-              <Bot className='text-primary size-4' />
+            <div className='flex min-w-0 items-center gap-2'>
+              <Bot className='text-primary size-4 shrink-0' />
               <CardTitle className='font-mono text-sm tracking-widest uppercase'>Console chat</CardTitle>
-              {busy && <Loader2 className='text-muted-foreground size-3.5 animate-spin' />}
-            </div>
-            <div className='flex items-center gap-2'>
-              {info?.provider && (
-                <Badge variant='outline' className='font-mono text-[10px] tracking-wider uppercase'>
-                  {String(info.provider)} · {String(info.model ?? '')}
-                </Badge>
+              {busy && <Loader2 className='text-muted-foreground size-3.5 shrink-0 animate-spin' />}
+              {busy && phase && (
+                <span className='text-muted-foreground max-w-[200px] truncate font-mono text-[10px] tracking-wide sm:max-w-[280px]'>
+                  {phase}
+                </span>
               )}
+            </div>
+            <div className='flex shrink-0 items-center gap-2'>
               {meta?.tools_enabled != null && (
                 <Badge variant='secondary' className='font-mono text-[10px]'>
                   tools {meta.tools_enabled ? 'on' : 'off'}
@@ -188,9 +390,14 @@ const AssistView = () => {
             </div>
           </CardHeader>
           <CardContent className='flex flex-1 flex-col gap-3 p-0'>
-            <ScrollArea className='h-[420px] flex-1 px-4 py-3'>
+            <ScrollArea className='h-[440px] flex-1 px-4 py-3'>
               {items.length === 0 && (
-                <div className='text-muted-foreground space-y-3 py-8 text-center text-sm'>
+                <div className='text-muted-foreground space-y-4 py-8 text-center text-sm'>
+                  <img
+                    src='/assist/slm-assist-empty.svg'
+                    alt=''
+                    className='mx-auto h-24 w-auto opacity-90'
+                  />
                   <p className='font-mono text-xs tracking-widest uppercase'>Ask about runs, skills, stack health</p>
                   <div className='flex flex-wrap justify-center gap-2'>
                     {SUGGESTIONS.map(s => (
@@ -210,31 +417,45 @@ const AssistView = () => {
                 </div>
               )}
               <div className='space-y-3'>
-                {items.map(m => (
-                  <div
-                    key={m.id}
-                    className={cn(
-                      'rounded-md border px-3 py-2 text-sm',
-                      m.role === 'user' && 'bg-primary/5 border-primary/20 ml-8',
-                      m.role === 'assistant' && 'bg-card border-border mr-8',
-                      m.role === 'tool' && 'bg-muted/40 border-dashed font-mono text-xs'
-                    )}
-                  >
-                    <div className='text-muted-foreground mb-1 flex items-center gap-1.5 font-mono text-[10px] tracking-widest uppercase'>
-                      {m.role === 'tool' ? (
-                        <>
-                          <Wrench className='size-3' />
-                          {m.toolName || 'tool'}
-                          {m.ms != null && <span className='opacity-70'>{m.ms}ms</span>}
-                        </>
-                      ) : (
-                        m.role
+                {items.map(m => {
+                  if (m.role === 'tool') {
+                    return <ToolCard key={m.id} m={m} />
+                  }
+                  return (
+                    <div
+                      key={m.id}
+                      className={cn(
+                        'rounded-md border px-3 py-2 text-sm',
+                        m.role === 'user' && 'bg-primary/5 border-primary/20 ml-6 sm:ml-10',
+                        m.role === 'assistant' && 'bg-card border-border mr-4'
                       )}
-                      {m.streaming && <span className='text-primary animate-pulse'>streaming</span>}
+                    >
+                      <div className='text-muted-foreground mb-1 flex items-center gap-1.5 font-mono text-[10px] tracking-widest uppercase'>
+                        {m.role === 'assistant' ? (
+                          <>
+                            <Bot className='size-3' />
+                            assistant
+                          </>
+                        ) : (
+                          'user'
+                        )}
+                        {m.streaming && <span className='text-primary animate-pulse'>streaming</span>}
+                        {!m.streaming && m.ms != null && m.role === 'assistant' && (
+                          <span className='opacity-70'>{m.ms}ms</span>
+                        )}
+                      </div>
+                      {m.role === 'assistant' && !m.content && m.streaming ? (
+                        <p className='text-muted-foreground font-mono text-xs'>
+                          {phase ? `⏳ ${phase}` : '⏳ waiting on tools + model…'}
+                        </p>
+                      ) : (
+                        <div className='prose prose-sm dark:prose-invert max-w-none font-sans text-sm leading-relaxed whitespace-pre-wrap'>
+                          {m.content}
+                        </div>
+                      )}
                     </div>
-                    <pre className='font-sans wrap-break-word whitespace-pre-wrap'>{m.content || (m.streaming ? '…' : '')}</pre>
-                  </div>
-                ))}
+                  )
+                })}
                 <div ref={bottomRef} />
               </div>
             </ScrollArea>
@@ -266,8 +487,9 @@ const AssistView = () => {
                   )}
                 </div>
               </div>
-              <p className='text-muted-foreground mt-2 font-mono text-[10px] tracking-wide'>
-                POST /llm/assist · SSE tools · read-only catalog · Enter to send
+              <p className='text-muted-foreground mt-2 flex items-center gap-1.5 font-mono text-[10px] tracking-wide'>
+                <Activity className='size-3' />
+                POST /llm/assist · SSE · tools before answer · Enter to send
               </p>
             </div>
           </CardContent>
@@ -282,7 +504,7 @@ const AssistView = () => {
           </CardHeader>
           <CardContent className='space-y-2 px-3 pb-4'>
             <p className='text-muted-foreground text-xs'>
-              SmolLM calls these via <code className='text-primary'>TOOL_CALL</code> against the live store / skills / health — same surface the UI uses.
+              Curated read-only catalog. Full MCP exploits stay on agent runs.
             </p>
             <ScrollArea className='h-[420px] pr-2'>
               <ul className='space-y-2'>
@@ -293,7 +515,7 @@ const AssistView = () => {
                   </li>
                 ))}
                 {tools.length === 0 && (
-                  <li className='text-muted-foreground text-xs'>Loading tool catalog from GET /llm/tools…</li>
+                  <li className='text-muted-foreground text-xs'>Loading GET /llm/tools…</li>
                 )}
               </ul>
             </ScrollArea>

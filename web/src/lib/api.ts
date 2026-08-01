@@ -917,13 +917,14 @@ export type LLMAssistHandlers = {
   onToolStart?: (tool: { name: string; arguments?: Record<string, unknown> }) => void
   onToolResult?: (tool: { name: string; result: string; ms: number }) => void
   onRound?: (round: { n: number; max: number }) => void
+  onStatus?: (status: { phase: string; message: string }) => void
   onDone?: (result: { text: string; ms: number; tool_calls?: number; rounds?: number }) => void
   onError?: (error: Error) => void
 }
 
 /**
  * End-to-end SLM assist: POST /llm/assist with curated codebase tools.
- * SSE events: meta | token | tool_start | tool_result | round | done | error.
+ * SSE events: meta | status | token | tool_start | tool_result | round | done | error.
  */
 export const streamLLMAssist = (
   body: {
@@ -940,6 +941,18 @@ export const streamLLMAssist = (
   const ac = new AbortController()
 
   ;(async () => {
+    let finished = false
+    const finishDone = (r: { text: string; ms: number; tool_calls?: number; rounds?: number }) => {
+      if (finished) return
+      finished = true
+      handlers.onDone?.(r)
+    }
+    const finishErr = (err: Error) => {
+      if (finished) return
+      finished = true
+      handlers.onError?.(err)
+    }
+
     try {
       const res = await fetch(`${BASE}/llm/assist`, {
         method: 'POST',
@@ -965,6 +978,8 @@ export const streamLLMAssist = (
       const decoder = new TextDecoder()
       let buffer = ''
       let event = 'message'
+      let sawDone = false
+      let lastText = ''
 
       const dispatch = (ev: string, data: string) => {
         if (!data || data === '[DONE]') return
@@ -976,8 +991,17 @@ export const streamLLMAssist = (
             case 'meta':
               handlers.onMeta?.(parsed)
               break
+            case 'status':
+              handlers.onStatus?.({
+                phase: String(parsed.phase ?? ''),
+                message: String(parsed.message ?? '')
+              })
+              break
             case 'token':
-              if (typeof parsed.content === 'string' && parsed.content) handlers.onToken?.(parsed.content)
+              if (typeof parsed.content === 'string' && parsed.content) {
+                lastText += parsed.content
+                handlers.onToken?.(parsed.content)
+              }
               break
             case 'tool_start':
               handlers.onToolStart?.({
@@ -996,27 +1020,25 @@ export const streamLLMAssist = (
               handlers.onRound?.({ n: Number(parsed.n ?? 0), max: Number(parsed.max ?? 0) })
               break
             case 'done':
-              handlers.onDone?.({
-                text: String(parsed.text ?? ''),
+              sawDone = true
+              finishDone({
+                text: String(parsed.text ?? lastText),
                 ms: Number(parsed.ms ?? 0),
                 tool_calls: Number(parsed.tool_calls ?? 0),
                 rounds: Number(parsed.rounds ?? 0)
               })
               break
             case 'error':
-              handlers.onError?.(new Error(String(parsed.error ?? 'assist error')))
+              finishErr(new Error(String(parsed.error ?? 'assist error')))
               break
           }
         } catch {
-          // ignore malformed frames
+          // ignore malformed frames / keepalive comments
         }
       }
 
-      while (true) {
-        const { done, value } = await reader.read()
-
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
+      const consume = (chunk: string) => {
+        buffer += chunk
         const parts = buffer.split('\n')
 
         buffer = parts.pop() ?? ''
@@ -1026,14 +1048,37 @@ export const streamLLMAssist = (
           } else if (line.startsWith('data:')) {
             dispatch(event, line.slice(5).trim())
             event = 'message'
-          } else if (line === '') {
+          } else if (line === '' || line.startsWith(':')) {
+            // blank frame or SSE comment keepalive
             event = 'message'
           }
         }
       }
+
+      while (true) {
+        const { done, value } = await reader.read()
+
+        if (done) break
+        consume(decoder.decode(value, { stream: true }))
+      }
+      // Flush decoder + trailing buffer (final data: line without trailing \n).
+      consume(decoder.decode())
+      if (buffer.trim()) {
+        if (buffer.startsWith('data:')) dispatch(event, buffer.slice(5).trim())
+      }
+
+      if (!sawDone && !finished) {
+        finishDone({ text: lastText, ms: 0 })
+      }
     } catch (err) {
-      if (ac.signal.aborted) return
-      handlers.onError?.(err instanceof Error ? err : new Error(String(err)))
+      if (ac.signal.aborted) {
+        if (!finished) {
+          finished = true
+        }
+
+        return
+      }
+      finishErr(err instanceof Error ? err : new Error(String(err)))
     }
   })()
 

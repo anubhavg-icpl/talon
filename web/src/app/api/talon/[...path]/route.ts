@@ -34,7 +34,14 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
     if (!HOP_BY_HOP.has(key.toLowerCase())) resHeaders.set(key, value)
   })
 
-  // Stream the body straight through — keeps text/event-stream unbuffered
+  // Stream the body straight through — keeps text/event-stream unbuffered.
+  // Force no proxy buffering so /llm/assist heartbeats reach the browser.
+  if ((upstream.headers.get('content-type') || '').includes('text/event-stream')) {
+    resHeaders.set('Cache-Control', 'no-cache, no-transform')
+    resHeaders.set('X-Accel-Buffering', 'no')
+    resHeaders.set('Connection', 'keep-alive')
+  }
+
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,

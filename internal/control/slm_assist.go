@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anubhavg-icpl/talon/internal/config"
@@ -105,16 +106,21 @@ func (s *Server) handleLLMAssist(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, raw)
 		flusher.Flush()
 	}
+	// Keepalive comments so proxies/browsers don't treat a quiet Converse as a hung stream.
+	writePing := func() {
+		_, _ = fmt.Fprintf(w, ": ping %d\n\n", time.Now().Unix())
+		flusher.Flush()
+	}
 
 	toolsOn := !req.DisableTools
 	writeSSE("meta", map[string]any{
-		"provider":       provider,
-		"model":          modelID,
-		"role":           role,
-		"tools_enabled":  toolsOn,
-		"tool_count":     len(slmToolCatalog()),
-		"protocol":       "text_tool_call",
-		"max_rounds":     clampRounds(req.MaxRounds),
+		"provider":      provider,
+		"model":         modelID,
+		"role":          role,
+		"tools_enabled": toolsOn,
+		"tool_count":    len(slmToolCatalog()),
+		"protocol":      "text_tool_call",
+		"max_rounds":    clampRounds(req.MaxRounds),
 	})
 
 	system := slmSystemPrompt(req.System)
@@ -155,10 +161,16 @@ func (s *Server) handleLLMAssist(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeSSE("round", map[string]any{"n": round, "max": maxRounds})
+		writeSSE("status", map[string]any{
+			"phase":   "thinking",
+			"message": fmt.Sprintf("round %d/%d — waiting on %s/%s…", round, maxRounds, provider, modelID),
+		})
 
 		var out llm.Message
 		var genErr error
 
+		// Heartbeat while the model call blocks (OpenAI native path has no mid-call tokens).
+		stopHB := startSSEHeartbeat(ctx, writePing)
 		if useNative {
 			out, genErr = model.Converse(ctx, system, messages, slmToolSpecs())
 		} else {
@@ -181,6 +193,7 @@ func (s *Server) handleLLMAssist(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		stopHB()
 		if genErr != nil {
 			writeSSE("error", map[string]string{"error": genErr.Error()})
 			return
@@ -200,6 +213,7 @@ func (s *Server) handleLLMAssist(w http.ResponseWriter, r *http.Request) {
 					}))
 					continue
 				}
+				writeSSE("status", map[string]any{"phase": "tool", "message": "running " + tc.Name})
 				writeSSE("tool_start", map[string]any{"name": tc.Name, "arguments": tc.Args})
 				t0 := time.Now()
 				result := s.execSLMTool(tc.Name, tc.Args)
@@ -223,6 +237,7 @@ func (s *Server) handleLLMAssist(w http.ResponseWriter, r *http.Request) {
 				finalText.WriteString(prose)
 			}
 			messages = append(messages, llm.AssistantText(out.Text))
+			writeSSE("status", map[string]any{"phase": "tool", "message": "running " + name})
 			writeSSE("tool_start", map[string]any{"name": name, "arguments": args})
 			t0 := time.Now()
 			result := s.execSLMTool(name, args)
@@ -239,12 +254,20 @@ func (s *Server) handleLLMAssist(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Final assistant answer (no more tools).
+		writeSSE("status", map[string]any{"phase": "answering", "message": "composing answer"})
 		if useNative && out.Text != "" {
 			writeSSE("token", map[string]string{"content": out.Text})
 		}
-		finalText.WriteString(out.Text)
+		// Prefer the model’s final prose when tools already flushed partial text.
+		answer := strings.TrimSpace(out.Text)
+		if answer == "" {
+			answer = strings.TrimSpace(finalText.String())
+		} else {
+			finalText.Reset()
+			finalText.WriteString(answer)
+		}
 		writeSSE("done", map[string]any{
-			"text":       strings.TrimSpace(finalText.String()),
+			"text":       answer,
 			"ms":         time.Since(start).Milliseconds(),
 			"tool_calls": toolCalls,
 			"rounds":     round,
@@ -295,6 +318,27 @@ func clampRounds(n int) int {
 		return 8
 	}
 	return n
+}
+
+// startSSEHeartbeat writes SSE comments every 2s until stop is called.
+func startSSEHeartbeat(ctx context.Context, ping func()) (stop func()) {
+	done := make(chan struct{})
+	var once sync.Once
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				ping()
+			}
+		}
+	}()
+	return func() { once.Do(func() { close(done) }) }
 }
 
 func clipStr(s string, n int) string {
