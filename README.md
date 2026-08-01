@@ -36,7 +36,8 @@ authorization** to test.
 13. [Security & responsible use](#security--responsible-use)
 14. [License](#license)
 
-**Long-lived product baseline (what ships E2E):** [docs/PRODUCT.md](docs/PRODUCT.md) · feature waves: [docs/FEATURE_MAP.md](docs/FEATURE_MAP.md)
+**Long-lived product baseline (aligned E2E — routes, theme, WebGL, verify):**
+[docs/PRODUCT.md](docs/PRODUCT.md) · feature waves: [docs/FEATURE_MAP.md](docs/FEATURE_MAP.md)
 
 ---
 

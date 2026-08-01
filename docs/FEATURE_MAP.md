@@ -139,10 +139,19 @@ Session persistence (JSON + Postgres jsonb) stores `Findings` and `Report`.
 
 ## Product longevity (shipped baseline)
 
-Canonical long-lived E2E surface: **[PRODUCT.md](PRODUCT.md)**.
+Canonical long-lived E2E surface: **[PRODUCT.md](PRODUCT.md)** (routes, theme, WebGL, verify steps).
 
-Shipped waves above are **done**. The following need **separate product /
-infra decisions** — do not land as half-wired stubs on `main`:
+Shipped waves above are **done**. Also aligned on `main`:
+
+| Surface | Status |
+|---------|--------|
+| Operator cyan UI theme | Done — void + electric cyan |
+| Three.js E2E (globe, starfield, SkeletonUtils + Soldier.glb) | Done — Showcase ExamplesStage |
+| Dynamic WebGL import + tab pause | Done |
+| Nav: Engagements `/ops`, Showcase, Intel, Playbooks… | Done |
+| README hero | `talon-mark-red.webp` only |
+
+The following need **separate product / infra decisions** — no thin stubs:
 
 | Item | Reality today |
 |------|----------------|
@@ -152,5 +161,5 @@ infra decisions** — do not land as half-wired stubs on `main`:
 | Token $ cost from LLM provider | Counters only (not invoices) |
 | True video generation | Showcase WebP stills + optional MP4 slots |
 
-**Rule:** keep `go test ./...` green; never commit unfinished control-plane
-files that reference missing Server fields.
+**Rule:** keep `go test ./...` and `web` `next build` green; never commit
+unfinished control-plane files that reference missing Server fields.
