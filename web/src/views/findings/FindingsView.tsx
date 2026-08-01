@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 
 import type { GlobalFinding } from '@/lib/api'
+import GlobePanel from '@/components/shared/GlobePanel'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -40,9 +41,12 @@ const FindingsView = () => {
 
   return (
     <div className='flex flex-col gap-6'>
-      <div>
-        <h1 className='font-mono text-xl font-semibold tracking-widest'>FINDINGS</h1>
-        <p className='micro-label mt-1'>GLOBAL REGISTRY — 3-GATE STRUCTURED FINDINGS ACROSS RUNS</p>
+      <div className='flex flex-wrap items-end justify-between gap-4'>
+        <div>
+          <h1 className='font-mono text-xl font-semibold tracking-widest'>FINDINGS</h1>
+          <p className='micro-label mt-1'>GLOBAL REGISTRY — 3-GATE STRUCTURED FINDINGS ACROSS RUNS</p>
+        </div>
+        <GlobePanel className='size-28 shrink-0 sm:size-32' label='INTEL' />
       </div>
 
       <div className='flex flex-wrap gap-2'>

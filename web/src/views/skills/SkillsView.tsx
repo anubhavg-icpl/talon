@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type { CategoryCount, Skill } from '@/lib/api'
+import GlobePanel from '@/components/shared/GlobePanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -117,11 +118,14 @@ const SkillsView = () => {
   return (
     <div className='flex h-[calc(100vh-8rem)] flex-col gap-4'>
       <div className='flex flex-wrap items-end justify-between gap-3'>
-        <div>
-          <h1 className='font-mono text-xl font-semibold tracking-widest'>SKILLS</h1>
-          <p className='micro-label mt-1'>
-            CYBERSTRIKE + BUILTIN CATALOG — BROWSE · SEARCH · REVISIT · INJECTED INTO AGENTS
-          </p>
+        <div className='flex items-center gap-3'>
+          <GlobePanel className='size-16 shrink-0' />
+          <div>
+            <h1 className='font-mono text-xl font-semibold tracking-widest'>SKILLS</h1>
+            <p className='micro-label mt-1'>
+              CYBERSTRIKE + BUILTIN CATALOG — BROWSE · SEARCH · REVISIT · INJECTED INTO AGENTS
+            </p>
+          </div>
         </div>
         {stats && (
           <div className='flex flex-wrap gap-2 font-mono text-[10px] tracking-widest uppercase'>

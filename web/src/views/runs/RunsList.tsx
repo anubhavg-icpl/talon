@@ -23,6 +23,7 @@ import type { RunStatus, RunSummary } from '@/lib/api'
 
 // Component Imports
 import PageHeader from '@/components/shared/PageHeader'
+import GlobePanel from '@/components/shared/GlobePanel'
 import StatusBadge from '@/components/shared/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -189,13 +190,16 @@ const RunsList = () => {
         title='OPERATIONS'
         subtitle='ALL PENTEST RUNS'
         action={
-          <Button
-            className='font-mono text-xs font-semibold tracking-widest uppercase'
-            render={<Link href='/runs/new' />}
-            nativeButton={false}
-          >
-            [ + NEW OPERATION ]
-          </Button>
+          <div className='flex items-center gap-3'>
+            <GlobePanel className='size-14 shrink-0' />
+            <Button
+              className='font-mono text-xs font-semibold tracking-widest uppercase'
+              render={<Link href='/runs/new' />}
+              nativeButton={false}
+            >
+              [ + NEW OPERATION ]
+            </Button>
+          </div>
         }
       />
 
