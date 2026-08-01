@@ -768,3 +768,275 @@ export const streamRun = (runId: string, handlers: StreamRunHandlers): (() => vo
     stopPolling()
   }
 }
+
+// ---------------------------------------------------------------------------
+// LLM token streaming (POST /llm/stream) — SmolLM/ONNX/OpenAI via Go SSE
+// ---------------------------------------------------------------------------
+
+export type LLMStreamMessage = { role: 'system' | 'user' | 'assistant'; content: string }
+
+export type LLMStreamHandlers = {
+  onMeta?: (meta: { provider: string; model: string; role?: string }) => void
+  onToken?: (token: string) => void
+  onDone?: (result: { text: string; ms: number }) => void
+  onError?: (error: Error) => void
+}
+
+/**
+ * Stream chat tokens from talon-core POST /llm/stream (SSE).
+ * Prefer LLM_PROVIDER=onnx for millisecond local SmolLM tokens.
+ * Returns an abort function.
+ */
+export const streamLLM = (
+  body: {
+    messages: LLMStreamMessage[]
+    system?: string
+    role?: string
+    model?: string
+    max_tokens?: number
+    temperature?: number
+  },
+  handlers: LLMStreamHandlers
+): (() => void) => {
+  const ac = new AbortController()
+
+  ;(async () => {
+    try {
+      const res = await fetch(`${BASE}/llm/stream`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+        body: JSON.stringify(body),
+        signal: ac.signal,
+        cache: 'no-store'
+      })
+
+      if (!res.ok) {
+        if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login'
+        }
+
+        const text = await res.text().catch(() => '')
+
+        throw new Error(`llm/stream ${res.status}: ${text || res.statusText}`)
+      }
+
+      if (!res.body) throw new Error('llm/stream: empty body')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let event = 'message'
+
+      const dispatch = (ev: string, data: string) => {
+        if (!data || data === '[DONE]') return
+
+        try {
+          const parsed = JSON.parse(data) as Record<string, unknown>
+
+          if (ev === 'meta') {
+            handlers.onMeta?.(parsed as { provider: string; model: string; role?: string })
+          } else if (ev === 'token') {
+            const c = typeof parsed.content === 'string' ? parsed.content : ''
+
+            if (c) handlers.onToken?.(c)
+          } else if (ev === 'done') {
+            handlers.onDone?.({
+              text: String(parsed.text ?? ''),
+              ms: Number(parsed.ms ?? 0)
+            })
+          } else if (ev === 'error') {
+            handlers.onError?.(new Error(String(parsed.error ?? 'stream error')))
+          }
+        } catch {
+          // ignore malformed frames
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n')
+
+        buffer = parts.pop() ?? ''
+        for (const line of parts) {
+          if (line.startsWith('event:')) {
+            event = line.slice(6).trim()
+          } else if (line.startsWith('data:')) {
+            dispatch(event, line.slice(5).trim())
+            event = 'message'
+          } else if (line === '') {
+            event = 'message'
+          }
+        }
+      }
+    } catch (err) {
+      if (ac.signal.aborted) return
+      handlers.onError?.(err instanceof Error ? err : new Error(String(err)))
+    }
+  })()
+
+  return () => ac.abort()
+}
+
+export const llmInfo = (role?: string) =>
+  request<{
+    provider: string
+    model: string
+    role: string
+    onnx_base_url: string
+    ollama_url: string
+    openai_base: string
+    stream_path: string
+    assist_path?: string
+    tools_path?: string
+    tool_count?: number
+  }>(`/llm/info${role ? `?role=${encodeURIComponent(role)}` : ''}`)
+
+export type SLMToolDef = {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+  safe: boolean
+}
+
+export const listLLMTools = () =>
+  request<{
+    tools: SLMToolDef[]
+    count: number
+    protocol: string
+    assist_path: string
+    stream_path: string
+    note: string
+  }>('/llm/tools')
+
+export type LLMAssistHandlers = {
+  onMeta?: (meta: Record<string, unknown>) => void
+  onToken?: (token: string) => void
+  onToolStart?: (tool: { name: string; arguments?: Record<string, unknown> }) => void
+  onToolResult?: (tool: { name: string; result: string; ms: number }) => void
+  onRound?: (round: { n: number; max: number }) => void
+  onDone?: (result: { text: string; ms: number; tool_calls?: number; rounds?: number }) => void
+  onError?: (error: Error) => void
+}
+
+/**
+ * End-to-end SLM assist: POST /llm/assist with curated codebase tools.
+ * SSE events: meta | token | tool_start | tool_result | round | done | error.
+ */
+export const streamLLMAssist = (
+  body: {
+    messages: LLMStreamMessage[]
+    system?: string
+    role?: string
+    model?: string
+    max_tokens?: number
+    max_rounds?: number
+    disable_tools?: boolean
+  },
+  handlers: LLMAssistHandlers
+): (() => void) => {
+  const ac = new AbortController()
+
+  ;(async () => {
+    try {
+      const res = await fetch(`${BASE}/llm/assist`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+        body: JSON.stringify(body),
+        signal: ac.signal,
+        cache: 'no-store'
+      })
+
+      if (!res.ok) {
+        if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login'
+        }
+
+        const text = await res.text().catch(() => '')
+
+        throw new Error(`llm/assist ${res.status}: ${text || res.statusText}`)
+      }
+
+      if (!res.body) throw new Error('llm/assist: empty body')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let event = 'message'
+
+      const dispatch = (ev: string, data: string) => {
+        if (!data || data === '[DONE]') return
+
+        try {
+          const parsed = JSON.parse(data) as Record<string, unknown>
+
+          switch (ev) {
+            case 'meta':
+              handlers.onMeta?.(parsed)
+              break
+            case 'token':
+              if (typeof parsed.content === 'string' && parsed.content) handlers.onToken?.(parsed.content)
+              break
+            case 'tool_start':
+              handlers.onToolStart?.({
+                name: String(parsed.name ?? ''),
+                arguments: (parsed.arguments as Record<string, unknown>) || undefined
+              })
+              break
+            case 'tool_result':
+              handlers.onToolResult?.({
+                name: String(parsed.name ?? ''),
+                result: String(parsed.result ?? ''),
+                ms: Number(parsed.ms ?? 0)
+              })
+              break
+            case 'round':
+              handlers.onRound?.({ n: Number(parsed.n ?? 0), max: Number(parsed.max ?? 0) })
+              break
+            case 'done':
+              handlers.onDone?.({
+                text: String(parsed.text ?? ''),
+                ms: Number(parsed.ms ?? 0),
+                tool_calls: Number(parsed.tool_calls ?? 0),
+                rounds: Number(parsed.rounds ?? 0)
+              })
+              break
+            case 'error':
+              handlers.onError?.(new Error(String(parsed.error ?? 'assist error')))
+              break
+          }
+        } catch {
+          // ignore malformed frames
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n')
+
+        buffer = parts.pop() ?? ''
+        for (const line of parts) {
+          if (line.startsWith('event:')) {
+            event = line.slice(6).trim()
+          } else if (line.startsWith('data:')) {
+            dispatch(event, line.slice(5).trim())
+            event = 'message'
+          } else if (line === '') {
+            event = 'message'
+          }
+        }
+      }
+    } catch (err) {
+      if (ac.signal.aborted) return
+      handlers.onError?.(err instanceof Error ? err : new Error(String(err)))
+    }
+  })()
+
+  return () => ac.abort()
+}
+

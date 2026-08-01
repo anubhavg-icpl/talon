@@ -100,6 +100,12 @@ export const navItems: NavItem[] = [
     groupLabel: 'Intelligence',
     items: [
       {
+        icon: 'Sparkles',
+        label: 'SLM Assist',
+        href: '/assist',
+        badge: 'LOCAL'
+      },
+      {
         icon: 'Bot',
         label: 'Agents',
         href: '/agents'

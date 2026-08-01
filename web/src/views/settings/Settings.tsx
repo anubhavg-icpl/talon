@@ -78,7 +78,13 @@ type ConfigGroup = 'llm' | 'attacker' | 'features' | 'other'
 const groupOf = (key: string): ConfigGroup => {
   if (key.startsWith('FEATURE_')) return 'features'
   if (key === 'LHOST' || key === 'LPORT') return 'attacker'
-  if (key === 'LLM_PROVIDER' || key.startsWith('OPENAI_') || key.startsWith('OLLAMA_') || LLM_MODEL_KEYS.has(key))
+  if (
+    key === 'LLM_PROVIDER' ||
+    key.startsWith('OPENAI_') ||
+    key.startsWith('OLLAMA_') ||
+    key.startsWith('ONNX_') ||
+    LLM_MODEL_KEYS.has(key)
+  )
     return 'llm'
 
   return 'other'
@@ -91,7 +97,7 @@ const GROUPS: { id: ConfigGroup; title: string }[] = [
   { id: 'other', title: 'OTHER' }
 ]
 
-const LLM_PROVIDERS = ['bedrock', 'openai', 'ollama']
+const LLM_PROVIDERS = ['bedrock', 'openai', 'ollama', 'onnx']
 
 const parseBool = (value: string) => value === 'true' || value === '1'
 
