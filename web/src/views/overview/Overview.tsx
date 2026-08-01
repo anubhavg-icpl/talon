@@ -151,11 +151,11 @@ const Overview = () => {
             <Logo className='text-2xl sm:text-3xl [&_svg]:size-7' />
             <UtcClock className='text-muted-foreground font-mono text-xs tracking-widest' />
             <p className='text-muted-foreground mt-2 max-w-md font-mono text-[11px] leading-relaxed'>
-              Wireframe ops globe · spins harder when runs are active · CyberStrike skills + multi-agent pipeline
+              Live operator globe · arcs + beacons · spins harder when engagements run · skills + multi-agent pipeline
             </p>
             {stats.active > 0 && (
               <p className='text-primary micro-label mt-1 flex items-center gap-2'>
-                <LiveDot tone='green' /> {stats.active} ACTIVE · GLOBE LIVE
+                <LiveDot tone='cyan' /> {stats.active} ACTIVE · C2 GLOBE LIVE
               </p>
             )}
             <Link
@@ -165,13 +165,12 @@ const Overview = () => {
               OPEN PRODUCT SHOWCASE →
             </Link>
           </div>
-          <div className='relative mx-auto aspect-square w-full max-w-[280px] lg:max-w-[320px]'>
+          <div className='hud-corners relative mx-auto aspect-square w-full max-w-[280px] lg:max-w-[320px]'>
             <TalonGlobe
               className='h-full w-full'
               state={globeState}
               activityLevel={globeLevel}
               onClick={() => {
-                // Jump to new operation — same spirit as agentic-os globe click
                 window.location.assign('/runs/new')
               }}
             />

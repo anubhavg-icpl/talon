@@ -2,6 +2,10 @@
 
 Stills are committed as **WebP** for the dashboard **Showcase** reel.
 
+Procedural 3D: the **Operator Globe** is pure Three.js (no glTF) — starfield,
+atmosphere, beacons, great-circle arcs, multi-axis rings. Optional still:
+`operator-globe-hud.webp` for marketing/README.
+
 | Still | Slide |
 |-------|--------|
 | `talon-hero-raptor.webp` | Brand / raptor hero |

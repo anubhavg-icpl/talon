@@ -176,16 +176,16 @@ const ShowcaseView = () => {
         <div className='flex flex-col gap-4'>
           <Card className='hud-corners flex flex-1 flex-col overflow-hidden'>
             <CardHeader className='pb-2'>
-              <CardTitle className='micro-label'>OPS GLOBE</CardTitle>
+              <CardTitle className='micro-label'>OPERATOR GLOBE</CardTitle>
               <CardDescription className='font-mono text-[11px]'>
-                From agentic-os HUD · click to start a run
+                Three.js · arcs · beacons · click to engage
               </CardDescription>
             </CardHeader>
             <CardContent className='flex flex-1 items-center justify-center p-2'>
               <TalonGlobe
-                className='aspect-square w-full max-w-[240px]'
+                className='aspect-square w-full max-w-[260px]'
                 state='running'
-                activityLevel={0.45}
+                activityLevel={0.55}
                 onClick={() => {
                   window.location.href = '/runs/new'
                 }}
