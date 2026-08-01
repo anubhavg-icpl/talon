@@ -39,12 +39,16 @@ import { Textarea } from '@/components/ui/textarea'
 
 // Util Imports
 import {
+  addNote,
   analyzeRun,
+  exportRun,
   getFindings,
   getKillChain,
   getMethodology,
+  getNotes,
   getReport,
   getStatus,
+  getTimeline,
   getTools,
   getTraces,
   listRuns,
@@ -52,6 +56,7 @@ import {
   streamRun,
   triageFinding
 } from '@/lib/api'
+import type { OperatorNote, TimelineEvent } from '@/lib/api'
 import { shortId } from '@/lib/format'
 
 const severityVariant = (sev: string): 'destructive' | 'default' | 'secondary' | 'outline' => {
@@ -335,21 +340,57 @@ const RunDetail = ({ runId }: { runId: string }) => {
   const [report, setReport] = useState<StructuredReport | null>(null)
   const [killchain, setKillchain] = useState<KillChainAnalysis | null>(null)
   const [methodology, setMethodology] = useState<MethodologyState | null>(null)
+  const [timeline, setTimeline] = useState<TimelineEvent[]>([])
+  const [notes, setNotes] = useState<OperatorNote[]>([])
+  const [noteDraft, setNoteDraft] = useState('')
 
   const seenToolIndexes = useRef<Set<number>>(new Set())
 
   const loadFindingsReport = useCallback(async () => {
-    const [fRes, rRes, kRes, mRes] = await Promise.allSettled([
+    const [fRes, rRes, kRes, mRes, tRes, nRes] = await Promise.allSettled([
       getFindings(runId),
       getReport(runId),
       getKillChain(runId),
-      getMethodology(runId)
+      getMethodology(runId),
+      getTimeline(runId),
+      getNotes(runId)
     ])
     if (fRes.status === 'fulfilled') setFindings(fRes.value.findings ?? [])
     if (rRes.status === 'fulfilled') setReport(rRes.value)
     if (kRes.status === 'fulfilled') setKillchain(kRes.value)
     if (mRes.status === 'fulfilled') setMethodology(mRes.value)
+    if (tRes.status === 'fulfilled') setTimeline(tRes.value.timeline ?? [])
+    if (nRes.status === 'fulfilled') setNotes(nRes.value.notes ?? [])
   }, [runId])
+
+  const exportBundle = async () => {
+    try {
+      const bundle = await exportRun(runId)
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `talon-export-${runId.slice(0, 8)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Export bundle downloaded')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed')
+    }
+  }
+
+  const submitNote = async () => {
+    if (!noteDraft.trim()) return
+    try {
+      await addNote(runId, noteDraft.trim())
+      setNoteDraft('')
+      const n = await getNotes(runId)
+      setNotes(n.notes ?? [])
+      toast.success('Note saved')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Note failed')
+    }
+  }
 
   const exportReport = () => {
     const md = report?.markdown || status?.output || ''
@@ -583,6 +624,8 @@ const RunDetail = ({ runId }: { runId: string }) => {
             Findings{findings.length > 0 ? ` (${findings.length})` : status?.findings_count ? ` (${status.findings_count})` : ''}
           </TabsTrigger>
           <TabsTrigger value='killchain'>Kill Chain</TabsTrigger>
+          <TabsTrigger value='timeline'>Timeline</TabsTrigger>
+          <TabsTrigger value='notes'>Notes</TabsTrigger>
           <TabsTrigger value='report'>Report</TabsTrigger>
           <TabsTrigger value='analysis'>AI Analysis</TabsTrigger>
           <TabsTrigger value='traces'>Traces</TabsTrigger>
@@ -729,6 +772,71 @@ const RunDetail = ({ runId }: { runId: string }) => {
           </Card>
         </TabsContent>
 
+        <TabsContent value='timeline' className='flex flex-col gap-3 pt-4'>
+          {timeline.length === 0 ? (
+            <p className='micro-label py-8 text-center'>NO TIMELINE EVENTS YET</p>
+          ) : (
+            timeline.map(ev => (
+              <div key={`${ev.kind}-${ev.index}`} className='border-border/50 rounded border px-3 py-2 font-mono text-xs'>
+                <div className='flex flex-wrap gap-2'>
+                  <Badge variant={ev.kind === 'finding' ? 'destructive' : 'outline'} className='text-[9px] uppercase'>
+                    {ev.kind}
+                  </Badge>
+                  {ev.stage && (
+                    <Badge variant='secondary' className='text-[9px]'>
+                      {ev.stage}
+                    </Badge>
+                  )}
+                  {ev.severity && (
+                    <Badge className='text-[9px] uppercase'>{ev.severity}</Badge>
+                  )}
+                  <span className='text-muted-foreground ml-auto text-[10px]'>#{ev.index}</span>
+                </div>
+                <p className='mt-1 font-medium'>{ev.label}</p>
+                {ev.detail && <p className='text-muted-foreground mt-0.5 line-clamp-3 text-[11px]'>{ev.detail}</p>}
+              </div>
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value='notes' className='flex flex-col gap-4 pt-4'>
+          <Card>
+            <CardHeader>
+              <CardTitle className='micro-label'>OPERATOR NOTES</CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <Textarea
+                value={noteDraft}
+                onChange={e => setNoteDraft(e.target.value)}
+                placeholder='Engagement context, HITL rationale, customer notes…'
+                className='min-h-24 font-mono text-xs'
+              />
+              <Button
+                size='sm'
+                onClick={submitNote}
+                className='font-mono text-[10px] tracking-widest uppercase'
+              >
+                Save note
+              </Button>
+              <div className='space-y-2 pt-2'>
+                {notes.length === 0 ? (
+                  <p className='micro-label py-4 text-center'>NO NOTES YET</p>
+                ) : (
+                  notes.map(n => (
+                    <div key={n.id} className='border-border/50 rounded border px-3 py-2 font-mono text-xs'>
+                      <div className='text-muted-foreground flex justify-between text-[10px]'>
+                        <span>{n.id} · {n.author || 'operator'}</span>
+                        <span>{n.created_at}</span>
+                      </div>
+                      <p className='mt-1 whitespace-pre-wrap'>{n.body}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value='report' className='flex flex-col gap-4 pt-4'>
           {status?.judge_verdict === true && (
             <div className='hud-corners border-primary/40 bg-primary/10 text-primary rounded-md border px-4 py-3 font-mono text-sm font-semibold tracking-widest uppercase'>
@@ -752,14 +860,24 @@ const RunDetail = ({ runId }: { runId: string }) => {
                     <p className='micro-label mt-1'>AGENT MODE: {status.agent_mode.toUpperCase()}</p>
                   )}
                 </div>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={exportReport}
-                  className='font-mono text-[10px] tracking-widest uppercase'
-                >
-                  Export .md
-                </Button>
+                <div className='flex gap-2'>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={exportReport}
+                    className='font-mono text-[10px] tracking-widest uppercase'
+                  >
+                    Export .md
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={exportBundle}
+                    className='font-mono text-[10px] tracking-widest uppercase'
+                  >
+                    Export JSON
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>

@@ -35,6 +35,7 @@ export type StartRunRequest = {
   lhost?: string
   lport?: number
   agent_mode?: string
+  playbook_id?: string
 }
 
 export type StartRunResponse = {
@@ -321,6 +322,78 @@ export type AgentInfo = {
 }
 
 export const getAgents = () => request<{ agents: AgentInfo[]; count: number }>('/agents')
+
+export type Playbook = {
+  id: string
+  name: string
+  codename: string
+  description: string
+  agent_mode: string
+  prompt: string
+  tags: string[]
+}
+
+export const getPlaybooks = () => request<{ playbooks: Playbook[]; count: number }>('/playbooks')
+
+export type IntelEvent = {
+  at: string
+  run_id: string
+  target: string
+  kind: string
+  label: string
+  detail?: string
+  severity?: string
+}
+
+export const getIntel = (limit?: number) =>
+  request<{ events: IntelEvent[] }>(`/intel${limit ? `?limit=${limit}` : ''}`)
+
+export type TimelineEvent = {
+  index: number
+  kind: string
+  label: string
+  stage?: string
+  detail?: string
+  severity?: string
+}
+
+export const getTimeline = (runId: string) =>
+  request<{ run_id: string; timeline: TimelineEvent[] }>(`/runs/${runId}/timeline`)
+
+export type OperatorNote = {
+  id: string
+  author?: string
+  body: string
+  created_at: string
+}
+
+export const getNotes = (runId: string) =>
+  request<{ run_id: string; notes: OperatorNote[] }>(`/runs/${runId}/notes`)
+
+export const addNote = (runId: string, body: string, author?: string) =>
+  request<OperatorNote>(`/runs/${runId}/notes`, {
+    method: 'POST',
+    body: JSON.stringify({ body, author: author || 'operator' })
+  })
+
+export const compareRuns = (a: string, b: string) =>
+  request<Record<string, unknown>>(`/runs/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`)
+
+export const exportRun = (runId: string) => request<Record<string, unknown>>(`/runs/${runId}/export`)
+
+export const batchStart = (body: {
+  ips: string[]
+  cve_id?: string
+  service_name?: string
+  description?: string
+  lhost?: string
+  lport?: number
+  agent_mode?: string
+  playbook_id?: string
+}) => request<{ started: { run_id: string; ip: string }[]; count: number }>('/input/batch', {
+  method: 'POST',
+  body: JSON.stringify(body)
+})
 
 export type KillChainLink = {
   from: string

@@ -225,3 +225,26 @@ func minInt(a, b int) int {
 	}
 	return b
 }
+
+func TestCompareAndTimelineAndPlaybooks(t *testing.T) {
+	if len(ListPlaybooks()) < 3 {
+		t.Fatal("expected playbooks")
+	}
+	a := BuildSnapshot(RunInput{TargetIP: "1.1.1.1", AgentMode: "full"}, []Finding{
+		{Title: "RCE", Severity: SeverityCritical},
+	}, []ToolCallRecord{{Index: 0, ToolName: "nmap_scan", Output: "open"}}, boolPtr(true), nil, nil)
+	b := BuildSnapshot(RunInput{TargetIP: "1.1.1.1", AgentMode: "web"}, []Finding{
+		{Title: "RCE", Severity: SeverityCritical},
+		{Title: "Open port", Severity: SeverityInfo},
+	}, []ToolCallRecord{{Index: 0, ToolName: "run_exploit", Output: "session"}}, boolPtr(true), nil, nil)
+	cmp := CompareRuns(a, b)
+	if cmp.SeverityDelta["total"] != 1 {
+		t.Fatalf("delta total=%v", cmp.SeverityDelta)
+	}
+	tl := BuildTimeline([]ToolCallRecord{{Index: 0, ToolName: "nmap_scan", Output: "open"}}, a.Findings)
+	if len(tl) < 2 {
+		t.Fatalf("timeline len=%d", len(tl))
+	}
+}
+
+func boolPtr(v bool) *bool { return &v }

@@ -128,6 +128,15 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /skills", s.handleSkills)
 	mux.HandleFunc("GET /skills/{id}", s.handleSkillByID)
 	mux.HandleFunc("GET /agents", s.handleAgents)
+	// Wave 6: playbooks, compare, export, notes, intel, timeline, batch
+	mux.HandleFunc("GET /playbooks", s.handlePlaybooks)
+	mux.HandleFunc("GET /intel", s.handleIntel)
+	mux.HandleFunc("GET /runs/compare", s.handleCompareRuns)
+	mux.HandleFunc("GET /runs/{run_id}/export", s.handleExport)
+	mux.HandleFunc("GET /runs/{run_id}/timeline", s.handleTimeline)
+	mux.HandleFunc("GET /runs/{run_id}/notes", s.handleGetNotes)
+	mux.HandleFunc("POST /runs/{run_id}/notes", s.handleAddNote)
+	mux.HandleFunc("POST /input/batch", s.handleBatchStart)
 	return mux
 }
 
@@ -174,6 +183,20 @@ type targetRequest struct {
 	LPORT       int    `json:"lport"`
 	// AgentMode: full|recon|exploit|web|network|post (CyberStrike-style specialist).
 	AgentMode string `json:"agent_mode"`
+	// PlaybookID optionally fills defaults from a builtin playbook.
+	PlaybookID string `json:"playbook_id"`
+}
+
+// batchStartRequest is POST /input/batch — launch multiple hosts with shared context.
+type batchStartRequest struct {
+	IPs         []string `json:"ips"`
+	CVEID       string   `json:"cve_id"`
+	ServiceName string   `json:"service_name"`
+	Description string   `json:"description"`
+	LHOST       string   `json:"lhost"`
+	LPORT       int      `json:"lport"`
+	AgentMode   string   `json:"agent_mode"`
+	PlaybookID  string   `json:"playbook_id"`
 }
 
 // resumeRequest is the POST /output/resume/{run_id} request body.
@@ -199,24 +222,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if req.LHOST == "" {
-		// Prefer operator env (compose sets LHOST=127.0.0.1 for local lab).
-		if e := os.Getenv("LHOST"); e != "" {
-			req.LHOST = e
-		} else {
-			req.LHOST = "127.0.0.1"
-		}
-	}
-	if req.LPORT == 0 {
-		if e := os.Getenv("LPORT"); e != "" {
-			if n, err := strconv.Atoi(e); err == nil && n > 0 {
-				req.LPORT = n
-			}
-		}
-		if req.LPORT == 0 {
-			req.LPORT = 4444
-		}
-	}
+	applyStartDefaults(&req)
 
 	runID := uuid.NewString()
 	input := core.RunInput{
@@ -241,6 +247,182 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		"message":    "Agent execution started",
 		"agent_mode": input.AgentMode,
 	})
+}
+
+func applyStartDefaults(req *targetRequest) {
+	if req.PlaybookID != "" {
+		if pb, ok := core.GetPlaybook(req.PlaybookID); ok {
+			if req.AgentMode == "" {
+				req.AgentMode = pb.AgentMode
+			}
+			if req.Description == "" {
+				req.Description = pb.Prompt
+			}
+			if req.PlaybookID == "cve-lab" && req.CVEID == "" {
+				req.CVEID = "CVE-2011-2523"
+			}
+			if req.PlaybookID == "cve-lab" && req.ServiceName == "" {
+				req.ServiceName = "vsftpd 2.3.4"
+			}
+		}
+	}
+	if req.LHOST == "" {
+		if e := os.Getenv("LHOST"); e != "" {
+			req.LHOST = e
+		} else {
+			req.LHOST = "127.0.0.1"
+		}
+	}
+	if req.LPORT == 0 {
+		if e := os.Getenv("LPORT"); e != "" {
+			if n, err := strconv.Atoi(e); err == nil && n > 0 {
+				req.LPORT = n
+			}
+		}
+		if req.LPORT == 0 {
+			req.LPORT = 4444
+		}
+	}
+}
+
+// handleBatchStart is POST /input/batch — start one run per IP.
+func (s *Server) handleBatchStart(w http.ResponseWriter, r *http.Request) {
+	var req batchStartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if len(req.IPs) == 0 {
+		writeError(w, http.StatusBadRequest, "ips required")
+		return
+	}
+	if len(req.IPs) > 50 {
+		writeError(w, http.StatusBadRequest, "max 50 ips per batch")
+		return
+	}
+	type started struct {
+		RunID string `json:"run_id"`
+		IP    string `json:"ip"`
+	}
+	out := make([]started, 0, len(req.IPs))
+	for _, ip := range req.IPs {
+		ip = strings.TrimSpace(ip)
+		if ip == "" {
+			continue
+		}
+		tr := targetRequest{
+			IP: ip, CVEID: req.CVEID, ServiceName: req.ServiceName,
+			Description: req.Description, LHOST: req.LHOST, LPORT: req.LPORT,
+			AgentMode: req.AgentMode, PlaybookID: req.PlaybookID,
+		}
+		applyStartDefaults(&tr)
+		runID := uuid.NewString()
+		input := core.RunInput{
+			SessionID: runID, TargetIP: tr.IP, CVEID: tr.CVEID, ServiceName: tr.ServiceName,
+			Description: tr.Description, AgentMode: core.NormalizeAgentMode(tr.AgentMode),
+			Context: config.Context{LHOST: tr.LHOST, LPORT: tr.LPORT},
+		}
+		s.store.Create(runID, input)
+		go s.runWorkflow(runID, input)
+		out = append(out, started{RunID: runID, IP: ip})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"started": out, "count": len(out)})
+}
+
+// handlePlaybooks is GET /playbooks.
+func (s *Server) handlePlaybooks(w http.ResponseWriter, r *http.Request) {
+	pbs := core.ListPlaybooks()
+	writeJSON(w, http.StatusOK, map[string]any{"playbooks": pbs, "count": len(pbs)})
+}
+
+// handleIntel is GET /intel — cross-run feed.
+func (s *Server) handleIntel(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"events": s.store.IntelFeed(limit)})
+}
+
+// handleCompareRuns is GET /runs/compare?a=&b=.
+func (s *Server) handleCompareRuns(w http.ResponseWriter, r *http.Request) {
+	aID := r.URL.Query().Get("a")
+	bID := r.URL.Query().Get("b")
+	if aID == "" || bID == "" {
+		writeError(w, http.StatusBadRequest, "query params a and b (run ids) required")
+		return
+	}
+	sa, oka := s.store.Snapshot(aID)
+	sb, okb := s.store.Snapshot(bID)
+	if !oka || !okb {
+		writeError(w, http.StatusNotFound, "one or both runs not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, core.CompareRuns(sa, sb))
+}
+
+// handleExport is GET /runs/{id}/export — portable JSON bundle.
+func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("run_id")
+	bundle, ok := s.store.ExportBundle(runID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "Run not found")
+		return
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="talon-export-%s.json"`, runID[:8]))
+	writeJSON(w, http.StatusOK, bundle)
+}
+
+// handleTimeline is GET /runs/{id}/timeline.
+func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("run_id")
+	sess, ok := s.store.Get(runID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "Run not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"run_id":   runID,
+		"timeline": core.BuildTimeline(sess.ToolLog, sess.Findings),
+	})
+}
+
+// handleGetNotes is GET /runs/{id}/notes.
+func (s *Server) handleGetNotes(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("run_id")
+	notes, ok := s.store.Notes(runID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "Run not found")
+		return
+	}
+	if notes == nil {
+		notes = []core.OperatorNote{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"run_id": runID, "notes": notes})
+}
+
+// handleAddNote is POST /runs/{id}/notes.
+func (s *Server) handleAddNote(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("run_id")
+	var body struct {
+		Body   string `json:"body"`
+		Author string `json:"author"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.Author == "" {
+		body.Author = "operator"
+	}
+	n, err := s.store.AddNote(runID, body.Author, body.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, n)
 }
 
 func (s *Server) runWorkflow(runID string, input core.RunInput) {

@@ -21,8 +21,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 
 // Util Imports
-import type { AgentInfo } from '@/lib/api'
-import { getAgents, startRun } from '@/lib/api'
+import type { AgentInfo, Playbook } from '@/lib/api'
+import { getAgents, getPlaybooks, startRun } from '@/lib/api'
 
 const schema = z.object({
   ip: z
@@ -65,15 +65,30 @@ const NewRun = () => {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [agents, setAgents] = useState<AgentInfo[]>([])
+  const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [agentMode, setAgentMode] = useState('full')
+  const [playbookId, setPlaybookId] = useState('')
 
   useEffect(() => {
     const mode = searchParams.get('mode')
     if (mode) setAgentMode(mode)
+    const pb = searchParams.get('playbook')
+    if (pb) setPlaybookId(pb)
     getAgents()
       .then(res => setAgents(res.agents ?? []))
       .catch(() => {})
+    getPlaybooks()
+      .then(res => setPlaybooks(res.playbooks ?? []))
+      .catch(() => {})
   }, [searchParams])
+
+  useEffect(() => {
+    if (!playbookId) return
+    const pb = playbooks.find(p => p.id === playbookId)
+    if (pb) {
+      setAgentMode(pb.agent_mode || 'full')
+    }
+  }, [playbookId, playbooks])
 
   const {
     register,
@@ -93,7 +108,8 @@ const NewRun = () => {
         ...(values.description ? { description: values.description } : {}),
         ...(values.lhost ? { lhost: values.lhost } : {}),
         ...(values.lport ? { lport: Number(values.lport) } : {}),
-        agent_mode: agentMode || 'full'
+        agent_mode: agentMode || 'full',
+        ...(playbookId ? { playbook_id: playbookId } : {})
       })
 
       toast.success(`Operation launched — ${res.run_id}`)
@@ -122,6 +138,29 @@ const NewRun = () => {
             <Field label='TARGET IP *' error={errors.ip?.message}>
               <Input {...register('ip')} placeholder='10.10.10.5' className='font-mono' autoFocus />
             </Field>
+
+            {playbooks.length > 0 && (
+              <Field label='PLAYBOOK (OPTIONAL)'>
+                <Select
+                  value={playbookId || '__none__'}
+                  onValueChange={v => setPlaybookId(v === '__none__' ? '' : v)}
+                >
+                  <SelectTrigger className='font-mono'>
+                    <SelectValue placeholder='None' />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='__none__' className='font-mono text-xs'>
+                      None — custom
+                    </SelectItem>
+                    {playbooks.map(pb => (
+                      <SelectItem key={pb.id} value={pb.id} className='font-mono text-xs'>
+                        {pb.codename} — {pb.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
 
             <Field label='AGENT MODE (SPECIALIST)'>
               <Select value={agentMode} onValueChange={setAgentMode}>

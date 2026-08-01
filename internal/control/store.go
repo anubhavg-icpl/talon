@@ -39,6 +39,8 @@ type Session struct {
 	KillChain *core.KillChainAnalysis
 	// Methodology is stage coverage.
 	Methodology *core.MethodologyState
+	// Notes are operator annotations (HITL comments, engagement context).
+	Notes []core.OperatorNote
 }
 
 // Store is a thread-safe (RWMutex-protected) in-memory session table.
@@ -118,6 +120,9 @@ func (s *Store) Get(runID string) (Session, bool) {
 		m := *sess.Methodology
 		out.Methodology = &m
 	}
+	if sess.Notes != nil {
+		out.Notes = append([]core.OperatorNote(nil), sess.Notes...)
+	}
 	return out, true
 }
 
@@ -149,6 +154,143 @@ func (s *Store) AllFindings(limit int, severity string) []GlobalFinding {
 				return out
 			}
 		}
+	}
+	return out
+}
+
+// AddNote appends an operator note to a run.
+func (s *Store) AddNote(runID, author, body string) (core.OperatorNote, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.sessions[runID]
+	if !ok && s.pg != nil {
+		if row, found := s.pg.getRun(s.pgCtx, runID); found {
+			s.sessions[runID] = row
+			sess = row
+			ok = true
+		}
+	}
+	if !ok || sess == nil {
+		return core.OperatorNote{}, fmt.Errorf("run not found")
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return core.OperatorNote{}, fmt.Errorf("note body required")
+	}
+	n := core.OperatorNote{
+		ID:        fmt.Sprintf("NOTE-%03d", len(sess.Notes)+1),
+		Author:    strings.TrimSpace(author),
+		Body:      body,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	sess.Notes = append(sess.Notes, n)
+	sess.History = append(sess.History, historyLine("note %s by %s", n.ID, n.Author))
+	s.saveLocked(runID)
+	return n, nil
+}
+
+// Notes returns a copy of operator notes for a run.
+func (s *Store) Notes(runID string) ([]core.OperatorNote, bool) {
+	sess, ok := s.Get(runID)
+	if !ok {
+		return nil, false
+	}
+	return append([]core.OperatorNote(nil), sess.Notes...), true
+}
+
+// Snapshot builds a core.RunSnapshot for compare/export.
+func (s *Store) Snapshot(runID string) (core.RunSnapshot, bool) {
+	sess, ok := s.Get(runID)
+	if !ok {
+		return core.RunSnapshot{}, false
+	}
+	var judge *bool
+	if sess.JudgeSet {
+		v := sess.JudgeVerdict
+		judge = &v
+	}
+	return core.BuildSnapshot(sess.RunInput, sess.Findings, sess.ToolLog, judge, sess.KillChain, sess.Methodology), true
+}
+
+// ExportBundle builds a portable export package.
+func (s *Store) ExportBundle(runID string) (core.ExportBundle, bool) {
+	sess, ok := s.Get(runID)
+	if !ok {
+		return core.ExportBundle{}, false
+	}
+	snap, _ := s.Snapshot(runID)
+	md := ""
+	if sess.Report != nil {
+		md = sess.Report.Markdown
+	}
+	return core.ExportBundle{
+		Version:  "1.0",
+		RunID:    runID,
+		Snapshot: snap,
+		ReportMD: md,
+		History:  append([]string(nil), sess.History...),
+		ToolLog:  append([]core.ToolCallRecord(nil), sess.ToolLog...),
+		Notes:    append([]core.OperatorNote(nil), sess.Notes...),
+	}, true
+}
+
+// IntelEvent is one row in the global intel feed.
+type IntelEvent struct {
+	At     string `json:"at"`
+	RunID  string `json:"run_id"`
+	Target string `json:"target"`
+	Kind   string `json:"kind"` // finding | history | tool
+	Label  string `json:"label"`
+	Detail string `json:"detail,omitempty"`
+	Severity string `json:"severity,omitempty"`
+}
+
+// IntelFeed returns recent cross-run intel (newest first).
+func (s *Store) IntelFeed(limit int) []IntelEvent {
+	if limit <= 0 {
+		limit = 50
+	}
+	runs, _, _ := s.PaginatedList(100, 0)
+	var out []IntelEvent
+	for _, rs := range runs {
+		sess, ok := s.Get(rs.RunID)
+		if !ok {
+			continue
+		}
+		// Recent findings
+		for i := len(sess.Findings) - 1; i >= 0; i-- {
+			f := sess.Findings[i]
+			at := ""
+			if !f.CreatedAt.IsZero() {
+				at = f.CreatedAt.UTC().Format(time.RFC3339)
+			} else {
+				at = sess.StartedAt.UTC().Format(time.RFC3339)
+			}
+			out = append(out, IntelEvent{
+				At: at, RunID: rs.RunID, Target: rs.Target,
+				Kind: "finding", Label: f.Title, Detail: f.Description, Severity: f.Severity,
+			})
+		}
+		// Last few history lines
+		start := len(sess.History) - 3
+		if start < 0 {
+			start = 0
+		}
+		for _, h := range sess.History[start:] {
+			out = append(out, IntelEvent{
+				At: sess.StartedAt.UTC().Format(time.RFC3339),
+				RunID: rs.RunID, Target: rs.Target,
+				Kind: "history", Label: h,
+			})
+		}
+		if len(out) >= limit*2 {
+			break
+		}
+	}
+	// Sort by At desc (string RFC3339 sorts)
+	sort.Slice(out, func(i, j int) bool { return out[i].At > out[j].At })
+	if len(out) > limit {
+		out = out[:limit]
 	}
 	return out
 }

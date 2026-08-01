@@ -78,6 +78,11 @@ export const navItems: NavItem[] = [
         icon: 'Bug',
         label: 'Findings',
         href: '/findings'
+      },
+      {
+        icon: 'GitCompare',
+        label: 'Compare',
+        href: '/compare'
       }
     ]
   },
@@ -93,6 +98,16 @@ export const navItems: NavItem[] = [
         icon: 'BookOpen',
         label: 'Skills',
         href: '/skills'
+      },
+      {
+        icon: 'ScrollText',
+        label: 'Playbooks',
+        href: '/playbooks'
+      },
+      {
+        icon: 'Radio',
+        label: 'Intel Feed',
+        href: '/intel'
       }
     ]
   },
