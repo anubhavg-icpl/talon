@@ -26,9 +26,7 @@ import { Textarea } from '@/components/ui/textarea'
 
 // Util Imports
 import type { AgentInfo, Playbook } from '@/lib/api'
-import { agentAvatarSrc } from '@/lib/agent-avatars'
 import { getAgents, getPlaybooks, startRun } from '@/lib/api'
-import { playbookArtSrc } from '@/lib/playbook-art'
 import { cn } from '@/lib/utils'
 
 const schema = z.object({
@@ -187,29 +185,33 @@ const NewRun = () => {
                 {playbooks.length > 0 && (
                   <Field label='PLAYBOOK (OPTIONAL)'>
                     <Select
-                      value={playbookId || '__none__'}
-                      onValueChange={v => setPlaybookId(!v || v === '__none__' ? '' : v)}
+                      value={playbookId || 'none'}
+                      onValueChange={v => {
+                        const next = !v || v === 'none' ? '' : v
+                        setPlaybookId(next)
+                        if (next) {
+                          const pb = playbooks.find(p => p.id === next)
+                          if (pb?.agent_mode) setAgentMode(pb.agent_mode)
+                        }
+                      }}
                     >
-                      <SelectTrigger className='h-10 w-full font-mono'>
-                        <SelectValue placeholder='None' />
+                      <SelectTrigger className='h-10 w-full font-mono text-xs'>
+                        <SelectValue placeholder='None — custom'>
+                          {playbookId
+                            ? (() => {
+                                const pb = playbooks.find(p => p.id === playbookId)
+                                return pb ? `${pb.codename} — ${pb.name}` : playbookId
+                              })()
+                            : 'None — custom'}
+                        </SelectValue>
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='__none__' className='font-mono text-xs'>
+                      <SelectContent className='z-[100]'>
+                        <SelectItem value='none' className='font-mono text-xs'>
                           None — custom
                         </SelectItem>
                         {playbooks.map(pb => (
                           <SelectItem key={pb.id} value={pb.id} className='font-mono text-xs'>
-                            <span className='flex min-w-0 items-center gap-2'>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={playbookArtSrc(pb.id)}
-                                alt=''
-                                className='size-5 shrink-0 rounded-sm object-cover ring-1 ring-primary/30'
-                              />
-                              <span className='truncate'>
-                                {pb.codename} — {pb.name}
-                              </span>
-                            </span>
+                            {pb.codename} — {pb.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -218,24 +220,24 @@ const NewRun = () => {
                 )}
 
                 <Field label='AGENT MODE (SPECIALIST)' className={playbooks.length === 0 ? 'sm:col-span-2' : undefined}>
-                  <Select value={agentMode} onValueChange={v => setAgentMode(v ?? 'full')}>
-                    <SelectTrigger className='h-10 w-full font-mono'>
-                      <SelectValue placeholder='full' />
+                  <Select
+                    value={agentMode || 'full'}
+                    onValueChange={v => {
+                      if (v) setAgentMode(v)
+                    }}
+                  >
+                    <SelectTrigger className='h-10 w-full font-mono text-xs'>
+                      <SelectValue placeholder='COMMANDER — Full Pipeline'>
+                        {(() => {
+                          const a = agentList.find(x => x.id === agentMode)
+                          return a ? `${a.codename} — ${a.name}` : agentMode || 'full'
+                        })()}
+                      </SelectValue>
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className='z-[100]'>
                       {agentList.map(a => (
                         <SelectItem key={a.id} value={a.id} className='font-mono text-xs'>
-                          <span className='flex min-w-0 items-center gap-2'>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={agentAvatarSrc(a.id)}
-                              alt=''
-                              className='size-5 shrink-0 rounded-full object-cover ring-1 ring-primary/30'
-                            />
-                            <span className='truncate'>
-                              {a.codename} — {a.name}
-                            </span>
-                          </span>
+                          {a.codename} — {a.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -42,14 +42,31 @@ const isSubGroup = (item: MenuSubItem): item is MenuGroupSubItem => 'childItems'
 
 const isExternalLink = (href: string) => href.startsWith('http://') || href.startsWith('https://')
 
+/** Dedicated routes under /runs that have their own nav item (must not light up Runs). */
+const RUNS_SIBLING_PREFIXES = ['/runs/new']
+
+function isRunsListPath(pathname: string): boolean {
+  if (pathname === '/runs') return true
+  // /runs/:id detail only — not /runs/new
+  if (!pathname.startsWith('/runs/')) return false
+  if (RUNS_SIBLING_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'))) return false
+  return true
+}
+
 function isLinkActive(
   href: string,
   activePath: string | undefined,
   pathname: string,
   searchParams: Pick<URLSearchParams, 'get'>
 ): boolean {
+  // Exact match always wins
+  if (pathname === href) return true
+
   if (activePath) {
-    return pathname.startsWith(activePath)
+    // Prefer exact activePath; for prefixes avoid sibling collisions (/runs vs /runs/new)
+    if (pathname === activePath) return true
+    if (activePath === '/runs' || href === '/runs') return isRunsListPath(pathname)
+    return pathname.startsWith(activePath + '/')
   }
 
   if (href.includes('?')) {
@@ -62,9 +79,10 @@ function isLinkActive(
     return true
   }
 
-  // Nested routes: /runs/xyz should highlight Runs when activePath not set
+  // Nested routes: /runs/:id highlights Runs; /runs/new does not
+  if (href === '/runs') return isRunsListPath(pathname)
   if (href !== '/' && pathname.startsWith(href + '/')) return true
-  return pathname === href
+  return false
 }
 
 const SidebarGroupedMenuItems = ({

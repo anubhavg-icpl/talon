@@ -3,7 +3,9 @@
 FROM node:22-alpine AS base
 # Pin pnpm — "latest" (11.x) changed build-script approval behavior and
 # fails on this lockfile; 10.33.2 is the version the lockfile was built with.
-RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
+# Prefer npm install over corepack prepare — corepack often times out offline
+# / behind flaky GitHub registry access on lab networks.
+RUN npm install -g pnpm@10.33.2
 
 # ---- deps ----
 FROM base AS deps
