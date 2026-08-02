@@ -506,11 +506,14 @@ func (s *Store) AppendHistory(runID, format string, args ...any) {
 // GET /monitor/tools?run_id=... (per-run rather than a single global log,
 // since ToolCallRecord lives on RunResult per-run).
 func (s *Store) ToolLog(runID string) ([]core.ToolCallRecord, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	sess, ok := s.sessions[runID]
+	// Use Get so Postgres-hydrated completed runs (not only hot in-memory
+	// sessions) still expose their tool log to GET /monitor/tools and Assist.
+	sess, ok := s.Get(runID)
 	if !ok {
 		return nil, false
+	}
+	if sess.ToolLog == nil {
+		return []core.ToolCallRecord{}, true
 	}
 	return append([]core.ToolCallRecord(nil), sess.ToolLog...), true
 }

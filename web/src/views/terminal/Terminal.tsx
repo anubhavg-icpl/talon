@@ -1,6 +1,6 @@
 'use client'
 
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 
 import { SquareTerminal } from 'lucide-react'
 
@@ -18,6 +18,22 @@ const useMounted = () =>
     () => false
   )
 
+function shellSrc(): string {
+  const base = (CORE_URL || `${window.location.protocol}//${window.location.hostname}:8000`).replace(/\/$/, '')
+  // Prefer cookie SSO on core origin (set by dual-login). Fall back to access_token
+  // from sessionStorage when cookie is missing (cross-port dashboard).
+  let token = ''
+  try {
+    token = sessionStorage.getItem('talon_token') || ''
+  } catch {
+    token = ''
+  }
+  if (token) {
+    return `${base}/shell/?access_token=${encodeURIComponent(token)}`
+  }
+  return `${base}/shell/`
+}
+
 /**
  * BlackArch arsenal shell — ttyd PTY from arsenal_engine (fastfetch + Talon theme),
  * reverse-proxied by talon-core at /shell.
@@ -25,9 +41,7 @@ const useMounted = () =>
 const Terminal = () => {
   const mounted = useMounted()
 
-  const src = mounted
-    ? `${CORE_URL ?? `${window.location.protocol}//${window.location.hostname}:8000`}/shell/`
-    : null
+  const src = useMemo(() => (mounted ? shellSrc() : null), [mounted])
 
   return (
     <div className='flex flex-col gap-4'>

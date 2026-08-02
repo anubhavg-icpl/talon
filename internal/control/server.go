@@ -197,14 +197,23 @@ func (s *Server) Mux() *http.ServeMux {
 	return mux
 }
 
-// Handler wraps the mux with permissive CORS so the web dashboard (and other
-// local tooling) can call the API cross-origin. Matches the existing no-auth
-// local-operator posture.
+// Handler wraps the mux with CORS so the web dashboard (often on another port)
+// can call the API. When the request carries an Origin we echo it back with
+// credentials allowed so the browser can store talon_session on the core
+// origin (needed for the /shell iframe WebSocket SSO).
 func (s *Server) Handler() http.Handler {
 	mux := s.Mux()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		origin := r.Header.Get("Origin")
+		if origin != "" && corsOriginAllowed(origin) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Vary", "Origin")
+		} else {
+			// Non-browser / same-origin tooling.
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -220,6 +229,32 @@ func (s *Server) Handler() http.Handler {
 		}
 		mux.ServeHTTP(w, r)
 	})
+}
+
+// corsOriginAllowed permits local dashboard origins (any port on localhost /
+// loopback / private LAN hostnames commonly used in operator labs).
+func corsOriginAllowed(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	switch host {
+	case "localhost", "127.0.0.1", "::1", "0.0.0.0":
+		return u.Scheme == "http" || u.Scheme == "https"
+	}
+	// Private / lab hosts (e.g. http://192.168.x.x:3100, http://invention:3100)
+	if strings.HasPrefix(host, "192.168.") || strings.HasPrefix(host, "10.") ||
+		strings.HasPrefix(host, "172.16.") || strings.HasPrefix(host, "172.17.") ||
+		strings.HasPrefix(host, "172.18.") || strings.HasPrefix(host, "172.19.") ||
+		strings.HasPrefix(host, "172.2") || strings.HasPrefix(host, "172.3") {
+		return u.Scheme == "http" || u.Scheme == "https"
+	}
+	// Bare hostnames without dots (e.g. invention) used on lab boxes.
+	if !strings.Contains(host, ".") {
+		return u.Scheme == "http" || u.Scheme == "https"
+	}
+	return false
 }
 
 // handleHealth is GET /health — liveness for operators and the talon CLI.

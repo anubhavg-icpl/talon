@@ -62,7 +62,9 @@ func newToken() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-// usernameForRequest resolves the session cookie or a bearer token.
+// usernameForRequest resolves the session cookie, bearer token, or access_token
+// query (used by the Arsenal Shell iframe when the dashboard and core sit on
+// different ports and the HttpOnly cookie is origin-scoped).
 func (a *Auth) usernameForRequest(r *http.Request) string {
 	token := ""
 	if c, err := r.Cookie(sessionCookieName); err == nil {
@@ -71,6 +73,14 @@ func (a *Auth) usernameForRequest(r *http.Request) string {
 	if token == "" {
 		if h := r.Header.Get("Authorization"); len(h) > 7 && h[:7] == "Bearer " {
 			token = h[7:]
+		}
+	}
+	if token == "" {
+		// Prefer access_token; token is a common alternate used by local tooling.
+		if q := r.URL.Query().Get("access_token"); q != "" {
+			token = q
+		} else if q := r.URL.Query().Get("token"); q != "" {
+			token = q
 		}
 	}
 	if token == "" {

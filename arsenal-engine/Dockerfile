@@ -123,8 +123,9 @@ RUN set -eux; \
 RUN set -eux; \
     pacman -Sy --noconfirm; \
     /usr/local/bin/pac-opt \
-      hydra john hashcat medusa patator hash-identifier \
-      seclists wordlists; \
+      hydra john hashcat medusa patator hash-identifier; \
+    # seclists/wordlists intentionally omitted (~2GiB) — mount host lists or
+    # `pacman -S seclists` inside a running container when needed.
     pacman -Scc --noconfirm || true
 
 # 2d Binary / RE / forensics
@@ -280,19 +281,29 @@ RUN pip3 install --break-system-packages --no-cache-dir --ignore-installed \
     || pip install --break-system-packages --no-cache-dir --ignore-installed \
       -r /opt/arsenal-engine/requirements.txt
 
+# Lightweight Python extras only — avoid prowler/scoutsuite pip resolver thrash
+# (they pull conflicting awscli ranges). Install those on host/GPU nodes if needed.
 RUN set -eux; \
     PIP="pip3"; command -v pip3 >/dev/null || PIP="pip"; \
     $PIP install --break-system-packages --no-cache-dir --ignore-installed \
-      httpie uro paramspider checkov kube-hunter shodan censys \
+      httpie \
       || true; \
-    if [ "${INSTALL_CLOUD}" = "1" ]; then \
-      $PIP install --break-system-packages --no-cache-dir --ignore-installed \
-        prowler scoutsuite pacu \
-        || true; \
-    fi; \
+    $PIP install --break-system-packages --no-cache-dir --ignore-installed \
+      uro paramspider shodan censys \
+      || true; \
+    $PIP install --break-system-packages --no-cache-dir --ignore-installed \
+      checkov \
+      || true; \
+    $PIP install --break-system-packages --no-cache-dir --ignore-installed \
+      kube-hunter \
+      || true; \
     $PIP install --break-system-packages --no-cache-dir --ignore-installed \
       volatility3 \
-      || true
+      || true; \
+    if [ "${INSTALL_CLOUD}" = "1" ]; then \
+      echo "Cloud CLI binaries (trivy/terrascan/kube-bench) installed earlier;"; \
+      echo "skipping prowler/scoutsuite pip (heavy awscli conflicts in Docker builds)."; \
+    fi
 
 RUN set -eux; \
     if [ "${INSTALL_BINARY_HEAVY}" = "1" ]; then \
@@ -303,6 +314,10 @@ RUN set -eux; \
         ropgadget one-gadget \
         || true; \
       $PIP install --break-system-packages --no-cache-dir --ignore-installed ropper || true; \
+      # angr/pwntools pull cryptography>=50 which breaks pyOpenSSL/mitmproxy.
+      # Re-pin so optional mitmproxy imports do not kill arsenal_engine boot.
+      $PIP install --break-system-packages --no-cache-dir --ignore-installed \
+        'cryptography>=42.0,<43.1' 'pyOpenSSL>=24.0,<25' || true; \
     fi
 
 # Aliases arsenal_engine health probes expect

@@ -37,13 +37,15 @@ func (s *Server) handleLLMTools(w http.ResponseWriter, r *http.Request) {
 
 // llmAssistRequest is POST /llm/assist — multi-turn tool loop with SSE.
 type llmAssistRequest struct {
-	Messages    []llmStreamMsg `json:"messages"`
-	System      string         `json:"system,omitempty"`
-	Role        string         `json:"role,omitempty"`
-	Model       string         `json:"model,omitempty"`
-	MaxTokens   int32          `json:"max_tokens,omitempty"`
-	MaxRounds   int            `json:"max_rounds,omitempty"`
-	Temperature *float32       `json:"temperature,omitempty"`
+	Messages []llmStreamMsg `json:"messages"`
+	// Message is a convenience alias: single user turn when messages is empty.
+	Message     string  `json:"message,omitempty"`
+	System      string  `json:"system,omitempty"`
+	Role        string  `json:"role,omitempty"`
+	Model       string  `json:"model,omitempty"`
+	MaxTokens   int32   `json:"max_tokens,omitempty"`
+	MaxRounds   int     `json:"max_rounds,omitempty"`
+	Temperature *float32 `json:"temperature,omitempty"`
 	// DisableTools forces plain chat (same as /llm/stream).
 	DisableTools bool `json:"disable_tools,omitempty"`
 }
@@ -65,8 +67,11 @@ func (s *Server) handleLLMAssist(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
+	if len(req.Messages) == 0 && strings.TrimSpace(req.Message) != "" {
+		req.Messages = []llmStreamMsg{{Role: "user", Content: strings.TrimSpace(req.Message)}}
+	}
 	if len(req.Messages) == 0 {
-		writeError(w, http.StatusBadRequest, "messages required")
+		writeError(w, http.StatusBadRequest, "messages required (or message string)")
 		return
 	}
 	flusher, ok := w.(http.Flusher)

@@ -33,6 +33,7 @@ import {
   SidebarRail,
   useSidebar
 } from '@/components/ui/sidebar'
+import GlobeWallpaper from '@/components/shared/GlobeWallpaper'
 import { navItems } from '@/configs/navConfig'
 import themeConfig from '@/configs/themeConfig'
 import { cn } from '@/lib/utils'
@@ -293,7 +294,25 @@ const SidebarLayout = () => {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className='border-sidebar-border/80 border-t'>
+      <SidebarFooter className='border-sidebar-border/80 gap-2 border-t'>
+        {/* Same dark-planet WebM as Overview Target HUD */}
+        <div className='group-data-[collapsible=icon]:hidden px-2 pt-1'>
+          <GlobeWallpaper
+            compact
+            label='TALON · GLOBE'
+            allow3d={false}
+            className='max-h-40 w-full rounded-md border-primary/20 shadow-[0_0_24px_-8px_var(--op-glow)]'
+          />
+        </div>
+        {/* Icon-collapsed: tiny looping planet */}
+        <div className='hidden items-center justify-center px-1 py-1 group-data-[collapsible=icon]:flex'>
+          <GlobeWallpaper
+            compact
+            minimal
+            allow3d={false}
+            className='size-8 max-h-8 rounded-md border-primary/30'
+          />
+        </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

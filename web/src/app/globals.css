@@ -545,6 +545,122 @@ input[type='number']::-webkit-outer-spin-button {
   }
 }
 
+/* ---------- Login stage — animated dark-planet backdrop (CSS + video, no WebGL) ---------- */
+
+.login-stage {
+  isolation: isolate;
+}
+
+.login-planet-video {
+  transform: scale(1.06);
+  filter: saturate(1.05) contrast(1.08) brightness(0.88);
+}
+
+.login-orbs {
+  background:
+    radial-gradient(ellipse 55% 45% at 18% 72%, oklch(0.55 0.22 25 / 0.28), transparent 62%),
+    radial-gradient(ellipse 50% 40% at 82% 22%, oklch(0.5 0.18 25 / 0.18), transparent 60%),
+    radial-gradient(ellipse 40% 35% at 50% 50%, oklch(0.45 0.12 25 / 0.1), transparent 70%);
+  animation: login-orb-drift 18s ease-in-out infinite alternate;
+}
+
+.login-grid {
+  background-image:
+    linear-gradient(oklch(0.7 0.12 25 / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.7 0.12 25 / 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 50%, black 20%, transparent 75%);
+  animation: login-grid-pan 40s linear infinite;
+  opacity: 0.55;
+}
+
+.login-sweep {
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    oklch(0.7 0.2 25 / 0.05) 48%,
+    oklch(0.75 0.18 25 / 0.09) 50%,
+    oklch(0.7 0.2 25 / 0.05) 52%,
+    transparent 60%
+  );
+  background-size: 220% 100%;
+  animation: login-sweep 9s ease-in-out infinite;
+}
+
+.login-card {
+  animation: login-card-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-mark {
+  animation: login-mark-glow 3.2s ease-in-out infinite;
+}
+
+@keyframes login-orb-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate3d(2%, -3%, 0) scale(1.06);
+    opacity: 1;
+  }
+}
+
+@keyframes login-grid-pan {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+  100% {
+    background-position: 48px 48px, 48px 48px;
+  }
+}
+
+@keyframes login-sweep {
+  0% {
+    background-position: 120% 0;
+  }
+  50% {
+    background-position: -20% 0;
+  }
+  100% {
+    background-position: 120% 0;
+  }
+}
+
+@keyframes login-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes login-mark-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 6px oklch(0.62 0.22 25 / 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 0 16px oklch(0.62 0.22 25 / 0.7));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-orbs,
+  .login-grid,
+  .login-sweep,
+  .login-card,
+  .login-mark {
+    animation: none !important;
+  }
+  .login-planet-video {
+    transform: none;
+  }
+}
+
 /* Tables / dense data feel */
 table {
   font-variant-numeric: tabular-nums;

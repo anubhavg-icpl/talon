@@ -60,10 +60,20 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
-import mitmproxy
-from mitmproxy import http as mitmhttp
-from mitmproxy.tools.dump import DumpMaster
-from mitmproxy.options import Options as MitmOptions
+# Optional: mitmproxy is not required for core API/tools. Binary-heavy pip
+# stacks (angr/pwntools) can upgrade cryptography and break pyOpenSSL/mitmproxy.
+try:
+    import mitmproxy  # noqa: F401
+    from mitmproxy import http as mitmhttp  # noqa: F401
+    from mitmproxy.tools.dump import DumpMaster  # noqa: F401
+    from mitmproxy.options import Options as MitmOptions  # noqa: F401
+    MITMPROXY_AVAILABLE = True
+except Exception:  # ImportError or OpenSSL ABI mismatch
+    mitmproxy = None  # type: ignore
+    mitmhttp = None  # type: ignore
+    DumpMaster = None  # type: ignore
+    MitmOptions = None  # type: ignore
+    MITMPROXY_AVAILABLE = False
 
 # ============================================================================
 # LOGGING CONFIGURATION (MUST BE FIRST)
