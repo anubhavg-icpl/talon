@@ -1,0 +1,400 @@
+# stage: recon
+# category: specialized
+
+> OSINT open-source intelligence collection knowledge base — four-dimensional information collection model (Server → Website → Domain → Personnel); Dimension 4 (personnel information) is conditionally triggered
+
+# OSINT Open-Source Intelligence Collection Knowledge Base
+
+A practical knowledge base for information gathering / reconnaissance / social engineering scenarios, providing a **four-dimensional information collection model** (Server Info → Website Info → Domain Info → Personnel Info) along with concrete tool usage methods and data extraction techniques.
+
+**Differences from the `recon` Skill**:
+- `recon` → technical-level reconnaissance (port scanning, DNS, directory enumeration) — basic version
+- `osint-recon` → full-dimensional reconnaissance (server + website + domain + personnel/social engineering) — deep version
+
+## Core Principles
+
+1. **Full coverage of all four dimensions** — the server/website/domain dimensions are always executed; the personnel dimension is conditionally triggered
+2. **Extract everything extractable from the page** — not only HTTP headers, but also HTML content, JS files, and comments
+3. **Passive before active** — first look at response headers, DNS, WHOIS (passive), then perform port scanning / directory enumeration (active)
+4. **Dimension completeness self-check** — after each round, check which dimensions are complete ✅ and which are not ❌; only when all are complete is [DONE] allowed
+5. **Every external link is a lead** — every external link on the page may be a source of information
+6. **Structured output** — aggregate all findings into a Markdown report
+
+## Four-Dimensional Information Collection Model
+
+### Dimension 1: Server Information
+| Check Item | Tool/Method | Notes |
+|------------|-------------|-------|
+| Open ports & service versions | MCP nmap / `python_execute` + socket | Full port scan or common ports (21/22/80/443/3306/6379/8080/8443) |
+| Real IP discovery | DNS history / global Ping / mail header extraction | Origin server IP behind a CDN — SecurityTrails/DNSHistory/global Ping |
+| OS fingerprint | TTL inference + nmap OS detection | Linux TTL≈64, Windows TTL≈128, Unix TTL≈255 |
+| Middleware version | Response header Server + error pages + signature files | Apache/Nginx/IIS/Tomcat version identification |
+| Database identification | Port probing + error messages + characteristic behavior | MySQL(3306)/Redis(6379)/MongoDB(27017)/MSSQL(1433) |
+
+### Dimension 2: Website Information
+| Check Item | Tool/Method | Notes |
+|------------|-------------|-------|
+| Website architecture | Response headers + page features + JS libraries | OS + middleware + database + language + framework → full tech stack |
+| Web fingerprinting | `fetch` + response signature matching | CMS type, frontend framework, JS libraries, template engine |
+| WAF detection | wafw00f logic + response signatures | Blocking pages / special response headers / abnormal status codes |
+| Sensitive directories & sensitive files | `python_execute` + common path wordlist | /admin /backup /config /api /robots.txt /sitemap.xml |
+| Source code leakage | Check common leak paths | .git/.svn/.DS_Store/.env/web.config/backup files (.bak/.swp/.old) |
+| Side-site lookup | Reverse domain lookup by same IP | ChinaZ tools / ThreatBook / crt.sh same-IP query |
+| C-segment lookup | Scan for live hosts on the same subnet | nmap -sn scan of the /24 segment |
+
+### Dimension 3: Domain Information
+| Check Item | Tool/Method | Notes |
+|------------|-------------|-------|
+| WHOIS registration info | `python_execute` + whois API/command | Registrant/registrar/NS servers/registration date/expiry date |
+| ICP filing info | MIIT filing query API | Only required for mainland China domains; overseas domains have no filing |
+| Subdomain discovery | crt.sh + brute force + search engines + DNS zone transfer | Cross-validate with multiple methods to ensure full coverage |
+| Full DNS records | `python_execute` + dnspython/socket | Full query of A/CNAME/MX/TXT/NS/SPF/SOA |
+| Certificate Transparency logs | crt.sh / Censys / certspotter | Discover historical certificates, subdomains, related domains |
+
+### Dimension 4: Personnel Information ⚡ Conditional Trigger
+**⚠️ This dimension is executed only when one of the following conditions is met:**
+- The user's command explicitly mentions "social engineering / social work / personnel information / author tracking / persona profiling" or similar
+- The target website has explicit author information (meta author, about page, contact details)
+
+**Cases where social engineering should NOT be performed**: a normal corporate website with no personal author / the user only asked to "scan the target" / the target is an IP or intranet address
+
+| Tracking Direction | Method | Notes |
+|--------------------|--------|-------|
+| Author identifier extraction | Page meta author, about page | Username, nickname, email |
+| GitHub tracking | `fetch` + GitHub API | Repos, language preferences, contribution history, email |
+| Social media | Extract links from the page → visit them | Bilibili, Weibo, Zhihu, Twitter, LinkedIn |
+| Cross-platform correlation | Search other platforms with the username/email | Search for the same ID across platforms |
+| Historical commits | GitHub commits → commit email | Correlate with other projects and identities |
+| Leak detection | GitHub historical code search | .env, config, key leaks |
+
+## First-Pass Workflow
+
+1. **Access the target** → `fetch` the homepage, extract HTTP headers + HTML content
+2. **Dimension 1: Server Information** → port scan, real IP, OS fingerprint, middleware/database identification
+3. **Dimension 2: Website Information** → web fingerprinting, WAF detection, sensitive directories/source code leaks, side-site/C-segment
+4. **Dimension 3: Domain Information** → WHOIS, ICP filing, subdomains, DNS records, Certificate Transparency
+5. **Dimension 4 (conditionally triggered)** → extract author info, cross-platform tracking, information aggregation
+6. **Dimension completeness self-check** → confirm every dimension has gone through at least one round of checks
+7. **Aggregate report** → generate a Markdown-format reconnaissance report
+
+## Scenario Routing
+
+| Scenario | Reference Document | Core Content |
+|----------|-------------------|--------------|
+| Server information gathering | `server-recon.md` | Port scanning, real IP, OS fingerprint, middleware/database identification |
+| Website information gathering | `website-recon.md` | Architecture/fingerprinting/WAF/sensitive directories/source code leaks/side-site/C-segment |
+| Web fingerprinting | `web-fingerprinting.md` | Framework detection, version identification, tech stack inference |
+| Author tracking methods | `author-tracking.md` | Extract author from page → cross-platform tracking → information aggregation |
+| OSINT tool usage | `osint-toolkit.md` | crt.sh, GitHub API, search engine dorks, side-site/C-segment/ICP |
+| Social engineering intel aggregation | `social-engineering-intel.md` | Persona profiling, relationship networks, cross-validation of information |
+| Recon report template | `recon-report-template.md` | Standard Markdown report format (four dimensions) |
+
+## ⭐ Common Extraction Code Snippets
+
+### Extract All External Links from HTML
+```python
+import re
+html = "..."  # HTML obtained via fetch
+links = re.findall(r'href=["\'](https?://[^"\']+)["\']', html)
+for link in set(links):
+    print(link)
+```
+
+### Extract Author Information from HTML
+```python
+import re
+# meta author
+author = re.findall(r'<meta\s+name=["\']author["\']\s+content=["\']([^"\']+)["\']', html)
+# about page links
+about_links = re.findall(r'href=["\']([^"\']*(?:about|me|contact)[^"\']*)["\']', html, re.I)
+```
+
+### Query crt.sh for Subdomains
+```python
+import requests
+domain = "example.com"
+r = requests.get(f"https://crt.sh/?q=%.{domain}&output=json")
+if r.status_code == 200:
+    for entry in r.json():
+        print(entry['name_value'])
+```
+
+### GitHub User Information
+```python
+import requests
+username = "target_user"
+r = requests.get(f"https://api.github.com/users/{username}")
+if r.status_code == 200:
+    data = r.json()
+    print(f"Name: {data.get('name')}")
+    print(f"Bio: {data.get('bio')}")
+    print(f"Email: {data.get('email')}")
+    print(f"Blog: {data.get('blog')}")
+    print(f"Location: {data.get('location')}")
+    print(f"Company: {data.get('company')}")
+```
+
+### WAF Detection (Response Signature Method)
+```python
+import requests
+url = "https://target.com"
+# Normal request
+r1 = requests.get(url)
+# WAF-triggering request (with attack signature)
+r2 = requests.get(url + "/?id=1' OR 1=1--")
+# Compare responses
+if r1.status_code != r2.status_code or len(r1.text) != len(r2.text):
+    print("[!] A WAF may be present")
+    print(f"Normal status code: {r1.status_code}, attack status code: {r2.status_code}")
+```
+
+### Side-Site Lookup (Reverse Domain by Same IP)
+```python
+import requests
+ip = "1.2.3.4"
+# Use chinaz API or other reverse-lookup interfaces
+# You can also query crt.sh for certificates on the same IP
+r = requests.get(f"https://crt.sh/?q={ip}&output=json")
+```
+
+## References — author-tracking
+
+# Author Tracking Methods
+
+## Core Workflow
+
+```
+Extract author identifiers from the page → determine a unique identifier (username/email) → cross-platform search → information aggregation
+```
+
+## Step 1: Extract Author Identifiers from the Page
+
+### HTML Meta Tags
+```python
+import re
+
+def extract_author_from_meta(html):
+    """Extract author information from HTML meta tags"""
+    authors = []
+    
+    # <meta name="author" content="XXX">
+    m = re.findall(r'<meta\s+name=["\']author["\']\s+content=["\']([^"\']+)["\']', html)
+    authors.extend(m)
+    
+    # <meta name="copyright" content="XXX">
+    m = re.findall(r'<meta\s+name=["\']copyright["\']\s+content=["\']([^"\']+)["\']', html)
+    authors.extend(m)
+    
+    # OG tags
+    m = re.findall(r'<meta\s+property=["\']article:author["\']\s+content=["\']([^"\']+)["\']', html)
+    authors.extend(m)
+    
+    return list(set(authors))
+```
+
+### Page Link Extraction
+```python
+def extract_social_links(html):
+    """Extract social media links from the page"""
+    links = re.findall(r'href=["\'](https?://[^"\']+)["\']', html)
+    
+    social = {}
+    for link in links:
+        if 'github.com' in link:
+            social['github'] = link
+        elif 'bilibili.com' in link:
+            social['bilibili'] = link
+        elif 'weibo.com' in link or 'weibo.cn' in link:
+            social['weibo'] = link
+        elif 'zhihu.com' in link:
+            social['zhihu'] = link
+        elif 'twitter.com' in link or 'x.com' in link:
+            social['twitter'] = link
+        elif 'linkedin.com' in link:
+            social['linkedin'] = link
+        elif 'youtube.com' in link:
+            social['youtube'] = link
+        elif 'facebook.com' in link:
+            social['facebook'] = link
+    
+    return social
+```
+
+## Step 2: GitHub Tracking
+
+### User Information API
+```python
+import requests
+
+def get_github_profile(username):
+    """Get a GitHub user's public information"""
+    r = requests.get(f"https://api.github.com/users/{username}")
+    if r.status_code != 200:
+        return None
+    
+    data = r.json()
+    return {
+        'name': data.get('name'),
+        'bio': data.get('bio'),
+        'email': data.get('email'),
+        'blog': data.get('blog'),
+        'location': data.get('location'),
+        'company': data.get('company'),
+        'public_repos': data.get('public_repos'),
+        'followers': data.get('followers'),
+        'following': data.get('following'),
+        'created_at': data.get('created_at'),
+        'avatar_url': data.get('avatar_url'),
+    }
+
+def get_github_repos(username):
+    """Get a user's public repositories (to infer tech stack)"""
+    r = requests.get(f"https://api.github.com/users/{username}/repos?per_page=100")
+    if r.status_code != 200:
+        return []
+    
+    repos = r.json()
+    languages = {}
+    for repo in repos:
+        lang = repo.get('language')
+        if lang:
+            languages[lang] = languages.get(lang, 0) + 1
+    
+    return {
+        'top_languages': sorted(languages.items(), key=lambda x: -x[1])[:5],
+        'repo_count': len(repos),
+        'starred_total': sum(r.get('stargazers_count', 0) for r in repos),
+    }
+```
+
+### Extract Email from GitHub Commit History
+```python
+def get_github_commit_email(username, repo):
+    """Extract the author's email from GitHub commit history"""
+    r = requests.get(f"https://api.github.com/repos/{username}/{repo}/commits?per_page=10")
+    if r.status_code != 200:
+        return []
+    
+    emails = set()
+    for commit in r.json():
+        author = commit.get('commit', {}).get('author', {})
+        if author.get('email'):
+            emails.add(author['email'])
+    
+    return list(emails)
+```
+
+## Step 3: Cross-Platform Correlation
+
+### Search Other Platforms by Username
+```python
+# Common platform detection
+PLATFORMS = {
+    'GitHub': 'https://github.com/{username}',
+    'Bilibili': 'https://space.bilibili.com/search?keyword={username}',
+    'Zhihu': 'https://www.zhihu.com/search?type=content&q={username}',
+    'CSDN': 'https://blog.csdn.net/{username}',
+    'Juejin': 'https://juejin.cn/user/{username}',
+    'Twitter': 'https://twitter.com/{username}',
+    'LinkedIn': 'https://www.linkedin.com/in/{username}',
+}
+
+async def cross_platform_search(username, fetch_tool):
+    """Search for the username across multiple platforms"""
+    results = {}
+    for platform, url_template in PLATFORMS.items():
+        url = url_template.format(username=username)
+        try:
+            resp = await fetch_tool(url=url)
+            if resp.get('status') == 200:
+                results[platform] = f"✅ Found ({url})"
+            else:
+                results[platform] = f"❌ Not found"
+        except:
+            results[platform] = f"⚠️ Detection failed"
+    return results
+```
+
+## Step 4: Information Aggregation Template
+
+```markdown
+## Persona Profile: {nickname}
+
+### Basic Information
+- **Nickname**: xxx
+- **Real name**: xxx (if available)
+- **Email**: xxx
+- **Location**: xxx
+- **Occupation/Company**: xxx
+
+### Technical Profile
+- **Primary languages**: Python / JavaScript / ...
+- **Tech stack preferences**: ...
+- **Open-source contributions**: N repositories, M stars
+- **Areas of interest**: ...
+
+### Social Media
+- GitHub: xxx
+- Bilibili: xxx
+- Zhihu: xxx
+- ...
+
+### Correlated Information
+- Same ID across platforms: xxx
+- Known projects: xxx
+- Historical leaks: xxx
+```
+
+## References — osint-toolkit
+
+# OSINT Tool Usage Manual
+
+## 1. crt.sh — Certificate Transparency Subdomain Query
+
+### Usage
+```python
+import requests
+
+def query_crtsh(domain):
+    """Query subdomains via crt.sh"""
+    url = f"https://crt.sh/?q=%25.{domain}&output=json"
+    try:
+        r = requests.get(url, timeout=30)
+        if r.status_code == 200:
+            data = r.json()
+            subdomains = set()
+            for entry in data:
+                name = entry.get('name_value', '')
+                for n in name.split('\n'):
+                    n = n.strip().lower()
+                    if n and '*' not in n:
+                        subdomains.add(n)
+            return sorted(subdomains)
+    except Exception as e:
+        return [f"Query failed: {e}"]
+    return []
+```
+
+### Notes
+- crt.sh can be slow; set a 30s timeout
+- Results include wildcard certificates (`*.example.com`), which must be filtered out
+- Return deduplicated results
+
+## 2. GitHub API — Code and User Search
+
+### Search Code (Leak Detection)
+```python
+def search_github_code(query, max_results=10):
+    """Search GitHub code (detect key/config leaks)"""
+    url = "https://api.github.com/search/code"
+    params = {'q': query, 'per_page': max_results}
+    headers = {'Accept': 'application/vnd.github.v3+json'}
+    
+    r = requests.get(url, params=params, headers=headers)
+    if r.status_code == 200:
+        items = r.json().get('items', [])
+        return [{
+            'repo': item['repository']['full_name'],
+            'path': item['path'],
+            'url': item['html_url'],
+        } for item in items]

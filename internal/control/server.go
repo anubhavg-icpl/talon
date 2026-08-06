@@ -194,6 +194,20 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("POST /runs/{run_id}/retest", s.handleRetest)
 	mux.HandleFunc("GET /runs/{run_id}/report.html", s.handleReportHTML)
 	mux.HandleFunc("GET /openapi.yaml", s.handleOpenAPI)
+
+	// Pentest agent: evidence, target state, traffic, recap, crypto.
+	mux.HandleFunc("GET /runs/{run_id}/evidence", s.handleRunEvidence)
+	mux.HandleFunc("GET /targets/{addr}/state", s.handleTargetState)
+	mux.HandleFunc("GET /targets/{addr}/resume-plan", s.handleTargetResumePlan)
+	mux.HandleFunc("GET /runs/{run_id}/traffic", s.handleRunTraffic)
+	mux.HandleFunc("GET /runs/{run_id}/recap", s.handleRunRecap)
+	mux.HandleFunc("GET /crypto/operations", s.handleCryptoOps)
+	mux.HandleFunc("POST /crypto/decode", s.handleCryptoDecode)
+
+	// SOC analysis: triage, investigation, tuning pipeline.
+	mux.HandleFunc("GET /detection/cases", s.handleDetectionListCases)
+	mux.HandleFunc("GET /detection/skills", s.handleDetectionSkills)
+	mux.HandleFunc("GET /detection/skills/{type}", s.handleDetectionSkillsByType)
 	return mux
 }
 

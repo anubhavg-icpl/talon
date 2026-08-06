@@ -10,9 +10,14 @@ Features that need separate product/infra decisions stay **out of scope**.
 | **Pipeline** | recon → exploit → post-exploit → Forge (codegen) → judge |
 | **HITL** | `nmap_scan` approve / reject / edit |
 | **Tools** | Arsenal MCP + Strike MCP (MSF) |
-| **Skills** | CyberStrike catalog (~7.6k) + `skill_search` / `skill_get` |
+| **Skills** | CyberStrike catalog (~7.6k) + pentest agent skills (59) + SOC analysis skills (50) + `skill_search` / `skill_get` |
 | **Agents** | full / recon / web / network / exploit / post · A2A `delegate_*` |
 | **Findings** | 3-gate evidence, triage, registry, kill-chain, methodology |
+| **Agent tools** | Evidence store, crypto toolkit (29 ops), HTTP probe batch, web headers audit, JS endpoint extract |
+| **Anti-hallucination** | Duplicate detection, degraded tool health, stall detection, completion gate |
+| **Target state** | Per-target persistence, snapshots, deterministic resume-plan builder |
+| **Traffic store** | Per-run HTTP traffic recording, search, JSONL persist |
+| **Recap** | LLM-free run recap (solve path, evidence, reproduction) + CI presets |
 | **Reports** | Structured markdown, export, HTML print, AI analyze |
 | **Control plane** | Auth, runs, config, MCP list, health |
 | **Engagements** | Scope/ROE, targets, schedules, webhooks, credentials, budget, batch |

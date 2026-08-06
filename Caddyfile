@@ -1,0 +1,63 @@
+# =============================================================================
+# Talon Caddyfile — TLS reverse proxy for the dashboard.
+# =============================================================================
+# Activated when you run: docker compose --profile proxy up -d caddy
+#
+# Set TALON_DOMAIN in .env to your public domain for automatic HTTPS:
+#   TALON_DOMAIN=talon.example.com  → Let's Encrypt auto-cert
+#   TALON_DOMAIN=localhost          → self-signed (local testing)
+#
+# Security headers, gzip, and request body limits are applied globally.
+# Rate limiting is via Caddy's rate_limit plugin (built into caddy:2-alpine
+# in newer images; if unavailable, remove the rate_limit block).
+# =============================================================================
+
+{
+	email {$ACME_EMAIL}
+	# Uncomment for staging certificates (don't hit Let's Encrypt limits):
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dashboard: public HTTPS → localhost:{$DASHBOARD_PORT}
+# ─────────────────────────────────────────────────────────────────────────────
+{$TALON_DOMAIN} {
+	encode zstd gzip
+
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-X-Powered-By
+		-Server
+	}
+
+	# Request body size limit (protects against large payload DoS)
+	request_body {
+		max_size 50MB
+	}
+
+	# Reverse proxy to the Next.js dashboard
+	reverse_proxy localhost:{$DASHBOARD_PORT} {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	# WebSocket support (Next.js HMR + talon-core WS streams proxied via dashboard)
+	# Caddy handles WebSocket upgrades automatically — no special config needed.
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (Optional) Direct API access for CLI operators — uncomment to expose.
+# NOT recommended for production; operators should use VPN/SSH tunnel instead.
+# ─────────────────────────────────────────────────────────────────────────────
+# api.{$TALON_DOMAIN} {
+# 	basic_auth {
+# 		{$TALON_ADMIN_USERNAME} {$TALON_ADMIN_PASSWORD}
+# 	}
+# 	reverse_proxy localhost:{$TALON_CORE_PORT}
+# }

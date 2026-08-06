@@ -31,6 +31,16 @@ ARG KUBE_BENCH_VERSION=0.9.2
 ARG TTYD_VERSION=1.7.7
 ARG GO_VERSION=1.23.6
 
+# Pinned release versions for pre-built Go tool binaries (avoids slow go install)
+ARG HTTPX_VERSION=1.6.9
+ARG KATANA_VERSION=1.1.0
+ARG NUCLEI_VERSION=3.3.7
+ARG SUBFINDER_VERSION=2.6.7
+ARG DALFOX_VERSION=2.11.0
+ARG GAU_VERSION=2.2.4
+ARG FFUF_VERSION=2.1.0
+ARG GOBUSTER_VERSION=3.9.0
+
 ENV GOPATH=/root/go \
     GOBIN=/root/go/bin \
     PATH="/root/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
@@ -54,12 +64,21 @@ RUN set -eux; \
       openbsd-netcat \
       procps-ng file less vim nano bash \
       fastfetch; \
-    # Official BlackArch strap → enables blackarch repo
-    curl -fsSL -o /tmp/strap.sh https://blackarch.org/strap.sh; \
+    # Official BlackArch strap → enables blackarch repo (retry on mirror flakiness)
+    for i in 1 2 3; do \
+      curl -fsSL -o /tmp/strap.sh https://blackarch.org/strap.sh && break; \
+      echo "WARN: strap.sh download attempt $i failed, retrying in 10s…"; \
+      sleep 10; \
+    done; \
     chmod +x /tmp/strap.sh; \
-    /tmp/strap.sh; \
+    /tmp/strap.sh || true; \
     rm -f /tmp/strap.sh; \
-    pacman -Syu --noconfirm; \
+    # Sync all repos (BlackArch mirrors may timeout — don't fail the build)
+    for i in 1 2 3; do \
+      pacman -Syu --noconfirm && break; \
+      echo "WARN: pacman -Syu attempt $i failed, retrying in 15s…"; \
+      sleep 15; \
+    done || true; \
     # Prove we are NOT Kali
     grep -qi arch /etc/os-release; \
     ! grep -qi kali /etc/os-release; \
@@ -84,13 +103,21 @@ RUN set -eux; \
 
 # ---------------------------------------------------------------------------
 # 1) pacman helper — install each package independently (BlackArch renames often)
+#    Resilient to mirror timeouts: retries sync, never hard-fails the build.
 # ---------------------------------------------------------------------------
 RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -eu' \
+  '# Retry pacman -Sy up to 3 times with 10s backoff (BlackArch mirrors are flaky)' \
+  'sync_retries=3' \
+  'for i in $(seq 1 $sync_retries); do' \
+  '  if pacman -Sy --noconfirm 2>/dev/null; then break; fi' \
+  '  echo "WARN: pacman -Sy attempt $i/$sync_retries failed; retrying in 10s…"' \
+  '  sleep 10' \
+  'done' \
   'ok=0; fail=0' \
   'for p in "$@"; do' \
-  '  if pacman -S --noconfirm --needed "$p"; then ok=$((ok+1));' \
+  '  if pacman -S --noconfirm --needed "$p" 2>/dev/null; then ok=$((ok+1));' \
   '  else echo "WARN: pacman package unavailable: $p"; fail=$((fail+1)); fi' \
   'done' \
   'echo "pac-opt: ok=$ok fail=$fail"' \
@@ -103,7 +130,7 @@ RUN printf '%s\n' \
 
 # 2a Network & recon
 RUN set -eux; \
-    pacman -Sy --noconfirm; \
+    pacman -Sy --noconfirm || true; \
     /usr/local/bin/pac-opt \
       nmap masscan amass subfinder fierce dnsenum theharvester \
       netexec crackmapexec enum4linux enum4linux-ng smbmap nbtscan arp-scan \
@@ -113,7 +140,7 @@ RUN set -eux; \
 
 # 2b Web application
 RUN set -eux; \
-    pacman -Sy --noconfirm; \
+    pacman -Sy --noconfirm || true; \
     /usr/local/bin/pac-opt \
       gobuster feroxbuster ffuf dirb dirsearch nuclei nikto sqlmap wpscan \
       wafw00f arjun wfuzz commix; \
@@ -121,7 +148,7 @@ RUN set -eux; \
 
 # 2c Password & auth
 RUN set -eux; \
-    pacman -Sy --noconfirm; \
+    pacman -Sy --noconfirm || true; \
     /usr/local/bin/pac-opt \
       hydra john hashcat medusa patator hash-identifier; \
     # seclists/wordlists intentionally omitted (~2GiB) — mount host lists or
@@ -130,7 +157,7 @@ RUN set -eux; \
 
 # 2d Binary / RE / forensics
 RUN set -eux; \
-    pacman -Sy --noconfirm; \
+    pacman -Sy --noconfirm || true; \
     /usr/local/bin/pac-opt \
       gdb radare2 binwalk checksec foremost steghide perl-image-exiftool \
       binutils strace ltrace \
@@ -141,18 +168,18 @@ RUN set -eux; \
 # 2e Wireless (optional)
 RUN set -eux; \
     if [ "${INSTALL_WIRELESS}" = "1" ]; then \
-      pacman -Sy --noconfirm; \
+      pacman -Sy --noconfirm || true; \
       /usr/local/bin/pac-opt aircrack-ng reaver bully kismet wireshark-cli tcpdump; \
       pacman -Scc --noconfirm || true; \
     else \
-      pacman -Sy --noconfirm; \
+      pacman -Sy --noconfirm || true; \
       /usr/local/bin/pac-opt tcpdump wireshark-cli; \
       pacman -Scc --noconfirm || true; \
     fi
 
 # 2f Exploit-DB searchsploit
 RUN set -eux; \
-    pacman -Sy --noconfirm; \
+    pacman -Sy --noconfirm || true; \
     /usr/local/bin/pac-opt exploitdb; \
     pacman -Scc --noconfirm || true
 
@@ -161,7 +188,7 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 RUN set -eux; \
     if [ "${INSTALL_BROWSER}" = "1" ]; then \
-      pacman -Sy --noconfirm; \
+      pacman -Sy --noconfirm || true; \
       /usr/local/bin/pac-opt chromium chromedriver ttf-liberation ttf-dejavu; \
       if [ -x /usr/bin/chromium ] && [ ! -e /usr/bin/google-chrome ]; then \
         ln -sf /usr/bin/chromium /usr/bin/google-chrome; \
@@ -173,33 +200,57 @@ RUN set -eux; \
     fi
 
 # ---------------------------------------------------------------------------
-# 4) Go-based recon / fuzzers (latest upstream; complements BlackArch)
+# 4) Go-based recon / fuzzers — pre-built release binaries (fast, no go install)
 # ---------------------------------------------------------------------------
 ENV GOPROXY=https://proxy.golang.org,direct
-RUN set -eu; \
-    failed=0; \
-    for pkg in \
-      github.com/projectdiscovery/httpx/cmd/httpx@latest \
-      github.com/projectdiscovery/katana/cmd/katana@latest \
-      github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
-      github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
-      github.com/hahwul/dalfox/v2@latest \
-      github.com/lc/gau/v2/cmd/gau@latest \
-      github.com/tomnomnom/waybackurls@latest \
-      github.com/hakluke/hakrawler@latest \
-      github.com/tomnomnom/anew@latest \
-      github.com/tomnomnom/qsreplace@latest \
-      github.com/ffuf/ffuf/v2@latest \
-      github.com/OJ/gobuster/v3@latest \
-      github.com/jaeles-project/jaeles@latest \
-    ; do \
-      echo "=== go install $pkg ==="; \
-      if ! go install -v "$pkg"; then \
-        echo "WARN: go install failed for $pkg"; \
-        failed=$((failed + 1)); \
-      fi; \
-    done; \
-    echo "go install complete (failures=$failed)"; \
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in aarch64|arm64) goa=arm64; larch=arm64 ;; *) goa=amd64; larch=x86_64 ;; esac; \
+    mkdir -p /usr/local/bin; \
+    \
+    echo "=== httpx ==="; \
+    curl -fsSL "https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_${goa}.zip" -o /tmp/httpx.zip && \
+      cd /tmp && unzip -o httpx.zip httpx && mv httpx /usr/local/bin/ && rm -f httpx.zip || echo "WARN: httpx install failed"; \
+    \
+    echo "=== katana ==="; \
+    curl -fsSL "https://github.com/projectdiscovery/katana/releases/download/v${KATANA_VERSION}/katana_${KATANA_VERSION}_linux_${goa}.zip" -o /tmp/katana.zip && \
+      cd /tmp && unzip -o katana.zip katana && mv katana /usr/local/bin/ && rm -f katana.zip || echo "WARN: katana install failed"; \
+    \
+    echo "=== nuclei ==="; \
+    curl -fsSL "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_${goa}.zip" -o /tmp/nuclei.zip && \
+      cd /tmp && unzip -o nuclei.zip nuclei && mv nuclei /usr/local/bin/ && rm -f nuclei.zip || echo "WARN: nuclei install failed"; \
+    \
+    echo "=== subfinder ==="; \
+    curl -fsSL "https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_${goa}.zip" -o /tmp/subfinder.zip && \
+      cd /tmp && unzip -o subfinder.zip subfinder && mv subfinder /usr/local/bin/ && rm -f subfinder.zip || echo "WARN: subfinder install failed"; \
+    \
+    echo "=== dalfox ==="; \
+    curl -fsSL "https://github.com/hahwul/dalfox/releases/download/v${DALFOX_VERSION}/dalfox_${DALFOX_VERSION}_linux_${goa}.tar.gz" -o /tmp/dalfox.tar.gz && \
+      tar -xzf /tmp/dalfox.tar.gz -C /usr/local/bin dalfox && rm -f /tmp/dalfox.tar.gz || echo "WARN: dalfox install failed"; \
+    \
+    echo "=== gau ==="; \
+    curl -fsSL "https://github.com/lc/gau/releases/download/v${GAU_VERSION}/gau_${GAU_VERSION}_linux_${larch}.tar.gz" -o /tmp/gau.tar.gz && \
+      tar -xzf /tmp/gau.tar.gz -C /usr/local/bin gau && rm -f /tmp/gau.tar.gz || echo "WARN: gau install failed"; \
+    \
+    echo "=== ffuf ==="; \
+    curl -fsSL "https://github.com/ffuf/ffuf/releases/download/v${FFUF_VERSION}/ffuf_${FFUF_VERSION}_linux_${goa}.tar.gz" -o /tmp/ffuf.tar.gz && \
+      tar -xzf /tmp/ffuf.tar.gz -C /usr/local/bin ffuf && rm -f /tmp/ffuf.tar.gz || echo "WARN: ffuf install failed"; \
+    \
+    echo "=== gobuster ==="; \
+    curl -fsSL "https://github.com/OJ/gobuster/releases/download/v${GOBUSTER_VERSION}/gobuster_${GOBUSTER_VERSION}_linux_${goa}.tar.gz" -o /tmp/gobuster.tar.gz && \
+      tar -xzf /tmp/gobuster.tar.gz -C /usr/local/bin gobuster && rm -f /tmp/gobuster.tar.gz || echo "WARN: gobuster install failed"; \
+    \
+    echo "=== small Go utilities (go install — fast, tiny deps) ==="; \
+    go install github.com/tomnomnom/waybackurls@latest || echo "WARN: waybackurls failed"; \
+    go install github.com/hakluke/hakrawler@latest || echo "WARN: hakrawler failed"; \
+    go install github.com/tomnomnom/anew@latest || echo "WARN: anew failed"; \
+    go install github.com/tomnomnom/qsreplace@latest || echo "WARN: qsreplace failed"; \
+    go install github.com/jaeles-project/jaeles@latest || echo "WARN: jaeles failed"; \
+    \
+    echo "=== binary install complete ==="; \
+    chmod +x /usr/local/bin/httpx /usr/local/bin/katana /usr/local/bin/nuclei \
+      /usr/local/bin/subfinder /usr/local/bin/dalfox /usr/local/bin/gau \
+      /usr/local/bin/ffuf /usr/local/bin/gobuster 2>/dev/null || true; \
     if command -v nuclei >/dev/null 2>&1; then \
       nuclei -update-templates -silent || true; \
     fi
@@ -223,12 +274,15 @@ RUN set -eux; \
       rm -rf /tmp/rustscan.deb /tmp/data.tar.* /tmp/control.tar.* /tmp/debian-binary 2>/dev/null || true; \
     fi; \
     \
-    # ttyd
-    curl -fsSL -o /usr/local/bin/ttyd \
-      "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ra}" \
-      && chmod +x /usr/local/bin/ttyd \
-      && /usr/local/bin/ttyd --version \
-      || echo "WARN: ttyd install skipped"
+    # ttyd — prefer pacman package, fall back to GitHub binary
+    if ! command -v ttyd >/dev/null 2>&1; then \
+      pacman -Sy --noconfirm --needed ttyd 2>/dev/null \
+      || (curl -fsSL -o /usr/local/bin/ttyd \
+          "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${ra}" \
+          && chmod +x /usr/local/bin/ttyd) \
+      || echo "WARN: ttyd install skipped"; \
+    fi; \
+    command -v ttyd && ttyd --version || true
 
 RUN set -eux; \
     if [ "${INSTALL_CLOUD}" != "1" ]; then echo "INSTALL_CLOUD=0 — skip cloud binaries"; exit 0; fi; \

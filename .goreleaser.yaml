@@ -1,0 +1,123 @@
+# Talon GoReleaser — cross-platform release pipeline
+# Usage: goreleaser release (in CI on tag push)
+#        goreleaser release --snapshot --clean (local test)
+
+version: 2
+
+project_name: talon
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: talon
+    main: ./cmd/talon
+    binary: talon
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/anubhavg-icpl/talon/internal/cli.Version={{.Version}}
+      - -X github.com/anubhavg-icpl/talon/internal/cli.Commit={{.ShortCommit}}
+      - -X github.com/anubhavg-icpl/talon/internal/cli.BuildDate={{.Date}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+  - id: talon-core
+    main: ./cmd/talon-core
+    binary: talon-core
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+  - id: talon-arsenal
+    main: ./cmd/talon-arsenal
+    binary: talon-arsenal
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+  - id: talon-strike
+    main: ./cmd/talon-strike
+    binary: talon-strike
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+  - id: talon-relay
+    main: ./cmd/talon-relay
+    binary: talon-relay
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE*
+      - skills/**/*
+      - docs/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - 'Merge pull request'
+      - 'Merge branch'
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+release:
+  github:
+    owner: anubhavg-icpl
+    name: talon
+  draft: true
+  prerelease: auto
+  name_template: "{{ .ProjectName }} v{{ .Version }}"

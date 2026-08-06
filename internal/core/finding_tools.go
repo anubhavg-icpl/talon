@@ -157,25 +157,78 @@ func findingToolSpecs() []llm.ToolSpec {
 	return []llm.ToolSpec{reportFindingToolSpec(), triageFindingToolSpec()}
 }
 
-// hybridExec routes local agent tools (findings + CyberStrike skills) then MCP/codegen.
-func hybridExec(base toolExecFunc, bag *FindingBag, stage string, tr *tracker) toolExecFunc {
+// hybridExec routes local agent tools (findings + skills + evidence + crypto + probe + detection + traffic + correction) then MCP/codegen.
+// CorrectionLayer hooks inject anti-hallucination hints before/after every tool call.
+// EvidenceStore records every tool output. TrafficStore records HTTP request/response pairs.
+func hybridExec(base toolExecFunc, bag *FindingBag, store *EvidenceStore, stage string, tr *tracker) toolExecFunc {
 	return func(ctx context.Context, call llm.ToolCall) (string, bool) {
+		// Pre-tool correction hint (never blocks execution)
+		var preHint string
+		if tr != nil && tr.correction != nil {
+			preHint = tr.correction.BeforeToolCall(call.Name, call.Args)
+		}
+
+		var out string
+		var isErr bool
+
 		switch call.Name {
 		case "report_finding":
-			out, err := handleReportFinding(bag, stage, call.Args, tr)
+			out, isErr = handleReportFinding(bag, stage, call.Args, tr)
 			reportFindingsProgress(ctx, bag)
-			return out, err
 		case "triage_finding":
-			out, err := handleTriageFinding(bag, call.Args, tr)
+			out, isErr = handleTriageFinding(bag, call.Args, tr)
 			reportFindingsProgress(ctx, bag)
-			return out, err
 		case "skill_search":
-			return handleSkillSearch(call.Args, tr)
+			out, isErr = handleSkillSearch(call.Args, tr)
 		case "skill_get":
-			return handleSkillGet(call.Args, tr)
+			out, isErr = handleSkillGet(call.Args, tr)
+		case "evidence_list":
+			out, isErr = handleEvidenceList(store, call.Args, tr)
+		case "evidence_view":
+			out, isErr = handleEvidenceView(store, call.Args, tr)
+		case "evidence_search":
+			out, isErr = handleEvidenceSearch(store, call.Args, tr)
+		case "crypto_decode":
+			out, isErr = handleCryptoDecode(call.Args, tr)
+		case "http_probe_batch":
+			out, isErr = handleHTTPProbeBatch(ctx, call.Args, tr, store)
+		case "web_headers_audit":
+			out, isErr = handleWebHeadersAudit(ctx, call.Args, tr)
+		case "js_endpoint_extract":
+			out, isErr = handleJSEndpointExtract(ctx, call.Args, tr)
+		case "detection_create_case":
+			out, isErr = handleDetectionCreateCase(tr.cases, call.Args, tr)
+		case "detection_triage":
+			out, isErr = handleDetectionTriage(tr.cases, call.Args, tr)
+		case "detection_investigate":
+			out, isErr = handleDetectionInvestigate(tr.cases, call.Args, tr)
+		case "detection_tune":
+			out, isErr = handleDetectionTune(tr.cases, call.Args, tr)
+		case "detection_list_cases":
+			out, isErr = handleDetectionListCases(tr.cases, call.Args, tr)
+		case "traffic_list":
+			out, isErr = handleTrafficList(tr.traffic, call.Args, tr)
+		case "traffic_view":
+			out, isErr = handleTrafficView(tr.traffic, call.Args, tr)
+		case "traffic_search":
+			out, isErr = handleTrafficSearch(tr.traffic, call.Args, tr)
 		default:
-			return base(ctx, call)
+			out, isErr = base(ctx, call)
+			recordToolEvidence(store, call.Name, call.Args, out, isErr)
 		}
+
+		// Post-tool correction observation (emits degraded/stall hints)
+		if tr != nil && tr.correction != nil {
+			postHint := tr.correction.AfterToolCall(call.Name, call.Args, out, isErr, 0)
+			if preHint != "" {
+				out = "[hint] " + preHint + "\n" + out
+			}
+			if postHint != "" {
+				out = out + "\n[hint] " + postHint
+			}
+		}
+
+		return out, isErr
 	}
 }
 

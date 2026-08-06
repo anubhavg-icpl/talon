@@ -30,6 +30,7 @@ func newRunCmd(opts *RootOptions) *cobra.Command {
 	cmd.AddCommand(newRunKillChainCmd(opts))
 	cmd.AddCommand(newRunMethodologyCmd(opts))
 	cmd.AddCommand(newRunTriageCmd(opts))
+	cmd.AddCommand(newRunPresetsCmd(opts))
 	return cmd
 }
 
@@ -603,4 +604,37 @@ func pollOnce(ctx context.Context, opts *RootOptions, runID string, autoApprove 
 		return true, nil
 	}
 	return false, nil
+}
+
+// newRunPresetsCmd lists available headless CI presets.
+func newRunPresetsCmd(opts *RootOptions) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "presets",
+		Short: "List available headless run presets (quick, standard, deep)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			presets := []struct {
+				Name        string
+				Description string
+				AgentMode   string
+				MaxTurns    int
+				MaxTools    int
+			}{
+				{"quick", "Fast scan — recon + basic vulnerability discovery only", "recon", 15, 50},
+				{"standard", "Standard run — recon + exploit + report", "auto", 30, 150},
+				{"deep", "Deep assessment — all stages with maximum tool budget", "auto", 60, 400},
+			}
+			return opts.Printer.PrintValue(presets, func(w io.Writer) error {
+				fmt.Fprintf(w, "%-12s %-10s %-6s %-6s %s\n", "NAME", "MODE", "TURNS", "TOOLS", "DESCRIPTION")
+				fmt.Fprintln(w, strings.Repeat("-", 80))
+				for _, p := range presets {
+					fmt.Fprintf(w, "%-12s %-10s %-6d %-6d %s\n", p.Name, p.AgentMode, p.MaxTurns, p.MaxTools, p.Description)
+				}
+				fmt.Fprintln(w)
+				fmt.Fprintln(w, "Usage: talon run start --ip <target> --mode <mode>")
+				fmt.Fprintln(w, "Exit codes: 0=clean (no findings), 1=error, 2=confirmed vuln")
+				return nil
+			})
+		},
+	}
+	return cmd
 }

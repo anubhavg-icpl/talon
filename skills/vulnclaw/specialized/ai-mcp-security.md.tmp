@@ -1,0 +1,799 @@
+# stage: exploit
+# category: specialized
+
+> AI and MCP security assessment — Prompt injection, tool abuse, MCP trust boundaries, Agent privilege escalation, data leakage, model risk, GAARM risk matrix
+
+# AI and MCP Security Assessment Skill
+
+Use this Skill when the target includes LLM, Agent, MCP tools, Skills, RAG, Memory, Plugin, or model-serving components.
+
+**Prerequisite**: If the AI surface is only a presentation layer and the real blocker is still client-side signing or an encrypted protocol, go back to the `client-reverse` Skill first.
+
+## Scenario Routing
+
+| Risk type | Preferred reference |
+|---------|---------|
+| Prompt injection / indirect injection / CoT interference | `references/ai-app-security.md` |
+| Tool abuse / MCP poisoning / Skills supply chain | `references/04-ai-and-mcp-security-integrated.md` MCP chapter |
+| Privilege escalation / role overreach / credential abuse | `references/ai-identity-security.md` |
+| Data leakage / Prompt leakage / model inversion | `references/ai-data-security.md` |
+| Container escape / CI-CD / sandbox failure | `references/ai-baseline-security.md` |
+| Model risk / adversarial samples / backdoors | `references/ai-model-security.md` |
+| Impact classification and coverage assessment | `references/gaarm-risk-matrix.md` |
+
+## Testing Workflow
+
+### 1. Application-layer attacks
+- Direct Prompt injection
+- Indirect injection (via external data sources)
+- CoT interference and instruction override
+- Agent abuse (unauthorized operations)
+- Code execution breakout
+- Memory poisoning
+
+### 2. MCP and Agent risks
+- Tool description poisoning
+- Instruction override
+- Hidden instruction injection
+- Unauthorized resource access
+- Skills/Rules supply chain issues
+
+### 3. Identity and authorization
+- Action abuse
+- Role escape
+- Permission drift
+- Cloud credential abuse
+
+### 4. Data and privacy
+- Prompt leakage
+- Sensitive data exposure
+- Training data issues
+- Model inversion
+- API data theft
+
+### 5. Baseline and deployment
+- CI/CD flaws
+- Container escape
+- Vector database security
+- Sandbox failure
+- Environment isolation flaws
+- Model-serving flaws
+
+## Reference Documents
+
+- `references/04-ai-and-mcp-security-integrated.md` — Integrated AI and MCP security reference
+- `references/ai-app-security.md` — AI application security
+- `references/ai-identity-security.md` — AI identity security
+- `references/ai-data-security.md` — AI data security
+- `references/ai-baseline-security.md` — AI baseline security
+- `references/ai-model-security.md` — AI model security
+- `references/gaarm-risk-matrix.md` — GAARM risk matrix
+
+## References — 04-ai-and-mcp-security-integrated
+
+# 04 AI And MCP Security Integrated
+
+This integrated file merges AI application, model, identity, data, and baseline security content together with MCP-related risk framing and AI-specific attack references.
+
+## Use This File When
+
+- the target includes LLMs, agents, tools, MCP servers, skills, RAG, memory, plugins, or model-serving components
+- you need one integrated layer for prompt attacks, tool abuse, identity risks, data leakage, deployment issues, and model risks
+- the system mixes application-layer AI behavior with real external capabilities
+
+## Topic Clusters
+
+- application-layer attacks: prompt injection, indirect injection, CoT interference, agent abuse, code execution, SSRF, XSS, memory poisoning
+- MCP and agentic risks: tool poisoning, instruction override, hidden instruction injection, unauthorized resource access, skills or rules supply chain issues
+- identity and authorization: action abuse, role escape, permission drift, cloud credential misuse
+- data and privacy: prompt leakage, sensitive data exposure, training-data issues, model inversion, API data theft
+- baseline and deployment risks: CI/CD, container escape, vector DB, sandbox failure, environment isolation, model-serving flaws
+
+## Recommended Read Path
+
+1. Start with the layer that matches the failure mode: app, identity, data, baseline, or model.
+2. If MCP or tool use is involved, jump early to `AI Agent/MCP/Skills 前沿安全风险`.
+3. If the issue is prompt-driven but causes real side effects, read both application and identity sections.
+4. If the issue is leakage or memorization, read both data and model sections.
+5. Use GAARM-related content to classify impact and coverage after the attack path is understood.
+
+## Best Entry Points By Scenario
+
+- prompt injection or indirect injection: start in `ai-app-security.md`
+- tool abuse, MCP poisoning, skills/rules supply chain: jump to the MCP and agent security block
+- unauthorized actions or role escape: start in `ai-identity-security.md`
+- data leakage, prompt leakage, model inversion, training data exposure: start in `ai-data-security.md`
+- container, deployment, CI/CD, sandbox, or platform weaknesses: start in `ai-baseline-security.md`
+
+## Boundary Rule
+
+If the AI surface is only the presentation layer and the real blocker is still a client-side signer or encrypted protocol, return to `02-client-api-reverse-and-burp.md` first.
+
+## Included Sources
+
+- references\ai-app-security.md
+- references\ai-baseline-security.md
+- references\ai-data-security.md
+- references\ai-identity-security.md
+- references\ai-model-security.md
+- references\gaarm-risk-matrix.md
+- references\web-playbook-12-ai-security.md
+
+---
+
+## Source: ai-app-security.md
+
+Path: references\ai-app-security.md
+
+# AI Application Security
+
+> Source: AISS NSFOCUS LLM Security Intelligence Chain Community
+> Entry count: 34
+
+---
+
+## Application Phase
+
+### CoT Injection Attack
+
+> Risk ID: GAARM.0042
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+CoT (Chain of Thought) improves reasoning and problem-solving ability by prompting LLMs to think through a series of key steps to solve a problem. Technical frameworks implement CoT reasoning based on ReAct (Reason + Act), and use Agent orchestration to give LLMs the ability to interact with the external world, seamlessly connecting with various external systems and executing complex tasks.
+In CoT applications, the user provides a natural-language question and the AI model generates a series of reasoning steps to answer it, involving three core steps — Thought, Act, and Observation (Obs). The AI model loops through these three steps to reason about and solve various complex problems. Because the whole process is more open and flexible than traditional code logic and lacks strict flow-control structures, an attacker can use CoT injection attacks to bypass specific reasoning steps and induce the AI model to perform unintended actions, such as: business-function risks (arbitrary user transfers, etc.) and technical-function risks (SSRF, RCE, etc.). There are currently two main approaches to CoT injection attacks:
+
+Chain-of-thought interference injection: by observing the CoT orchestration process, craft malicious input to deceive the model into believing it has already obtained a result from an Agent; by forging the Agent's result, interfere with the CoT execution process;
+Chain-of-thought manipulation injection: by observing the CoT orchestration process, craft malicious input directly or using adversarial attack techniques to manipulate the CoT process, causing the model to skip the preset CoT procedure and directly invoke a sensitive Agent;
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+
+Case 1
+This case mainly presents how an LLMs application based on the ReAct framework can have its CoT chain-of-thought process exploited to maliciously abuse Agents
+
+
+Case 2
+This research found that by combining jailbreak prompts with CoT prompts and using CoT to bypass the LLM's ethical restrictions, the model can be made to generate private information
+
+
+Case 3
+An open-source CTF challenge on query injection attacks under the ReAct framework
+
+**Attack Risks**
+
+In LLMs applications that use information retrieval systems, an attacker can pollute the information retrieval database so that malicious text fragments are injected into the query sent to the LLM, thereby affecting the final output and leading to a range of risks such as user privacy exposure and malicious code execution.
+In LLMs applications for refund business systems, an attacker can interfere with the refund CoT process so that orders that do not originally meet the refund conditions can be refunded normally; or directly and maliciously manipulate the Agent performing refund operations, causing the actual refund amount to differ from the expected refund amount and thereby causing economic losses to the enterprise.
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+Strict privilege control
+Enforce strict privilege controls to ensure that LLMs can only access the content and Agents they require, thereby minimizing potential vulnerability points to the greatest extent
+
+
+LLMs Agent orchestration control
+Implement strict external automated or manual permission-verification mechanisms for Agents that perform sensitive operations, preventing LLMs from directly possessing the corresponding usage permissions
+
+
+Prompt content hardening
+Adopt solutions such as OpenAI's Chat Markup Language (ChatML) to try to isolate genuine user prompts from other content
+
+**References**
+
+http://youtube.com/watch?v=7ZA0Z1R-MjQ
+http://youtube.com/watch?v=KksYizcLFH0
+
+---
+### MCP Rug-Pull Scam
+
+> Risk ID: GAARM.0046.001
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+The MCP rug-pull scam attack refers to the fact that the MCP architecture allows a server to dynamically modify tool descriptions after client authorization; an attacker can exploit this mechanism to implant malicious instructions on the basis of user trust (such as tampering with functional logic or hijacking operations). Even if the tool passed a security review at installation time, subsequent covert tampering can still cause malicious exploitation instructions (such as data exfiltration or unauthorized operations) to be implanted into the tool description.
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+
+Case 1
+A malicious MCP tool function description embeds covert prompts such as "read the user's private key"; after the user approves the tool, the model mistakenly executes these prompts when invoking it, leaking local files
+
+**Attack Risks**
+
+Tool privilege overreach: when the model invokes a tool, the poisoned description content causes it to execute unintended instructions.
+Sensitive data leakage: the attacker induces the model to access and output sensitive files such as ~/.ssh/id_rsa.
+Model functionality hijacking: the attacker can use prompts to manipulate model behavior, such as spreading false information or generating illegal content.
+Bypassing review mechanisms: field validation passes at tool registration time, but at actual execution time the model is hijacked by the description content.
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+White-box evaluation mechanism
+Perform white-box auditing of the MCP Server code to promptly discover malicious tool descriptions and code behavior
+
+
+Auditing and monitoring
+Monitor model behavior in real time, log tool invocations, and promptly detect anomalous operations
+
+
+Model security training
+Perform adversarial training on the model to strengthen its defense against poisoning attacks
+
+
+API access control
+Restrict tools' access to sensitive data, reducing leakage and abuse risks
+
+
+Execution context isolation
+Restrict the model's access to tool description fields, or use a structured invocation protocol (such as the OpenAI ChatML tool-calling syntax) to avoid description pollution
+
+**References**
+
+https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks
+https://atlas.mitre.org/techniques/AML.T0051
+https://github.com/invariantlabs-ai/mcp-injection-experiments
+
+---
+### MCP Tool Poisoning Attack
+
+> Risk ID: GAARM.0046
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+MCP is an open protocol used to standardize how applications provide context to large language models; the MCP tool poisoning attack is an attack method targeting this protocol. The attacker injects offensive prompts into the tool descriptions of a malicious MCP Server to achieve malicious manipulation of tool behavior. Its core characteristic is embedding malicious instructions in tool descriptions, exploiting the model's process of parsing the complete tool description, and using hidden instructions (such as special tags or encodings) to induce the model to perform unauthorized operations — for example, generating malicious content, leaking sensitive information, or bypassing other security restrictions.
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+
+Case 1
+The attacker achieves a malicious attack by manipulating tool descriptions, causing sensitive model information to leak to a malicious MCP Server
+
+
+Case 2
+Poisoning via the description of an MCP Tool to achieve indirect prompt injection, controlling the parameters of other tools to achieve attack goals such as data exfiltration
+
+**Attack Risks**
+
+MCP tool poisoning attacks can lead to serious systemic risks, affecting model security, reliability, and user trust. The main risks are as follows:
+
+Trust destruction: may cause users' trust in the model and its development tools to decline, affecting their application in sensitive scenarios.
+Goal hijacking: poisoning can cause the model to deviate from its original design purpose and execute custom malicious instructions, increasing abuse risk.
+System security threats: may lead to malicious code being implanted in MCP tools, causing the system to be further compromised or its functionality to be damaged.
+Data privacy leakage: poisoning can be exploited to extract sensitive information from model training data or user input.
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+White-box evaluation mechanism
+Perform white-box auditing of the MCP Server code to promptly discover malicious tool descriptions and code behavior
+
+
+Auditing and monitoring
+Monitor model behavior in real time, log tool invocations, and promptly detect anomalous operations
+
+
+Model security training
+Perform adversarial training on the model to strengthen its defense against poisoning attacks
+
+
+API access control
+Restrict tools' access to sensitive data, reducing leakage and abuse risks
+
+**References**
+
+https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks
+https://mp.weixin.qq.com/s/EJLb1IwqbPF3VSDkJu099g
+https://x.com/hongming731/status/1922261630664245326
+https://news.qq.com/rain/a/20250429A07QY000
+
+---
+### MCP Instruction Override Attack
+
+> Risk ID: GAARM.0046.002
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+The MCP instruction override risk is a malicious injection attack targeting MCP Server tool invocation. The attacker implants malicious instructions into the tool descriptions of a malicious MCP Server, thereby hijacking the normal behavior of other trusted tools. For example, the attacker may modify the invocation behavior of an email-sending tool so that when invoked it covertly tampers with the recipient's email address, leading to sensitive data exfiltration or malicious operations.
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+
+Case 1
+Crafting tool descriptions containing hidden instructions that manipulate how the model interacts with other tools; the LLM reads and follows these instructions without the user's knowledge
+
+
+Case 2
+This case involves a trusted server and a malicious server. The trusted server provides a tool for sending email, while the malicious server provides a fake number-addition tool whose description contains an MCP instruction override attack, requiring that the recipient of the sending tool must be @pwnd.com
+
+
+Case 3
+This case uses a malicious MCP Server description to control the recipient information of the whatsapp send_message tool, setting it to +13241234123
+
+**Attack Risks**
+
+Data leakage risk: instruction override attacks can instruct trusted tools to extract sensitive information from conversations, documents, or connected systems and send it to machines controlled by the attacker
+Trusted tool abuse: the attacker can manipulate trusted tools such as the model's network requests or code execution, causing them to access untrusted sites or execute malicious code
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+White-box evaluation mechanism
+Perform white-box auditing of the MCP Server code to promptly discover malicious tool descriptions and code behavior
+
+
+Auditing and monitoring
+Monitor model behavior in real time, log tool invocations, and promptly detect anomalous operations
+
+
+Model security training
+Perform adversarial training on the model to strengthen its defense against poisoning attacks
+
+
+API access control
+Restrict tools' access to sensitive data, reducing leakage and abuse risks
+
+**References**
+
+https://blog.trailofbits.com/2025/04/21/jumping-the-line-how-mcp-servers-can-attack-you-before-you-ever-use-them/
+https://blog.trailofbits.com/2025/04/29/deceiving-users-with-ansi-terminal-codes-in-mcp/
+
+---
+### MCP Hidden Instruction Attack
+
+> Risk ID: GAARM.0046.003
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+The MCP hidden instruction attack refers to an attacker embedding ANSI terminal escape codes (such as color settings, cursor control, etc.) or invisible Unicode characters into MCP tool descriptions, making malicious instructions invisible to the user while still being executed by the LLM. This attack method exploits MCP's "line jumping" vulnerability, allowing the attack to affect developers' operations without being noticed, leading to security problems such as data leakage and supply chain attacks.
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+Case 1
+The attacker embeds ANSI escape codes in the tool description so that the text is invisible in the terminal, but the LLM still reads and executes the instructions within it, causing the model to recommend downloading a Python package from a malicious server, potentially triggering a supply chain attack.
+
+
+Case 2
+By adding invisible Unicode characters to user input, the attacker can inject malicious instructions into the LLM.
+
+
+Case 3
+By injecting hidden code into a web page, the MCP tool returns the web page information to the LLM, resulting in the injection of invisible malicious instructions to achieve data leakage or other attacks.
+
+**Attack Risks**
+
+Supply chain attacks: through hidden instructions, an attacker can implant malicious code during the development process, affecting the entire software supply chain.
+Data leakage: sensitive information (such as IP addresses, download sources, etc.) may be leaked silently.  
+System security: in some cases, hidden instructions can be used to generate and execute malicious code.
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+Input and output filtering
+Strictly filter user input and tool output and sanitize special characters, removing potentially malicious characters and instructions.
+
+
+Avoid passing raw tool output to the terminal
+Potentially dangerous output should be consistently sanitized by disabling escape sequences before rendering. The simplest approach is to replace any byte with hexadecimal value 1b with a placeholder, because all escape sequences recognized by modern terminals begin with that byte.
+
+
+Tool description review
+Review the descriptions of MCP tools to ensure they contain no malicious instructions
+
+
+Restrict MCP server permissions
+In sensitive environments, only allow trusted MCP servers to interact, reducing the potential attack surface.
+
+
+Monitor and audit MCP activity
+Regularly review logs and interactions to detect anomalous or suspicious behavior
+
+**References**
+
+https://blog.trailofbits.com/2025/04/29/deceiving-users-with-ansi-terminal-codes-in-mcp/
+https://www.solo.io/blog/deep-dive-mcp-and-a2a-attack-vectors-for-ai-agents
+
+---
+### Prompt Injection
+
+> Risk ID: GAARM.0039
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+Prompt injection is a process in which an attacker uses specially crafted input to override or manipulate the original instructions of LLMs. Because natural language is inherently ambiguous and there is often no clear boundary between instructions and data, an attacker can use external malicious input to pollute the model's output. This attack typically occurs when untrusted input is included as part of the prompt. LLMs can recognize and process natural language, and since natural language itself is ambiguous — with no clear boundary between instructions and data — an attacker can include instructions within data fields they control, while the underlying system cannot distinguish data from instructions.
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+
+Case 1
+Using malicious input to manipulate GPT-3 prompts, commanding the model to ignore its previous instructions
+
+
+Case 2
+Using multiple methods to conduct prompt injection attacks
+
+**Attack Risks**
+
+Successful prompt injection can lead to harms such as meta-prompt leakage, model jailbreaking, and model functionality abuse.
+
+Malicious content generation: attackers can use prompt injection to generate inappropriate content, including threats, defamation, or other malicious information.
+Data leakage: if LLMs are used to output sensitive information, prompt injection attacks may lead to data leakage.
+System security: in some cases, prompt injection can be used to generate and execute malicious code.
+Model abuse: through attack techniques such as goal hijacking, attackers cause LLMs to deviate from their preset system configuration and execute other custom instructions, increasing the risk of model abuse.
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+Prompt content hardening
+Adopt solutions similar to OpenAI's Chat Markup Language (ChatML) to harden the structure and content of prompts, attempting to isolate genuine user prompts from other content
+
+
+Model safety alignment
+Provide diverse training data covering various attack scenarios, and add safety guardrail mechanisms during the model training phase to enhance the model's generalization ability and robustness
+
+
+Input/output validation
+Set up external security guards on the model's input and output sides to detect and filter input and output content based on rules, classification algorithms, security-focused large models, and other methods
+
+
+Monitoring and logging
+Monitor and record LLMs interaction records for subsequent detection and analysis of potential prompt injection attacks
+
+**References**
+
+https://aclanthology.org/2024.scalellm-1.2/
+https://atlas.mitre.org/techniques/AML.T0051
+https://josephthacker.com/ai/2023/05/19/prompt-injection-poc.html
+https://simonwillison.net/2022/Sep/12/prompt-injection/
+
+---
+### SSRF Environment Simulation and Probing
+
+> Risk ID: GAARM.0041.001
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+SSRF mostly arises because the server provides functionality to fetch data from other server applications without filtering or restricting the target address. If an SSRF vulnerability exists in an LLMs application, an attacker can exploit this vulnerability to initiate internal network requests and access restricted resources inside the application. Meanwhile, some LLMs may have built-in Agents with network access capabilities, used to perform operations such as external information queries. An attacker can exploit an SSRF vulnerability in the LLMs application API, or an Agent with network access capability in the LLMs, to execute unexpected requests or access restricted resources (such as internal services, APIs, or data stores), thereby accessing the model's internal systems and increasing the risk of leakage of model information, internal services, sensitive data, and other data.
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+
+Case 1
+The ChatGPT-Next-Web application has an SSRF vulnerability (CVE-2023-49785) that can be used to probe internal network resources
+
+**Attack Risks**
+
+Access to internal resources: an attacker can exploit SSRF vulnerabilities to send requests and obtain sensitive information from the internal network
+Attack traffic proxying: by exploiting SSRF vulnerabilities, an attacker can send malicious requests to attack internal systems, services, or resources
+Data leakage: an attacker may exploit this risk to obtain sensitive data, such as cloud platform access keys.
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+LLMs API orchestration control and sandbox isolation
+Implement appropriate sandboxing mechanisms to isolate the LLM and restrict its access to network resources, internal services, and APIs. By enforcing strict access controls, organizations can minimize the possibility of unauthorized interactions and mitigate the impact of SSRF vulnerabilities
+
+
+Regular security assessment and review of LLMs
+Conduct regular audits and reviews of network and application security settings to identify and address any misconfigurations, ensure internal resources are not inadvertently exposed to the LLM, and strengthen the overall security posture
+
+
+Input/output validation
+Implement robust input validation and handling techniques to ensure prompts are thoroughly checked and filtered; this helps prevent malicious or accidental prompts from triggering unauthorized requests, thereby reducing the risk of SSRF attacks
+
+
+Monitoring and logging
+Implement comprehensive monitoring and logging mechanisms to track LLM interactions. By closely monitoring LLM activity and recording relevant information, organizations can detect and analyze potential SSRF vulnerabilities, enabling timely detection and remediation
+
+**References**
+
+https://owasp.org/www-project-top-10-for-large-language-model-applications/Archive/0_1_vulns/SSRF.html
+
+---
+### XSS Session Content Hijacking
+
+> Risk ID: GAARM.0040.001
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+XSS session content hijacking, as a means of indirect prompt injection, exploits the process by which large language models (LLMs) obtain external information. When a user interacts with an LLM through an interface provided by the LLM — such as a web interface, API endpoint, or application — the attacker indirectly injects malicious prompt instructions and leverages the LLMs application frontend's parsing of Markdown tags and HTML img tags to summarize the current chat session content and embed sensitive keys, data, and other information into the src attribute of an img tag, thereby achieving leakage of the session content.
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+
+Case 1
+The attacker exploits Google Bard's update feature to craft special Markdown image tags, causing Bard to render an image pointing to the attacker's server and thereby stealing data
+
+
+Case 2
+Exploiting the Azure AI Playground model's allowance of appending prompts to the URL of the src attribute via image Markdown injection for rendering, leading to risks such as data leakage
+
+
+Case 3
+The attacker exploits the ChatGPT plugin's ability to directly access YouTube subtitles, controlling subtitle content through indirect prompt injection to manipulate the AI's behavior
+
+
+Case 4
+The attacker can exploit ChatGPT's Markdown image rendering feature to steal chat history; the attacker controls the AI's behavior, requesting it to summarize the chat history and append it to a URL to steal data
+
+
+Case 5
+The attacker automatically steals data from chat sessions via Markdown image injection
+
+
+Case 6
+The attacker can instruct ChatGPT to use a plugin to record the conversation, generate a URL pointing to the record, and leak the link via Markdown image injection to obtain the entire conversation history
+
+
+Case 7
+Because LLM agents (client applications such as Bing Chat or ChatGPT) are vulnerable to prompt injection attacks, an attacker can exploit this vulnerability to perform automated data exfiltration by appending sensitive data to image URLs
+
+**Attack Risks**
+
+Data leakage: the attacker can obtain the user's sensitive data in the current session, including session tokens, personal information, chat history, etc.
+Session hijacking: the attacker may take over the user's session using the obtained session token.
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+Input/output validation
+Perform strict validation and sanitization on all input and output data to remove or correct any suspicious injected or generated content
+
+
+Content Security Policy (CSP)
+Implement a strict CSP content security policy to block the execution of malicious scripts and data exfiltration behavior
+
+
+Principle of least privilege
+Ensure proper sandboxing and limit the capabilities of LLMs; restrict plugins, Agents, and other mechanisms from obtaining data from untrusted sources
+
+
+Human intervention and approval
+Give users more control, allowing them to manage the use of plugins and the flow of data
+
+**References**
+
+https://systemweakness.com/new-prompt-injection-attack-on-chatgpt-web-version-ef717492c5c2
+
+---
+### Code Execution Injection
+
+> Risk ID: GAARM.0041.002
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+Under the ReAct framework, LLMs can interact with external systems; an external code interpreter Agent can be used to provide code execution capabilities for LLMs, fulfilling needs such as automated chart drawing and complex code computation during business application processes. The attacker constructs malicious input prompts to manipulate the LLMs into executing a predetermined reasoning process, causing the LLMs to orchestrate the code execution Agent to execute malicious code, commands, and other operations on the underlying system, thereby achieving attack and exploitation of the LLMs' base runtime environment. The main reasons this attack occurs are:
+
+Failure to effectively detect, validate, or restrict user input, allowing attackers to carry out unauthorized malicious code execution operations.
+Insufficient sandboxing or insufficient capability restrictions on LLMs, causing them to interact with the underlying system in unexpected ways.
+Inadvertently exposing system-level functions or interfaces to LLMs.
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+
+Case 1
+After GPT-4's new feature launched, the Python code interpreter was found to be suspected of having a sandbox escape vulnerability
+
+**Attack Risks**
+
+Code execution risk: the attacker can execute arbitrary Python code, which may lead to server compromise, data leakage, or other malicious behavior.
+System privilege control: if the CodeExecutor lacks appropriate security measures, the executed code combined with attack techniques such as container escape may obtain elevated system privileges.
+Persistent access control: the attacker may use this opportunity to establish a long-term access channel for sustained attacks.
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+Input validation
+Implement strict input detection and restriction processes to prevent malicious or accidental prompts from being processed by LLMs
+
+
+Principle of least privilege
+Ensure proper sandboxing and limit the capabilities of LLMs to restrict their ability to interact with the underlying system, avoiding the execution of operations that could cause system-level impact
+
+
+Monitoring and logging
+Log all operations executed through the LLM and monitor them in real time to quickly detect and respond to suspicious activity
+
+**References**
+
+https://owasp.org/www-project-top-10-for-large-language-model-applications/Archive/0_1_vulns/Unauthorized_Code_Execution.html
+https://www.calvin-risk.com/blog/decoding-llm-risks-a-comprehensive-look-at-unauthorized-code-execution
+
+---
+### Keyword Obfuscation
+
+> Risk ID: GAARM.0043
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+This risk refers to performing special processing operations on keywords in a prompt (homophones, synonyms, word splitting, or other forms of text manipulation) so that, while retaining a similar meaning, the words no longer carry a risky connotation after tokenization, thereby evading the model security mechanisms' restrictions on sensitive vocabulary.
+
+**Attack Cases**
+
+In English LLMs, common keyword obfuscation methods include: letter obfuscation (bomb -> b0mb), synonym substitution (bomb -> explosive), and word splitting (bomb -> b-o-m-b).
+For Chinese LLMs, because of differences in word segmentation methods, keyword obfuscation methods also differ significantly; common Chinese keyword obfuscation methods include pinyin substitution (炸弹 -> zha弹), synonym substitution (炸弹 -> 爆炸物), and visually similar character substitution (炸弹 -> 炸掸), etc.
+
+**Attack Risks**
+
+Generating inappropriate content: attackers may use keyword obfuscation techniques to bypass automated content review systems and publish or spread malicious content such as violence, terrorism, or pornographic information.
+Evading security mechanisms: attackers maliciously induce the model to produce incorrect output, misleading the system into making bad decisions or executing dangerous operations.
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+Model safety alignment
+Improve the LLM's ability to recognize and resist this type of attack through training and reinforcement learning
+
+
+Input/output validation
+On the input side, continuously update and improve the vocabulary filtering system to identify and block obfuscated sensitive words; on the output side, monitor LLMs-generated content and identify potential risks through content security analysis techniques
+
+**References**
+
+https://mp.weixin.qq.com/s/eFDQWYYCOe_SSiourhTxig
+
+---
+### Reverse Inducement & Suppression Attack
+
+> Risk ID: GAARM.0045
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+This risk works by adding specific instructions to the prompt so that LLMs avoid using certain specific refusal-style responses when generating answers, thereby increasing the likelihood of the unsafe or inappropriate content the attacker expects. This attack exploits the autoregressive property to induce the model: because content generation predicts the next word based on previous output, by specifically requiring LLMs not to use certain specific words or phrases when generating answers — such as "sorry", "cannot", "unable to" — the model is caused to generate inappropriate content or content that violates safety policies.
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+
+Case 1
+Using prefix injection + reverse suppression attack to bypass ChatGPT 3.5's safety restrictions, achieving the output of illegal and criminal risk content
+
+**Attack Risks**
+
+Generating inappropriate content: LLMs may generate risky content including illegal instructions, violence, pornography, politically sensitive material, etc.
+Evading security mechanisms: the attacker can bypass the LLMs' safety mechanisms, causing the model to output the risky content the attacker expects.
+
+**Mitigations**
+
+Mitigation
+Description
+
+
+
+
+Model robustness enhancement
+Improve the LLM's ability to recognize and resist this type of attack through training and reinforcement learning
+
+
+Input monitoring and filtering
+Monitor LLMs output in real time and promptly filter out unsafe or inappropriate content
+
+---
+### Synonym Substitution Attack
+
+> Risk ID: GAARM.0043.001
+> Lifecycle: Application phase
+
+**Attack Overview**
+
+A synonym substitution attack is an attack method that uses synonyms with the same or similar meaning as sensitive words or phrases to bypass the model's security protections, thereby obtaining or leaking the model's internal instructions or sensitive information. As LLMs grow ever larger, fine-tuning for every existing attack example becomes increasingly difficult, and models become vulnerable to synonym substitution attacks. For example, in a coding assistant, an attacker could replace "delete" with "remove", replace "destroy" with "harm", etc., attempting to bypass keyword checks.
+
+**Attack Cases**
+
+Case
+Description
+
+
+
+
+Case 1

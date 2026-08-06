@@ -111,6 +111,16 @@ export const navItems: NavItem[] = [
         href: '/skills'
       },
       {
+        icon: 'KeyRound',
+        label: 'Crypto Toolkit',
+        href: '/crypto'
+      },
+      {
+        icon: 'ShieldAlert',
+        label: 'Alert Triage',
+        href: '/detection'
+      },
+      {
         icon: 'ScrollText',
         label: 'Playbooks',
         href: '/playbooks'

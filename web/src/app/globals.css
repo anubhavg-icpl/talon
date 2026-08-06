@@ -315,7 +315,14 @@ input[type='number']::-webkit-outer-spin-button {
 /* ---------- Talon operator shell (not server-admin gray) ---------- */
 
 .scanlines {
+  position: relative;
+}
+.scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   pointer-events: none;
+  z-index: 1;
   background-image: repeating-linear-gradient(
     to bottom,
     oklch(1 0 0 / 2.5%) 0px,

@@ -64,6 +64,14 @@ type tracker struct {
 	log   []ToolCallRecord
 	// bag holds mid-run agent-reported findings (report_finding tool).
 	bag *FindingBag
+	// store holds all tool outputs as evidence for the agent to inspect.
+	store *EvidenceStore
+	// cases holds detection pipeline cases for SOC triage/investigation/tuning.
+	cases *CaseStore
+	// correction observes tool lifecycle and emits anti-hallucination hints.
+	correction *CorrectionLayer
+	// traffic records HTTP request/response pairs for replay and analysis.
+	traffic *TrafficStore
 }
 
 func (t *tracker) allow() error {
@@ -154,7 +162,7 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 			tools:        withAgentTools(o.tools.Subset("nmap_scan", "smbmap_scan", "nuclei_scan")),
 			gate:         func(name string) bool { return name == "nmap_scan" },
 			exec: func(tr *tracker) toolExecFunc {
-				return hybridExec(mcpExec(o.tools, tr), tr.bag, "recon", tr)
+				return hybridExec(mcpExec(o.tools, tr), tr.bag, tr.store, "recon", tr)
 			},
 			maxTurns: maxReconModelTurns,
 		}, true
@@ -169,7 +177,7 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 				"responder_credential_harvest",
 			)),
 			exec: func(tr *tracker) toolExecFunc {
-				return hybridExec(mcpExec(o.tools, tr), tr.bag, "exploit", tr)
+				return hybridExec(mcpExec(o.tools, tr), tr.bag, tr.store, "exploit", tr)
 			},
 			maxTurns: maxExploitModelTurns,
 		}, true
@@ -179,7 +187,7 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 			systemPrompt: InjectSkills(postExploitSystemPrompt, "post_exploit"),
 			tools:        withAgentTools(o.tools.Subset("list_active_sessions", "terminate_session", "send_session_command")),
 			exec: func(tr *tracker) toolExecFunc {
-				return hybridExec(mcpExec(o.tools, tr), tr.bag, "post_exploit", tr)
+				return hybridExec(mcpExec(o.tools, tr), tr.bag, tr.store, "post_exploit", tr)
 			},
 			maxTurns: maxPostExploitModelTurns,
 		}, true
@@ -207,7 +215,7 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 				},
 			}}),
 			exec: func(tr *tracker) toolExecFunc {
-				return hybridExec(codegenExec(o.codegen, tr), tr.bag, "codegen", tr)
+				return hybridExec(codegenExec(o.codegen, tr), tr.bag, tr.store, "codegen", tr)
 			},
 		}, true
 	case "delegate_report":
@@ -217,8 +225,8 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 			tools:        withAgentTools(nil),
 			exec: func(tr *tracker) toolExecFunc {
 				return hybridExec(func(ctx context.Context, call llm.ToolCall) (string, bool) {
-					return "agent: report subagent supports report_finding, triage_finding, skill_search, skill_get only", true
-				}, tr.bag, "report", tr)
+					return "agent: report subagent supports report_finding, triage_finding, skill_search, skill_get, evidence_list, evidence_view, evidence_search only", true
+				}, tr.bag, tr.store, "report", tr)
 			},
 		}, true
 	}
@@ -227,10 +235,11 @@ func (o *Orchestrator) subagentConfig(delegateName string) (subagentSpec, bool) 
 
 // finalizeResult attaches structured findings + multi-section report to a
 // completed (non-interrupted) RunResult. Interrupted results are returned as-is.
-func finalizeResult(input RunInput, result RunResult, bag *FindingBag) RunResult {
+func finalizeResult(input RunInput, result RunResult, tr *tracker) RunResult {
 	if result.Interrupted {
 		return result
 	}
+	bag := tr.bag
 	extracted := ExtractFindings(input, result.ToolLog, result.FinalMessage, result.JudgeVerdict, result.JudgeSet)
 	reported := bag.Snapshot()
 	findings := MergeExtracted(reported, extracted)
@@ -240,6 +249,16 @@ func finalizeResult(input RunInput, result RunResult, bag *FindingBag) RunResult
 	// Embed kill chain + methodology into report markdown.
 	if report.Markdown != "" {
 		report.Markdown = report.Markdown + "\n" + kc.Summary + "\n" + FormatMethodologyMarkdown(meth)
+	}
+	// Append deterministic recap to the report.
+	recapTracker := &ToolCallTracker{Calls: result.ToolLog}
+	recap := BuildRecap(input.TargetIP, input.SessionID, time.Now().Add(-time.Hour), recapTracker, tr.store, findings)
+	if recap.FormatMarkdown() != "" {
+		report.Markdown = report.Markdown + "\n" + recap.FormatMarkdown()
+	}
+	// Persist findings to target state store for cross-run continuity.
+	if input.TargetIP != "" {
+		go persistTargetFindings(input.TargetIP, findings)
 	}
 	result.Findings = findings
 	result.Report = &report
@@ -293,6 +312,16 @@ func delegateToolSpecs(mode string) []llm.ToolSpec {
 // attacker context.
 func seedPrompt(input RunInput) string {
 	mode := NormalizeAgentMode(input.AgentMode)
+
+	// Check for prior target state (resume context)
+	var priorState string
+	if input.TargetIP != "" {
+		ts := NewTargetStore("talon-data/targets")
+		if state, err := ts.GetOrCreate(input.TargetIP); err == nil && (len(state.Findings) > 0 || len(state.ReconDims) > 0) {
+			priorState = "\n\nPrior Target State:\n" + state.Summary()
+		}
+	}
+
 	return fmt.Sprintf(
 		"Target Info:\n"+
 			"- IP: %s\n"+
@@ -303,11 +332,12 @@ func seedPrompt(input RunInput) string {
 			"Attacker Context:\n"+
 			"- LHOST: %s\n"+
 			"- LPORT: %d\n\n"+
-			"%s\n\n"+
+			"%s%s\n\n"+
 			"Begin the validation workflow now. Use report_finding with 3-gate evidence for real vulns.",
 		input.TargetIP, input.CVEID, input.ServiceName, input.Description, mode,
 		input.Context.LHOST, input.Context.LPORT,
 		AgentModePrompt(mode),
+		priorState,
 	)
 }
 
@@ -378,7 +408,7 @@ func (o *Orchestrator) run(ctx context.Context, input RunInput, resume *Decision
 	input.AgentMode = NormalizeAgentMode(input.AgentMode)
 	if resume == nil {
 		messages := []llm.Message{llm.UserMessage(seedPrompt(input))}
-		return o.orchestrateLoop(ctx, input, messages, &tracker{bag: NewFindingBag()})
+		return o.orchestrateLoop(ctx, input, messages, &tracker{bag: NewFindingBag(), store: NewEvidenceStore(), cases: NewCaseStore(), correction: NewCorrectionLayer(), traffic: NewTrafficStore("talon-data/traffic", input.SessionID)})
 	}
 	return o.resumeRun(ctx, input, *resume)
 }
@@ -400,7 +430,7 @@ func (o *Orchestrator) resumeRun(ctx context.Context, input RunInput, decision D
 	if bag == nil {
 		bag = NewFindingBag()
 	}
-	tr := &tracker{count: sess.toolCallCount, log: sess.toolLog, bag: bag}
+	tr := &tracker{count: sess.toolCallCount, log: sess.toolLog, bag: bag, store: NewEvidenceStore(), cases: NewCaseStore(), correction: NewCorrectionLayer(), traffic: NewTrafficStore("talon-data/traffic", input.SessionID)}
 	resumeState := &delegateBatchResume{
 		resolvedSoFar: sess.resolvedDelegates,
 		currentCallID: sess.delegateCallID,
@@ -418,7 +448,7 @@ func (o *Orchestrator) resumeRun(ctx context.Context, input RunInput, decision D
 	resolved, paused, err := o.runDelegateBatch(ctx, nil, tr, resumeState)
 	if err != nil {
 		if errors.Is(err, errBudgetExhausted) {
-			return finalizeResult(input, RunResult{FinalMessage: lastAssistantText(sess.orchestratorMessages), ToolLog: tr.log}, tr.bag), nil
+			return finalizeResult(input, RunResult{FinalMessage: lastAssistantText(sess.orchestratorMessages), ToolLog: tr.log}, tr), nil
 		}
 		return RunResult{}, err
 	}
@@ -459,7 +489,7 @@ func (o *Orchestrator) orchestrateLoop(ctx context.Context, input RunInput, mess
 				return finalizeResult(input, RunResult{
 					FinalMessage: lastAssistantText(messages) + "\n[orchestrator stopped: LLM timeout]",
 					ToolLog:      tr.log,
-				}, tr.bag), nil
+				}, tr), nil
 			}
 			return RunResult{}, err
 		}
@@ -470,9 +500,9 @@ func (o *Orchestrator) orchestrateLoop(ctx context.Context, input RunInput, mess
 			verdict, err := judgeOutput(ctx, o.judge, msg.Text)
 			if err != nil {
 				log.Printf("talon-core: judge failed (returning without verdict): %v", err)
-				return finalizeResult(input, RunResult{FinalMessage: msg.Text, ToolLog: tr.log}, tr.bag), nil
+				return finalizeResult(input, RunResult{FinalMessage: msg.Text, ToolLog: tr.log}, tr), nil
 			}
-			return finalizeResult(input, RunResult{FinalMessage: msg.Text, ToolLog: tr.log, JudgeVerdict: verdict, JudgeSet: true}, tr.bag), nil
+			return finalizeResult(input, RunResult{FinalMessage: msg.Text, ToolLog: tr.log, JudgeVerdict: verdict, JudgeSet: true}, tr), nil
 		}
 
 		names := make([]string, 0, len(msg.ToolCalls))
@@ -486,14 +516,14 @@ func (o *Orchestrator) orchestrateLoop(ctx context.Context, input RunInput, mess
 		if err != nil {
 			if errors.Is(err, errBudgetExhausted) {
 				log.Printf("talon-core: tool budget exhausted (tools=%d)", tr.count)
-				return finalizeResult(input, RunResult{FinalMessage: lastAssistantText(messages), ToolLog: tr.log}, tr.bag), nil
+				return finalizeResult(input, RunResult{FinalMessage: lastAssistantText(messages), ToolLog: tr.log}, tr), nil
 			}
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 				log.Printf("talon-core: delegate batch timeout: %v", err)
 				return finalizeResult(input, RunResult{
 					FinalMessage: lastAssistantText(messages) + "\n[orchestrator stopped: delegate timeout]",
 					ToolLog:      tr.log,
-				}, tr.bag), nil
+				}, tr), nil
 			}
 			return RunResult{}, err
 		}
@@ -513,7 +543,7 @@ func (o *Orchestrator) orchestrateLoop(ctx context.Context, input RunInput, mess
 	return finalizeResult(input, RunResult{
 		FinalMessage: lastAssistantText(messages) + "\n[orchestrator stopped: turn budget reached]",
 		ToolLog:      tr.log,
-	}, tr.bag), nil
+	}, tr), nil
 }
 
 // converseWithTimeout wraps ChatModel.Converse with llmTurnTimeout so a hung
@@ -598,4 +628,25 @@ func (o *Orchestrator) parkSession(input RunInput, messages []llm.Message, resol
 		toolLog:              tr.log,
 		findingBag:          tr.bag,
 	}
+}
+
+// persistTargetFindings stores verified findings to the target state store.
+func persistTargetFindings(target string, findings []Finding) {
+	ts := NewTargetStore("talon-data/targets")
+	state, err := ts.GetOrCreate(target)
+	if err != nil {
+		return
+	}
+	for _, f := range findings {
+		status := "unverified"
+		if f.Evidence.Passed {
+			status = "verified"
+		}
+		state.AddFinding(TargetFinding{
+			Title:    f.Title,
+			Severity: f.Severity,
+			Status:   status,
+		})
+	}
+	_ = ts.Save(state)
 }

@@ -1,8 +1,27 @@
-# Shared env for talon-core and talon-relay (single source — no duplicated lists).
+# =============================================================================
+# Talon — docker-compose.yml (production-ready, single file)
+# =============================================================================
+# One file opens the entire stack:
+#
+#   docker compose up -d --build                     # core stack
+#   docker compose --profile vuln up -d --build      # + lab target
+#   docker compose --profile ollama up -d             # + local Ollama LLM
+#   docker compose --profile slm up -d --build onnx-slm  # + local SLM
+#   docker compose --profile proxy up -d              # + Caddy TLS reverse proxy
+#
+# Every service has: healthcheck, resource limits, log rotation, restart
+# policy, and security constraints applied to the maximum extent the image
+# allows. See docs/ARCHITECTURE.md and docs/DEPLOYMENT.md for rationale.
+#
+# All secrets use ${VAR:?error} — compose fails fast if any is unset.
+# Copy .env.example → .env (or secrets.env) and fill in real values.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Shared env anchor: single source of truth for talon-core + talon-relay.
+# -----------------------------------------------------------------------------
 x-talon-env: &talon-env
   HEXSTRIKE_SERVER_URL: http://localhost:${HEXSTRIKE_PORT:-8888}
-  # Optional browser-automation MCP. Binary is best-effort installed in the
-  # image; talon-core self-gates and skips it if absent, so this never blocks.
   LIGHTPANDA_MCP_PATH: ${LIGHTPANDA_MCP_PATH:-/usr/local/bin/lightpanda}
   MSF_SERVER: localhost
   MSF_PORT: ${MSF_PORT:-5554}
@@ -15,9 +34,10 @@ x-talon-env: &talon-env
   LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.3}
   LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1000}
   OPENAI_HTTP_TIMEOUT: ${OPENAI_HTTP_TIMEOUT:-120s}
+  TALON_RUN_TIMEOUT: ${TALON_RUN_TIMEOUT:-20m}
   OLLAMA_URL: http://localhost:${OLLAMA_PORT:-11434}
   AMQP_URL: ${AMQP_URL:?AMQP_URL must be set}
-  TALON_DATABASE_URL: postgres://talon:${TALON_PG_PASSWORD:?TALON_PG_PASSWORD must be set}@localhost:5432/talon?sslmode=disable
+  TALON_DATABASE_URL: ${TALON_DATABASE_URL:-postgres://talon:${TALON_PG_PASSWORD:?TALON_PG_PASSWORD must be set}@localhost:5432/talon}${PG_SSLMODE:-?sslmode=disable}
   TALON_ADMIN_USERNAME: ${TALON_ADMIN_USERNAME:-admin}
   TALON_ADMIN_PASSWORD: ${TALON_ADMIN_PASSWORD:?TALON_ADMIN_PASSWORD must be set}
   TALON_AUTH_DISABLED: ${TALON_AUTH_DISABLED:-false}
@@ -30,7 +50,6 @@ x-talon-env: &talon-env
   OPENAI_MAIN_MODEL: ${OPENAI_MAIN_MODEL:-glm-5.2}
   OPENAI_JUDGE_MODEL: ${OPENAI_JUDGE_MODEL:-glm-5.2}
   OPENAI_CODE_MODEL: ${OPENAI_CODE_MODEL:-glm-5.2}
-  # Local SmolLM / ONNX Runtime (compose profile "slm", LLM_PROVIDER=onnx)
   ONNX_BASE_URL: ${ONNX_BASE_URL:-http://localhost:8090/v1}
   ONNX_API_KEY: ${ONNX_API_KEY:-talon-local}
   ONNX_MAIN_MODEL: ${ONNX_MAIN_MODEL:-smollm}
@@ -40,12 +59,66 @@ x-talon-env: &talon-env
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
   AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+  # Prod: set TZ for consistent timestamps in logs and DB records.
+  TZ: ${TZ:-UTC}
+
+# -----------------------------------------------------------------------------
+# Reusable anchors — applied to every service where the image allows it.
+# -----------------------------------------------------------------------------
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-10m}
+    max-file: ${LOG_MAX_FILE:-3}
+
+# Maximum sandbox: drop ALL capabilities, forbid privilege escalation.
+# Only usable by services that don't need root or special kernel access.
+x-sandbox: &sandbox-safety
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+# Common deploy limits template (overridden per service with actual values).
+x-deploy-defaults: &deploy-defaults
+  restart_policy:
+    condition: on-failure
+    delay: 10s
+    max_attempts: 5
+    window: 120s
+
+# -----------------------------------------------------------------------------
+# Named volumes for persistent data (survive container recreation).
+# -----------------------------------------------------------------------------
+volumes:
+  pg_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  ollama_data:
+    driver: local
+  talon_data:
+    driver: local
+  msf_data:
+    driver: local
+  msf_payloads:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+# -----------------------------------------------------------------------------
+# Networks — all services on host network (by design: reverse shells, MSF RPC,
+# ttyd loopback proxy, distinct localhost ports per service).
+# See docs/ARCHITECTURE.md §3 for why host networking is required.
+# -----------------------------------------------------------------------------
 
 services:
-  # 0. Lab target (CVE-2011-2523). Profile: vuln. One Dockerfile, two targets:
-  #   real (default) — infected vsftpd; MSF reverse_bash works
-  #   mimic          — Python only; set VULN_TARGET=mimic
-  #   docker compose --profile vuln up -d --build vuln-target
+  # ===========================================================================
+  # 0. LAB TARGET — CVE-2011-2523 (vsftpd 2.3.4 backdoor). Profile: vuln.
+  # NEVER deploy in production. Lab/isolated network only.
+  # ===========================================================================
   vuln-target:
     build:
       context: ./vuln-target
@@ -56,8 +129,26 @@ services:
     profiles: ["vuln"]
     restart: unless-stopped
     network_mode: host
+    logging: *default-logging
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+        reservations:
+          memory: 64m
 
-  # 1. Metasploit RPC (kali-msf/Dockerfile)
+  # ===========================================================================
+  # 1. METASPLOIT RPC — msfrpcd on Kali. Strike MCP connects via HTTPS msgpack.
+  # ===========================================================================
   metasploit:
     build:
       context: ./kali-msf
@@ -66,14 +157,39 @@ services:
     environment:
       MSF_PORT: ${MSF_PORT:-5554}
       MSF_PASSWORD: ${MSF_PASSWORD:?MSF_PASSWORD must be set}
+      MSF_SSL: ${MSF_SSL:-true}
+      TZ: ${TZ:-UTC}
     volumes:
-      - ./msf-data:/root/.msf4
-      - ./msf_payloads:/payloads
+      - msf_data:/root/.msf4
+      - msf_payloads:/payloads
     restart: unless-stopped
     network_mode: host
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    # msfrpcd runs as root in Kali image; cannot drop caps or set user.
+    # Healthcheck: TCP port probe (no HTTP endpoint).
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/${MSF_PORT:-5554} && echo -e '' >&3 && cat <&3 >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${MSF_MEMORY_LIMIT:-2g}
+          cpus: "${MSF_CPU_LIMIT:-2.0}"
+        reservations:
+          memory: 512m
 
-  # 2. Arsenal Engine (BlackArch image — arsenal-engine/Dockerfile; not Kali)
-  # Contracts: :8888 arsenal_engine.py, :7681 ttyd /shell (SSO via talon-core).
+  # ===========================================================================
+  # 2. ARSENAL ENGINE — BlackArch tool runner (nmap, nuclei, sqlmap, ...).
+  #    Contracts: :8888 HTTP API, :7681 ttyd /shell (SSO via talon-core).
+  #    MUST be privileged: security tools need CAP_NET_RAW, CAP_NET_ADMIN,
+  #    CAP_SYS_ADMIN for raw sockets, packet capture, mount, etc.
+  # ===========================================================================
   arsenal-engine:
     build:
       context: ./arsenal-engine
@@ -82,28 +198,64 @@ services:
     privileged: true
     environment:
       API_PORT: ${HEXSTRIKE_PORT:-8888}
-      # Integrated web terminal (ttyd): loopback-only, no basic-auth. Access is
-      # gated by talon-core's session-authenticated /shell reverse proxy (SSO),
-      # so no separate credentials live here.
       TTYD_PORT: ${TTYD_PORT:-7681}
+      TZ: ${TZ:-UTC}
     restart: unless-stopped
     network_mode: host
+    logging: *default-logging
+    # Healthcheck inherited from Dockerfile (GET /health on :8888).
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${ARSENAL_MEMORY_LIMIT:-4g}
+          cpus: "${ARSENAL_CPU_LIMIT:-3.0}"
+        reservations:
+          memory: 1g
 
-  # 3. RabbitMQ -- backs Talon Relay's queue. Bundled so the stack is
-  # runnable with a single `docker compose up` and no external broker.
+  # ===========================================================================
+  # 3. RABBITMQ — message broker for talon-relay. Queue: execute_agent_task.
+  # ===========================================================================
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: talon_rabbitmq
+    hostname: ${RABBITMQ_HOSTNAME:-talon-rabbitmq}
     environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-talon}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-talon}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+      TZ: ${TZ:-UTC}
     volumes:
-      - ./rabbitmq-data:/var/lib/rabbitmq
+      - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
     network_mode: host
+    <<: *sandbox-safety
+    # RabbitMQ entrypoint needs these to create dirs and switch user.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${RABBITMQ_MEMORY_LIMIT:-1g}
+          cpus: "${RABBITMQ_CPU_LIMIT:-1.5}"
+        reservations:
+          memory: 256m
 
-  # 3b. Postgres -- persistence for run history, dashboard users and auth
-  # sessions. Replaces the runs.json fallback when TALON_DATABASE_URL is set.
+  # ===========================================================================
+  # 3b. POSTGRES — run history, dashboard users, auth sessions, runtime config.
+  #     Replaces runs.json fallback when TALON_DATABASE_URL is set.
+  # ===========================================================================
   postgres:
     image: postgres:17-alpine
     container_name: talon_postgres
@@ -111,43 +263,148 @@ services:
       POSTGRES_USER: talon
       POSTGRES_PASSWORD: ${TALON_PG_PASSWORD:?TALON_PG_PASSWORD must be set}
       POSTGRES_DB: talon
+      POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS:-}
+      TZ: ${TZ:-UTC}
+      PGDATA: /var/lib/postgresql/data
     volumes:
-      - ./.pg-data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql/data
     restart: unless-stopped
     network_mode: host
+    <<: *sandbox-safety
+    # Postgres entrypoint needs these to chown its data dir and switch user
+    # from root to the postgres user inside the container.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U talon -d talon"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # Postgres tuning via env (see docs/DEPLOYMENT.md §4.2).
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=${PG_SHARED_BUFFERS:-128MB}"
+      - "-c"
+      - "max_connections=${PG_MAX_CONNECTIONS:-100}"
+      - "-c"
+      - "effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-384MB}"
+      - "-c"
+      - "work_mem=${PG_WORK_MEM:-4MB}"
+      - "-c"
+      - "maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-64MB}"
+      - "-c"
+      - "log_min_duration_statement=${PG_SLOW_QUERY_MS:-1000}"
+      - "-c"
+      - "checkpoint_completion_target=${PG_CHECKPOINT_TARGET:-0.9}"
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${PG_MEMORY_LIMIT:-1g}
+          cpus: "${PG_CPU_LIMIT:-1.5}"
+        reservations:
+          memory: 256m
 
-  # 3c. Redis -- cache layer (health probes, AI analysis, session lookups).
-  # Port 6380 because 6379 is commonly taken on dev boxes. Pure cache: no
-  # persistence; core runs uncached if it's down.
+  # ===========================================================================
+  # 3c. REDIS — cache layer (health probes 5s, AI analysis 24h, sessions 60s).
+  #     Port 6380 (avoids conflict with host Redis on 6379).
+  #     Pure cache: no persistence. Core runs uncached if Redis is down.
+  # ===========================================================================
   redis:
     image: redis:7-alpine
     container_name: talon_redis
-    command: ["redis-server", "--port", "6380", "--save", "", "--appendonly", "no"]
+    command:
+      - "redis-server"
+      - "--port"
+      - "${REDIS_PORT:-6380}"
+      - "--save"
+      - ""
+      - "--appendonly"
+      - "no"
+      - "--maxmemory"
+      - "${REDIS_MAXMEMORY:-200mb}"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
+      - "--timeout"
+      - "300"
+      - "--tcp-keepalive"
+      - "60"
+      - "--loglevel"
+      - "${REDIS_LOGLEVEL:-notice}"
+      - "--requirepass"
+      - "${REDIS_PASSWORD:?REDIS_PASSWORD must be set}"
+    environment:
+      TZ: ${TZ:-UTC}
     restart: unless-stopped
     network_mode: host
+    <<: *sandbox-safety
+    user: "redis:redis"
+    read_only: true
+    tmpfs:
+      - /tmp
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "${REDIS_PORT:-6380}", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${REDIS_MEMORY_LIMIT:-256m}
+          cpus: "${REDIS_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: 64m
 
-  # 4. Ollama -- optional local LLM runtime. Only needed when LLM_PROVIDER=ollama
-  # (or LLM_CODE_PROVIDER=ollama). Gated behind the "ollama" profile so a plain
-  # `docker compose up -d` does NOT pull the ~3.2GB ollama image when you're
-  # pointing at a hosted provider (bedrock/openai) instead.
-  #   local stack:   docker compose --profile ollama up -d
-  #   hosted stack:  docker compose up -d
+  # ===========================================================================
+  # 4. OLLAMA — optional local LLM runtime. Profile: ollama.
+  #    Only needed when LLM_PROVIDER=ollama or LLM_CODE_PROVIDER=ollama.
+  # ===========================================================================
   ollama:
     image: ollama/ollama:latest
     container_name: talon_ollama
     profiles: ["ollama"]
+    environment:
+      TZ: ${TZ:-UTC}
+      OLLAMA_HOST: 0.0.0.0:${OLLAMA_PORT:-11434}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_MODELS:-1}
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
     volumes:
-      - ./ollama-data:/root/.ollama
-      - ./models:/models:ro          # so `ollama create talon -f /models/Modelfile` works in-container
+      - ollama_data:/root/.ollama
+      - ./models:/models:ro
     restart: unless-stopped
     network_mode: host
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${OLLAMA_MEMORY_LIMIT:-8g}
+          cpus: "${OLLAMA_CPU_LIMIT:-4.0}"
+        reservations:
+          memory: 1g
 
-  # 4b. ONNX / SmolLM SLM runtime — ultra-fast local chat with OpenAI-compatible
-  # SSE streaming (millisecond tokens → Go /llm/stream → dashboard).
-  # Profile "slm" keeps the image off the default path.
-  #   docker compose --profile slm up -d --build onnx-slm
-  #   LLM_PROVIDER=onnx  ONNX_BASE_URL=http://localhost:8090/v1
-  # See docs/slm-onnx.md.
+  # ===========================================================================
+  # 4b. ONNX / SmolLM SLM — ultra-fast local chat, OpenAI-compatible SSE.
+  #     Profile: slm. See docs/slm-onnx.md.
+  # ===========================================================================
   onnx-slm:
     build:
       context: ./onnx-slm
@@ -168,14 +425,34 @@ services:
       TRANSFORMERS_CACHE: /models/hf-cache
       ORT_INTRA_THREADS: ${ORT_INTRA_THREADS:-4}
       OMP_NUM_THREADS: ${OMP_NUM_THREADS:-4}
+      TZ: ${TZ:-UTC}
     volumes:
       - ./models/smollm:/models/smollm
       - ./models/hf-cache:/models/hf-cache
     restart: unless-stopped
     network_mode: host
+    <<: *sandbox-safety
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${SLM_PORT:-8090}/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${SLM_MEMORY_LIMIT:-4g}
+          cpus: "${SLM_CPU_LIMIT:-3.0}"
+        reservations:
+          memory: 512m
 
-  # 5–6. Platform image (root Dockerfile): all Go binaries. Same image,
-  # different command for core vs relay.
+  # ===========================================================================
+  # 5. TALON-CORE — HTTP control plane (:8000) + orchestrator.
+  #    Mounts docker.sock for Forge (codegen sandbox). Runs as root because
+  #    the Dockerfile doesn't switch users yet (roadmap: non-root USER).
+  # ===========================================================================
   talon-core:
     build:
       context: .
@@ -186,21 +463,48 @@ services:
     environment:
       <<: *talon-env
       TALON_DATA_DIR: /data
-      # ttyd web terminal (arsenal_engine, loopback) reverse-proxied by core at
-      # /shell behind session auth.
       TTYD_URL: http://127.0.0.1:${TTYD_PORT:-7681}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./talon-data:/data
+      - talon_data:/data
     depends_on:
-      - metasploit
-      - arsenal-engine
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      metasploit:
+        condition: service_healthy
+      arsenal-engine:
+        condition: service_started
     restart: unless-stopped
     network_mode: host
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    # Core cannot use cap_drop: ALL — Forge needs Docker socket access.
+    # It cannot run read_only — writes to /data (run state) and temp files.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/health >/dev/null 2>&1 || curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${CORE_MEMORY_LIMIT:-2g}
+          cpus: "${CORE_CPU_LIMIT:-2.0}"
+        reservations:
+          memory: 512m
+    # Stop grace period: allow in-flight HTTP requests to complete.
+    stop_grace_period: 30s
 
+  # ===========================================================================
+  # 6. TALON-RELAY — same platform image, AMQP queue worker.
+  #    Scale horizontally: docker compose up -d --scale talon-relay=3
+  # ===========================================================================
   talon-relay:
-    # Same platform image as talon-core (build once, run two commands).
     build:
       context: .
       dockerfile: Dockerfile
@@ -212,14 +516,41 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - metasploit
-      - arsenal-engine
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      metasploit:
+        condition: service_healthy
+      arsenal-engine:
+        condition: service_started
     restart: unless-stopped
     network_mode: host
+    logging: *default-logging
+    security_opt:
+      - no-new-privileges:true
+    # Relay is a queue worker with no HTTP port; liveness = process alive.
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x talon-relay >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${RELAY_MEMORY_LIMIT:-2g}
+          cpus: "${RELAY_CPU_LIMIT:-2.0}"
+        reservations:
+          memory: 512m
+    stop_grace_period: 30s
 
-  # 7. Web dashboard (web/Dockerfile): Next.js ops console on :3000.
-  # Browser → dashboard → /api/talon/* proxy → talon-core :8000.
+  # ===========================================================================
+  # 7. DASHBOARD — Next.js ops console (:3000).
+  #    Browser → dashboard → /api/talon/* proxy → talon-core :8000.
+  #    Session auth via talon-core. No direct core exposure to browser.
+  # ===========================================================================
   dashboard:
     build:
       context: ./web
@@ -229,7 +560,78 @@ services:
       TALON_CORE_URL: http://localhost:8000
       PORT: ${DASHBOARD_PORT:-3000}
       HOSTNAME: 0.0.0.0
+      NODE_ENV: production
+      TZ: ${TZ:-UTC}
+      # Next.js telemetry off in prod.
+      NEXT_TELEMETRY_DISABLED: "1"
     depends_on:
-      - talon-core
+      talon-core:
+        condition: service_healthy
     restart: unless-stopped
     network_mode: host
+    <<: *sandbox-safety
+    user: "node:node"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /.next/cache
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${DASHBOARD_PORT:-3000}/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${DASHBOARD_MEMORY_LIMIT:-512m}
+          cpus: "${DASHBOARD_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: 128m
+
+  # ===========================================================================
+  # 8. CADDY — TLS reverse proxy (automatic HTTPS via Let's Encrypt).
+  #    Profile: proxy. Terminates TLS for the dashboard, forwards to :3000.
+  #    Also provides a hardened public entry point with security headers,
+  #    rate limiting, and gzip compression.
+  #
+  #    Set TALON_DOMAIN in .env (e.g. talon.example.com) to enable.
+  #    For local testing without a domain, Caddy uses self-signed certs.
+  # ===========================================================================
+  caddy:
+    image: caddy:2-alpine
+    container_name: talon_caddy
+    profiles: ["proxy"]
+    environment:
+      TALON_DOMAIN: ${TALON_DOMAIN:-localhost}
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-3000}
+      TALON_CORE_PORT: 8000
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+    network_mode: host
+    <<: *sandbox-safety
+    user: "caddy:caddy"
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/", "-O", "/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      <<: *deploy-defaults
+      resources:
+        limits:
+          memory: ${CADDY_MEMORY_LIMIT:-256m}
+          cpus: "${CADDY_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: 64m
+    command: >
+      caddy run --config /etc/caddy/Caddyfile --adapter caddyfile

@@ -15,7 +15,10 @@ import type {
   RunSummary,
   StatusResponse,
   StructuredReport,
-  ToolCallRecord
+  ToolCallRecord,
+  EvidenceRecord,
+  TrafficRecord,
+  RunRecap
 } from '@/lib/api'
 
 // Component Imports
@@ -56,7 +59,10 @@ import {
   listRuns,
   resumeRun,
   streamRun,
-  triageFinding
+  triageFinding,
+  getRunEvidence,
+  getRunTraffic,
+  getRunRecap
 } from '@/lib/api'
 import type { OperatorNote, TimelineEvent } from '@/lib/api'
 import { shortId } from '@/lib/format'
@@ -567,6 +573,10 @@ const RunDetail = ({ runId }: { runId: string }) => {
   const [timeline, setTimeline] = useState<TimelineEvent[]>([])
   const [notes, setNotes] = useState<OperatorNote[]>([])
   const [noteDraft, setNoteDraft] = useState('')
+  const [evidence, setEvidence] = useState<EvidenceRecord[] | null>(null)
+  const [traffic, setTraffic] = useState<TrafficRecord[] | null>(null)
+  const [recap, setRecap] = useState<RunRecap | null>(null)
+  const [expandedEvidence, setExpandedEvidence] = useState<EvidenceRecord | null>(null)
 
   const seenToolIndexes = useRef<Set<number>>(new Set())
 
@@ -585,6 +595,17 @@ const RunDetail = ({ runId }: { runId: string }) => {
     if (mRes.status === 'fulfilled') setMethodology(mRes.value)
     if (tRes.status === 'fulfilled') setTimeline(tRes.value.timeline ?? [])
     if (nRes.status === 'fulfilled') setNotes(nRes.value.notes ?? [])
+  }, [runId])
+
+  const loadEvidenceTrafficRecap = useCallback(async () => {
+    const [eRes, tRes, rRes] = await Promise.allSettled([
+      getRunEvidence(runId),
+      getRunTraffic(runId),
+      getRunRecap(runId)
+    ])
+    if (eRes.status === 'fulfilled') setEvidence(eRes.value.items ?? [])
+    if (tRes.status === 'fulfilled') setTraffic(tRes.value.items ?? [])
+    if (rRes.status === 'fulfilled') setRecap(rRes.value)
   }, [runId])
 
   const exportBundle = async () => {
@@ -654,6 +675,7 @@ const RunDetail = ({ runId }: { runId: string }) => {
       await triageFinding(runId, id, st)
       toast.success(`Triaged ${id} → ${st}`)
       await loadFindingsReport()
+      void loadEvidenceTrafficRecap()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Triage failed')
     }
@@ -707,8 +729,9 @@ const RunDetail = ({ runId }: { runId: string }) => {
     const st = status?.status
     if (st === 'completed' || st === 'error' || status?.has_report || (status?.findings_count ?? 0) > 0) {
       void loadFindingsReport()
+      void loadEvidenceTrafficRecap()
     }
-  }, [loaded, status?.status, status?.has_report, status?.findings_count, loadFindingsReport])
+  }, [loaded, status?.status, status?.has_report, status?.findings_count, loadFindingsReport, loadEvidenceTrafficRecap])
 
   // Live stream (with polling fallback handled by streamRun)
   const currentStatus = status?.status
@@ -855,6 +878,9 @@ const RunDetail = ({ runId }: { runId: string }) => {
           <TabsTrigger value='timeline'>Timeline</TabsTrigger>
           <TabsTrigger value='notes'>Notes</TabsTrigger>
           <TabsTrigger value='report'>Report</TabsTrigger>
+          <TabsTrigger value='evidence'>Evidence</TabsTrigger>
+          <TabsTrigger value='traffic'>Traffic</TabsTrigger>
+          <TabsTrigger value='recap'>Recap</TabsTrigger>
           <TabsTrigger value='analysis'>AI Analysis</TabsTrigger>
           <TabsTrigger value='traces'>Traces</TabsTrigger>
           <TabsTrigger value='raw'>Raw</TabsTrigger>
@@ -1148,6 +1174,123 @@ const RunDetail = ({ runId }: { runId: string }) => {
           </Card>
         </TabsContent>
 
+        <TabsContent value='evidence' className='pt-4'>
+          <Card>
+            <CardHeader>
+              <CardTitle className='micro-label'>EVIDENCE STORE ({evidence?.length ?? 0})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {evidence === null ? (
+                <Skeleton className='h-48 w-full' />
+              ) : evidence.length === 0 ? (
+                <p className='micro-label py-8 text-center'>NO EVIDENCE COLLECTED</p>
+              ) : (
+                <div className='flex max-h-[32rem] flex-col gap-1 overflow-y-auto font-mono text-xs'>
+                  {evidence.map((e) => (
+                    <div
+                      key={e.index}
+                      className='border-border/50 rounded border px-3 py-2 cursor-pointer hover:border-primary/30 transition-colors'
+                      onClick={() => setExpandedEvidence(e)}
+                    >
+                      <div className='text-muted-foreground flex justify-between text-[10px]'>
+                        <span>e{String(e.index).padStart(3, '0')} · {e.tool}</span>
+                        <span>{e.size} bytes</span>
+                      </div>
+                      <p className='mt-1 truncate whitespace-pre-wrap text-foreground/80'>{e.summary}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value='traffic' className='pt-4'>
+          <Card>
+            <CardHeader>
+              <CardTitle className='micro-label'>HTTP TRAFFIC ({traffic?.length ?? 0})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {traffic === null ? (
+                <Skeleton className='h-48 w-full' />
+              ) : traffic.length === 0 ? (
+                <p className='micro-label py-8 text-center'>NO HTTP TRAFFIC RECORDED</p>
+              ) : (
+                <div className='flex max-h-[32rem] flex-col gap-1 overflow-y-auto font-mono text-xs'>
+                  {traffic.map((t) => (
+                    <div key={t.seq} className='border-border/50 rounded border px-3 py-2'>
+                      <div className='text-muted-foreground flex justify-between text-[10px]'>
+                        <span>#{t.seq} · {t.tool}</span>
+                      </div>
+                      <pre className='mt-1 whitespace-pre-wrap text-foreground/60'>{t.output_snippet}</pre>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value='recap' className='pt-4'>
+          <Card>
+            <CardHeader>
+              <CardTitle className='micro-label'>RUN RECAP</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!recap ? (
+                <Skeleton className='h-48 w-full' />
+              ) : (
+                <div className='space-y-4'>
+                  <div className='grid grid-cols-3 gap-4 font-mono text-sm'>
+                    <div>
+                      <div className='micro-label text-[10px]'>TARGET</div>
+                      <div className='text-foreground/80'>{recap.target}</div>
+                    </div>
+                    <div>
+                      <div className='micro-label text-[10px]'>DURATION</div>
+                      <div className='text-foreground/80'>{recap.duration}</div>
+                    </div>
+                    <div>
+                      <div className='micro-label text-[10px]'>FINDINGS</div>
+                      <div className='text-foreground/80'>{recap.finding_count} ({recap.verified_count} verified)</div>
+                    </div>
+                  </div>
+
+                  {recap.solve_path.length > 0 && (
+                    <div>
+                      <div className='micro-label mb-2 text-[10px]'>SOLVE PATH</div>
+                      <div className='max-h-64 space-y-1 overflow-y-auto font-mono text-xs'>
+                        {recap.solve_path.slice(0, 30).map((s) => (
+                          <div key={s.step} className='text-muted-foreground border-l border-white/10 pl-2'>
+                            <span className='text-foreground/60'>{s.step}.</span> {s.action} → {s.result}
+                          </div>
+                        ))}
+                        {recap.solve_path.length > 30 && (
+                          <p className='micro-label pt-1 text-[10px]'>…{recap.solve_path.length - 30} more steps</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {recap.reproduction.length > 0 && (
+                    <div>
+                      <div className='micro-label mb-2 text-[10px]'>REPRODUCTION</div>
+                      <div className='space-y-2'>
+                        {recap.reproduction.map((r, i) => (
+                          <div key={i}>
+                            <div className='text-foreground/80 mb-1 font-mono text-xs font-semibold'>{r.label}</div>
+                            <pre className='bg-black/60 rounded-sm p-2 font-mono text-xs text-cyan-400/80 overflow-x-auto'>{r.command}</pre>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value='analysis' className='pt-4'>
           <Card className='hud-corners'>
             <CardHeader>
@@ -1246,6 +1389,25 @@ const RunDetail = ({ runId }: { runId: string }) => {
           </Collapsible>
         </TabsContent>
       </Tabs>
+
+      {/* Evidence viewer modal */}
+      <Dialog open={!!expandedEvidence} onOpenChange={() => setExpandedEvidence(null)}>
+        <DialogContent className='max-w-3xl max-h-[80vh] overflow-hidden'>
+          <DialogHeader>
+            <DialogTitle className='font-mono text-sm tracking-wider uppercase'>
+              Evidence e{String(expandedEvidence?.index ?? 0).padStart(3, '0')} · {expandedEvidence?.tool}
+            </DialogTitle>
+            <DialogDescription className='font-mono text-xs'>
+              {expandedEvidence?.size ?? 0} bytes
+            </DialogDescription>
+          </DialogHeader>
+          <div className='max-h-[55vh] overflow-auto rounded-sm bg-black/60 p-4'>
+            <pre className='whitespace-pre-wrap font-mono text-xs text-foreground/80'>
+              {expandedEvidence?.summary || 'No content'}
+            </pre>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

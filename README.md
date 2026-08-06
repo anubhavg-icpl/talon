@@ -34,11 +34,13 @@ authorization** to test.
 11. [Tools (Arsenal / Strike / Forge)](#tools-arsenal--strike--forge)
 12. [Development](#development)
 13. [Troubleshooting](#troubleshooting)
-14. [Security & responsible use](#security--responsible-use)
-15. [License](#license)
+14. [Production deployment](#production-deployment)
+15. [Security & responsible use](#security--responsible-use)
+16. [License](#license)
 
 **Long-lived product baseline (aligned E2E — routes, theme, WebGL, verify):**
-[docs/PRODUCT.md](docs/PRODUCT.md) · feature waves: [docs/FEATURE_MAP.md](docs/FEATURE_MAP.md)
+[docs/PRODUCT.md](docs/PRODUCT.md) · feature waves: [docs/FEATURE_MAP.md](docs/FEATURE_MAP.md) ·
+architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · prod deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ---
 
@@ -83,7 +85,7 @@ before the scan runs (CLI: `talon run approve|reject|edit`).
 | **rabbitmq** | Broker for relay |
 | **postgres** | Run history + dashboard users/sessions (auth) + runtime config |
 | **redis** | Cache (health probes, AI analysis, sessions) — core runs uncached without it |
-| **dashboard** | Web ops console (`:3100`) — Next.js UI over the core API |
+| **dashboard** | Web ops console (`:3000`) — Next.js UI over the core API |
 | **vuln-target** | Lab only (`--profile vuln`) — real vsftpd 2.3.4 by default |
 
 Core and relay spawn arsenal + strike as **local MCP stdio children**
@@ -242,7 +244,7 @@ starfield across every page).
 
 ```bash
 docker compose up -d --build dashboard   # or just: docker compose up -d --build
-# → http://localhost:3100 (or your DASHBOARD_PORT)
+# → http://localhost:3000 (or your DASHBOARD_PORT)
 ```
 
 Login with `TALON_ADMIN_USERNAME` / `TALON_ADMIN_PASSWORD` from `.env`
@@ -269,7 +271,7 @@ route (`/api/talon/*`) forwards to `TALON_CORE_URL` (default
 streams use **WebSocket first**, degrading to SSE then 3s polling. The
 **AI ANALYSIS** tab on a run calls `POST /analyze/{run_id}`, which reuses the
 LLM already configured on talon-core (no extra keys needed). Port override:
-`DASHBOARD_PORT=3100 docker compose up -d dashboard`.
+`DASHBOARD_PORT=3000 docker compose up -d dashboard`.
 
 Local dev without Docker:
 
@@ -668,6 +670,33 @@ One compose file; switch lab mode with **`VULN_TARGET=real|mimic`**.
 **Session list note:** empty `session.list` decodes fine; non-empty maps use
 **integer keys**. Older clients that only decoded `map[string]any` always
 missed sessions even when MSF had shells.
+
+---
+
+## Production deployment
+
+The default `docker compose up` is tuned for a **single-host lab / development**
+environment (host networking, `sslmode=disable`, CORS `*`, no TLS). For a
+production deployment, read **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** and
+**[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** in full. Key steps:
+
+1. **Secrets** — inject via Docker secrets or Vault, not plaintext `.env`.
+   Required: `MSF_PASSWORD`, `RABBITMQ_PASSWORD`, `TALON_PG_PASSWORD`,
+   `TALON_ADMIN_PASSWORD`.
+2. **TLS** — put Caddy or Traefik in front of the dashboard (port 3000) for
+   automatic HTTPS. Never expose talon-core (port 8000) directly.
+3. **DB encryption** — change `sslmode=disable` to `sslmode=require` on
+   `TALON_DATABASE_URL`.
+4. **Backups** — `pg_dump` daily; copy off-host. See
+   [DEPLOYMENT.md §4.3](docs/DEPLOYMENT.md).
+5. **Scale relay workers** — `docker compose up -d --scale talon-relay=N` for
+   queue-driven throughput.
+6. **Docker socket security** — use rootless Docker or a socket proxy; the
+   default mount grants host-level access.
+7. **Resource limits** — already configured in `docker-compose.yml` (memory +
+   CPU caps, log rotation, healthchecks on every service).
+
+**Single-host minimum**: 16 GB RAM for the core stack (without local LLM).
 
 ---
 

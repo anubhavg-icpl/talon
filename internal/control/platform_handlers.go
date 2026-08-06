@@ -361,4 +361,25 @@ paths:
   /openapi.yaml:
     get:
       summary: This document
+  /runs/{run_id}/evidence:
+    get:
+      summary: Evidence records for a run
+  /runs/{run_id}/traffic:
+    get:
+      summary: HTTP traffic records for a run
+  /runs/{run_id}/recap:
+    get:
+      summary: Deterministic run recap (solve path, evidence, reproduction)
+  /targets/{addr}/state:
+    get:
+      summary: Per-target pentest state
+  /targets/{addr}/resume-plan:
+    get:
+      summary: Deterministic resume plan for a target
+  /crypto/operations:
+    get:
+      summary: List supported crypto operations
+  /crypto/decode:
+    post:
+      summary: Execute a crypto operation (encode/decode/hash/encrypt/decrypt)
 `

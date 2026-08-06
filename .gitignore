@@ -1,4 +1,5 @@
 .env
+*.bak
 /msf-data
 /msf_payloads
 /rabbitmq-data
@@ -9,4 +10,6 @@
 .claude*
 arsenal-engine/__pycache__/*
 /web/node_modules
-/web/.next
+/web/.nextbin/
+coverage.out
+coverage.html

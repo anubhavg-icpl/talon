@@ -1085,3 +1085,219 @@ export const streamLLMAssist = (
   return () => ac.abort()
 }
 
+
+// ─── Pentest agent: evidence, target state, traffic, recap, crypto ───
+
+export type EvidenceRecord = {
+  index: number
+  tool: string
+  summary: string
+  size: number
+}
+
+export type RunEvidenceResponse = {
+  run_id: string
+  total: number
+  items: EvidenceRecord[]
+}
+
+export type TrafficRecord = {
+  seq: number
+  tool: string
+  output_snippet: string
+}
+
+export type RunTrafficResponse = {
+  run_id: string
+  total: number
+  items: TrafficRecord[]
+}
+
+export type RecapStep = {
+  step: number
+  action: string
+  result: string
+  timestamp: string
+}
+
+export type RecapEvidence = {
+  id: string
+  tool: string
+  summary: string
+  relevant: boolean
+}
+
+export type RecapRepro = {
+  label: string
+  command: string
+}
+
+export type RunRecap = {
+  target: string
+  run_id: string
+  start_time: string
+  end_time: string
+  duration: string
+  solve_path: RecapStep[]
+  key_evidence: RecapEvidence[]
+  reproduction: RecapRepro[]
+  finding_count: number
+  verified_count: number
+}
+
+export type TargetFinding = {
+  id: string
+  title: string
+  severity: string
+  status: string
+  evidence_ids?: string[]
+  created_at: string
+}
+
+export type ReconDimension = {
+  name: string
+  status: string
+  summary: string
+  updated_at: string
+}
+
+export type TargetState = {
+  target: string
+  slug: string
+  findings: TargetFinding[]
+  recon_dimensions: ReconDimension[]
+  failed_vectors: Array<{ vector: string; target: string; reason: string; tried_at: string }>
+  attack_path: Array<{ step: number; action: string; result: string; timestamp: string }>
+  runtime: { os?: string; services?: string; credentials?: string; notes?: string }
+  schema_version: number
+  updated_at: string
+  created_at: string
+}
+
+export type PlanStep = {
+  priority: number
+  category: string
+  action: string
+  dimension?: string
+  confidence: number
+}
+
+export type ResumePlanResponse = {
+  target: string
+  steps: PlanStep[]
+  total: number
+  summary: string
+}
+
+export type CryptoResult = {
+  success: boolean
+  operation?: string
+  result?: string
+  error?: string
+}
+
+export const getRunEvidence = (runId: string) =>
+  request<RunEvidenceResponse>(`/runs/${runId}/evidence`)
+
+export const getRunTraffic = (runId: string) =>
+  request<RunTrafficResponse>(`/runs/${runId}/traffic`)
+
+export const getRunRecap = (runId: string, format?: 'json' | 'markdown') =>
+  request<RunRecap>(`/runs/${runId}/recap${format === 'markdown' ? '?format=markdown' : ''}`)
+
+export const getRunRecapMarkdown = (runId: string) =>
+  request<string>(`/runs/${runId}/recap?format=markdown`)
+
+export const getTargetState = (addr: string) =>
+  request<TargetState>(`/targets/${encodeURIComponent(addr)}/state`)
+
+export const getTargetResumePlan = (addr: string) =>
+  request<ResumePlanResponse>(`/targets/${encodeURIComponent(addr)}/resume-plan`)
+
+export const getCryptoOperations = () =>
+  request<{ operations: string[] }>('/crypto/operations')
+
+export const executeCryptoDecode = (body: {
+  operation: string
+  input: string
+  key?: string
+  iv?: string
+  shift?: number
+}) =>
+  request<CryptoResult>('/crypto/decode', { method: 'POST', body: JSON.stringify(body) })
+
+// ─── SOC analysis: triage, investigation, tuning pipeline ───
+
+export type DetectionSkillType = 'triage' | 'investigation' | 'tuning'
+
+export type DetectionSkill = {
+  id: string
+  name: string
+  category: string
+  stage: string
+  path?: string
+}
+
+export type DetectionVerdict =
+  | 'escalate' | 'dismiss'
+  | 'malicious' | 'suspicious' | 'inconclusive' | 'benign'
+
+export type TriageCheck = {
+  name: string
+  outcome: 'RISK' | 'CLEAR'
+  label?: string
+  detail?: string
+}
+
+export type InvestigationSignal = {
+  name: string
+  fired: boolean
+  detail?: string
+}
+
+export type DetectionCase = {
+  id: string
+  alert_type: string
+  title: string
+  entity: string
+  entity_type?: string
+  severity: string
+  source_data?: Record<string, unknown>
+  triage_state?: {
+    verdict: DetectionVerdict
+    risk_count: number
+    checks: TriageCheck[]
+    evidence?: string
+    reasoning?: string
+    skill_id?: string
+  }
+  investigation_state?: {
+    verdict: DetectionVerdict
+    signals: InvestigationSignal[]
+    evidence?: string
+    reasoning?: string
+    recommended_actions?: string[]
+    skill_id?: string
+  }
+  tuning_state?: {
+    action: string
+    target?: string
+    value?: string
+    rationale?: string
+    skill_id?: string
+  }
+}
+
+export const getDetectionSkills = (opts?: { q?: string; type?: DetectionSkillType }) => {
+  const params = new URLSearchParams()
+  if (opts?.q) params.set('q', opts.q)
+  if (opts?.type) params.set('category', opts.type)
+  const qs = params.toString()
+  return request<{ total: number; skills: DetectionSkill[] }>(`/detection/skills${qs ? '?' + qs : ''}`)
+}
+
+export const getDetectionSkillsByType = (type: DetectionSkillType) =>
+  request<{ type: string; total: number; skills: DetectionSkill[] }>(`/detection/skills/${type}`)
+
+export const getDetectionCases = () =>
+  request<{ cases: DetectionCase[] }>(`/detection/cases`)

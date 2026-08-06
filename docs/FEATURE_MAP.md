@@ -163,3 +163,72 @@ The following need **separate product / infra decisions** — no thin stubs:
 
 **Rule:** keep `go test ./...` and `web` `next build` green; never commit
 unfinished control-plane files that reference missing Server fields.
+
+---
+
+## Pentest agent port (wave 2)
+
+Source: Python pentest agent (Typer+FastAPI, v0.3.7)
+Target: Talon `internal/core/` Go packages + `skills/vulnclaw/` knowledge tree.
+
+### What was ported
+
+| Pentest agent feature | Talon file | Wave | Notes |
+|-----------------|-----------|------|-------|
+| Skill catalog (7 core + 50 specialized + 2 warstories) | `skills/vulnclaw/*.md` | 1 | 59 skill files, Chinese translated to English (~90%) |
+| Evidence store (append-only, dedup, preview) | `internal/core/evidence.go` | 2 | EvidenceStore + Record/Get/List/Search + bounded previews |
+| Evidence agent tools | `internal/core/evidence_tools.go` | 2 | `evidence_list`, `evidence_view`, `evidence_search` |
+| Anti-hallucination gate + correction layer | `internal/core/correction.go` | 3 | Duplicate detection, degraded health, stall detection, completion gate |
+| Crypto toolkit (29 operations) | `internal/core/crypto_tools.go` | 4 | base64/32/58, hex, URL, HTML, Unicode, ROT13/Caesar/Morse, MD5/SHA/AES/DES, JWT, auto_decode |
+| HTTP probe batch | `internal/core/probe_tools.go` | 4 | `http_probe_batch` — multiple request variants in one call |
+| Web vulnerability tools | `internal/core/probe_tools.go` | 4 | `web_headers_audit`, `js_endpoint_extract` |
+| Target-state persistence | `internal/core/targetstate.go` | 5 | Per-target store, snapshots, deterministic resume-plan builder |
+| Traffic evidence store | `internal/core/traffic.go` | 6 | Per-run HTTP traffic recording, search, JSONL persist |
+| Deterministic recap report | `internal/core/recap.go` | 7 | LLM-free run recap with solve path, evidence, reproduction |
+| Headless CI presets | `internal/core/recap.go` | 7 | `quick`/`standard`/`deep` presets with exit codes |
+
+### Explicitly not ported (Talon already has equivalent or out of scope)
+
+| Pentest agent feature | Reason |
+|-----------------|--------|
+| i18n/zh-default | Talon is English-only |
+| ChatGPT OAuth bridge | Out of scope |
+| Original FastAPI web + React frontend | Talon has Next.js web |
+| Typer CLI/TUI | Talon has Go CLI |
+| ChromaDB KB | Superseded by Talon's 7.7k skill catalog |
+| Team/parallel-agent orchestration | Talon hub-spoke delegates cover it |
+| MCP registry/lifecycle | Talon internal/mcpclient covers it |
+| mitmproxy capture backend | Deferred (traffic store records but doesn't capture) |
+
+---
+
+## SOC analysis port (wave 3)
+
+Source: SOC detection skill library (50 skills)
+Target: Talon `internal/core/` + `skills/detection/` + `internal/control/` + web UI.
+
+### What was ported
+
+| SOC analysis feature | Talon file | Notes |
+|-------------------------|-----------|-------|
+| 50 skills (triage/investigation/tuning) | `skills/detection/{triage,investigation,tuning}/*.md` | Talon-native format with `# stage:` / `# category:` headers |
+| Triage engine (check-based, majority rule) | `internal/core/detection.go` | `ApplyTriageDecision()` — escalate/dismiss from N checks |
+| Investigation engine (multi-signal verdict) | `internal/core/detection.go` | `ApplyInvestigationVerdict()` — malicious/suspicious/benign from A/B/C/D signals |
+| Tuning engine (propose detection changes) | `internal/core/detection.go` | `TuningState` — exclude/include/modify/fork/none |
+| Pipeline flow (triage→investigation→tuning) | `internal/core/detection.go` | `DetermineNextStage()` routes based on verdict |
+| Case management | `internal/core/detection.go` | `CaseStore` — create, get, list, update triage/investigation/tuning |
+| Agent tools (5 tools) | `internal/core/detection_tools.go` | `detection_create_case`, `detection_triage`, `detection_investigate`, `detection_tune`, `detection_list_cases` |
+| Control plane routes (3 routes) | `internal/control/detection_handlers.go` | `GET /detection/cases`, `GET /detection/skills`, `GET /detection/skills/{type}` |
+| Alert Triage UI page | `web/src/views/detection/DetectionView.tsx` | Browse 50 playbooks by type (triage/investigation/tuning) with detail panel |
+| API client | `web/src/lib/api.ts` | `getDetectionSkills`, `getDetectionSkillsByType`, `getDetectionCases` |
+
+### Pipeline architecture
+
+```
+Alert → detection_create_case
+  → detection_triage (triage skill, N checks → majority verdict)
+    ├── escalate → detection_investigate (investigation skill, signals → verdict)
+    │   ├── malicious/suspicious → detection_tune (propose detection change)
+    │   └── benign/inconclusive → done
+    └── dismiss → detection_tune (review false positive for tuning)
+```

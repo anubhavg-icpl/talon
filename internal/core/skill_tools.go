@@ -187,10 +187,17 @@ func handleSkillGet(args map[string]any, tr *tracker) (string, bool) {
 	return string(raw), false
 }
 
-// withAgentTools adds findings + skill tools to a subagent tool list.
+// withAgentTools adds findings + skill + evidence + crypto + probe + detection + traffic tools to a subagent tool list.
+// CorrectionLayer hooks are applied transparently inside hybridExec on every tool call.
 func withAgentTools(base []llm.ToolSpec) []llm.ToolSpec {
 	out := append([]llm.ToolSpec{}, base...)
 	out = append(out, findingToolSpecs()...)
 	out = append(out, skillToolSpecs()...)
+	out = append(out, evidenceToolSpecs()...)
+	out = append(out, cryptoToolSpec())
+	out = append(out, httpProbeBatchToolSpec())
+	out = append(out, webVulnToolSpecs()...)
+	out = append(out, detectionToolSpecs()...)
+	out = append(out, trafficToolSpecs()...)
 	return out
 }
