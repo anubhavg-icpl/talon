@@ -120,6 +120,20 @@ func (o *OpenAI) Converse(ctx context.Context, systemPrompt string, messages []M
 		oaiMsgs = append(oaiMsgs, oaiMessage{Role: "system", Content: systemPrompt})
 	}
 	for _, m := range messages {
+		// OpenAI requires one role:"tool" message per tool_call_id. A single
+		// llm.Message with RoleTool may carry multiple ToolResults (parallel /
+		// sequential tool calls resolved in one turn), so flatten them inline
+		// rather than relying on toOAIMessage (which returns one message).
+		if m.Role == RoleTool {
+			for _, tr := range m.ToolResults {
+				oaiMsgs = append(oaiMsgs, oaiMessage{
+					Role:       "tool",
+					ToolCallID: tr.ToolCallID,
+					Content:    tr.Content,
+				})
+			}
+			continue
+		}
 		oaiMsgs = append(oaiMsgs, toOAIMessage(m))
 	}
 
@@ -223,16 +237,13 @@ func toOAIMessage(m Message) oaiMessage {
 		}
 		return out
 	case RoleTool:
-		// OpenAI links a tool result back to its call by tool_call_id; emit
-		// one message per result so the linkage is unambiguous.
-		var last oaiMessage
-		for _, tr := range m.ToolResults {
-			last = oaiMessage{Role: "tool", ToolCallID: tr.ToolCallID, Content: tr.Content}
+		// Fallback: callers normally flatten multi-result tool messages in
+		// Converse before reaching here. If we do get called directly, return
+		// the first result rather than silently dropping all but the last.
+		if len(m.ToolResults) > 0 {
+			return oaiMessage{Role: "tool", ToolCallID: m.ToolResults[0].ToolCallID, Content: m.ToolResults[0].Content}
 		}
-		// ponytail: orchestrator feeds one result per turn, so returning the
-		// last is correct; if multi-result turns appear, switch to appending
-		// all and have the caller send one message per result.
-		return last
+		return oaiMessage{Role: "tool", Content: ""}
 	default: // user
 		return oaiMessage{Role: "user", Content: m.Text}
 	}
