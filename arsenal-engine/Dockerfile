@@ -41,6 +41,14 @@ ARG GAU_VERSION=2.2.4
 ARG FFUF_VERSION=2.1.0
 ARG GOBUSTER_VERSION=3.9.0
 
+# Pinned versions for small Go utilities installed via `go install`.
+# Pinned instead of @latest to prevent supply-chain drift across builds.
+ARG WAYBACKURLS_VERSION=v0.0.0-20240321200933-9a423f1a294b
+ARG HAKRAWLER_VERSION=v1.0.0
+ARG ANEW_VERSION=v0.1.0
+ARG QSREPLACE_VERSION=v0.0.1
+ARG JAELES_VERSION=v0.12.0
+
 ENV GOPATH=/root/go \
     GOBIN=/root/go/bin \
     PATH="/root/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
@@ -241,11 +249,11 @@ RUN set -eux; \
       tar -xzf /tmp/gobuster.tar.gz -C /usr/local/bin gobuster && rm -f /tmp/gobuster.tar.gz || echo "WARN: gobuster install failed"; \
     \
     echo "=== small Go utilities (go install — fast, tiny deps) ==="; \
-    go install github.com/tomnomnom/waybackurls@latest || echo "WARN: waybackurls failed"; \
-    go install github.com/hakluke/hakrawler@latest || echo "WARN: hakrawler failed"; \
-    go install github.com/tomnomnom/anew@latest || echo "WARN: anew failed"; \
-    go install github.com/tomnomnom/qsreplace@latest || echo "WARN: qsreplace failed"; \
-    go install github.com/jaeles-project/jaeles@latest || echo "WARN: jaeles failed"; \
+    go install "github.com/tomnomnom/waybackurls@${WAYBACKURLS_VERSION}" || echo "WARN: waybackurls failed"; \
+    go install "github.com/hakluke/hakrawler@${HAKRAWLER_VERSION}" || echo "WARN: hakrawler failed"; \
+    go install "github.com/tomnomnom/anew@${ANEW_VERSION}" || echo "WARN: anew failed"; \
+    go install "github.com/tomnomnom/qsreplace@${QSREPLACE_VERSION}" || echo "WARN: qsreplace failed"; \
+    go install "github.com/jaeles-project/jaeles@${JAELES_VERSION}" || echo "WARN: jaeles failed"; \
     \
     echo "=== binary install complete ==="; \
     chmod +x /usr/local/bin/httpx /usr/local/bin/katana /usr/local/bin/nuclei \

@@ -2,7 +2,7 @@ production:
   adapter: postgresql
   database: msf
   username: msf
-  password: msf_db_password
+  password: <%= ENV["MSF_DB_PASSWORD"] || "change_me_in_production" %>
   host: msf_postgres
   port: 5432
   pool: 75
