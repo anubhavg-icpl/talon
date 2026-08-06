@@ -297,6 +297,9 @@ const SkeletonDemo = ({
       ;(ground.material as THREE.Material).dispose()
       ring.geometry.dispose()
       ;(ring.material as THREE.Material).dispose()
+      grid.geometry.dispose()
+      ;(grid.material as THREE.Material).dispose()
+      scene.remove(grid)
       renderer.dispose()
     }
   }, [modelUrl])

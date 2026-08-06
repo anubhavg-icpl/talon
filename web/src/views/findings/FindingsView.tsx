@@ -31,12 +31,20 @@ const FindingsView = () => {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    let stale = false
     getGlobalFindings({ severity: filter || undefined, limit: 100 })
       .then(res => {
+        if (stale) return
         setItems(res.findings ?? [])
         setError(null)
       })
-      .catch(err => setError(err instanceof Error ? err.message : String(err)))
+      .catch(err => {
+        if (stale) return
+        setError(err instanceof Error ? err.message : String(err))
+      })
+    return () => {
+      stale = true
+    }
   }, [filter])
 
   return (

@@ -695,7 +695,10 @@ const RunDetail = ({ runId }: { runId: string }) => {
       ([statusRes, toolsRes, runsRes, tracesRes]) => {
         if (!mounted) return
 
-        if (statusRes.status === 'fulfilled') setStatus(statusRes.value)
+        if (statusRes.status === 'fulfilled') {
+          setStatus(statusRes.value)
+          statusRef.current = statusRes.value.status
+        }
         else setLoadError(statusRes.reason instanceof Error ? statusRes.reason.message : String(statusRes.reason))
 
         if (toolsRes.status === 'fulfilled') {
@@ -735,16 +738,18 @@ const RunDetail = ({ runId }: { runId: string }) => {
 
   // Live stream (with polling fallback handled by streamRun)
   const currentStatus = status?.status
+  const statusRef = useRef(currentStatus)
 
   useEffect(() => {
     if (!loaded) return
-    if (currentStatus === 'not_found') return
-    if (currentStatus && !isActive(currentStatus)) return
+    if (statusRef.current === 'not_found') return
+    if (statusRef.current && !isActive(statusRef.current)) return
 
     const stop = streamRun(runId, {
       onTool: ingestTool,
       onStatus: s => {
         setStatus(prev => ({ ...prev, ...s }))
+        if (s.status) statusRef.current = s.status
         if (s.status === 'completed' || s.status === 'error') {
           void loadFindingsReport()
         }
@@ -771,7 +776,7 @@ const RunDetail = ({ runId }: { runId: string }) => {
     })
 
     return stop
-  }, [loaded, runId, currentStatus, ingestTool, loadFindingsReport])
+  }, [loaded, runId, ingestTool, loadFindingsReport])
 
   const handleDecision = useCallback(
     async (decision: 'approve' | 'reject' | 'edit', editedArgs?: Record<string, unknown>) => {
@@ -781,6 +786,7 @@ const RunDetail = ({ runId }: { runId: string }) => {
         await resumeRun(runId, { decision, ...(editedArgs ? { edited_args: editedArgs } : {}) })
         toast.success(`Decision sent: ${decision.toUpperCase()}`)
         setStatus(prev => (prev ? { ...prev, status: 'running', interrupt: null } : prev))
+        statusRef.current = 'running'
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Failed to send decision')
       } finally {

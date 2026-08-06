@@ -233,10 +233,14 @@ const OpsHub = () => {
                 onClick={async () => {
                   if (!tgtAddr.trim()) return
                   const isURL = tgtAddr.includes('://')
-                  await upsertTarget(isURL ? { url: tgtAddr.trim(), address: '' } : { address: tgtAddr.trim() })
-                  setTgtAddr('')
-                  await reload()
-                  toast.success('Target saved')
+                  try {
+                    await upsertTarget(isURL ? { url: tgtAddr.trim(), address: '' } : { address: tgtAddr.trim() })
+                    setTgtAddr('')
+                    await reload()
+                    toast.success('Target saved')
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : 'save failed')
+                  }
                 }}
               >
                 Add
@@ -250,7 +254,7 @@ const OpsHub = () => {
                   <Link href={`/runs/new?ip=${encodeURIComponent(t.address || t.url || '')}`} className='text-primary'>
                     run
                   </Link>
-                  <button type='button' className='text-destructive' onClick={() => deleteTarget(t.id).then(reload)}>
+                  <button type='button' className='text-destructive' onClick={() => deleteTarget(t.id).then(reload).catch(e => toast.error(e instanceof Error ? e.message : 'delete failed'))}>
                     ×
                   </button>
                 </div>
@@ -272,17 +276,21 @@ const OpsHub = () => {
             <Button
               size='sm'
               onClick={async () => {
-                await upsertSchedule({
-                  name: schName,
-                  target: schTarget,
-                  interval: schInterval,
-                  enabled: true,
-                  playbook_id: 'full-validation'
-                })
-                setSchName('')
-                setSchTarget('')
-                await reload()
-                toast.success('Schedule saved')
+                try {
+                  await upsertSchedule({
+                    name: schName,
+                    target: schTarget,
+                    interval: schInterval,
+                    enabled: true,
+                    playbook_id: 'full-validation'
+                  })
+                  setSchName('')
+                  setSchTarget('')
+                  await reload()
+                  toast.success('Schedule saved')
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : 'save failed')
+                }
               }}
             >
               Add schedule
@@ -294,7 +302,7 @@ const OpsHub = () => {
                     {s.name} → {s.target} every {s.interval}
                     {s.enabled ? '' : ' (off)'}
                   </span>
-                  <button type='button' className='text-destructive' onClick={() => deleteSchedule(s.id).then(reload)}>
+                  <button type='button' className='text-destructive' onClick={() => deleteSchedule(s.id).then(reload).catch(e => toast.error(e instanceof Error ? e.message : 'delete failed'))}>
                     ×
                   </button>
                 </div>
@@ -338,8 +346,12 @@ const OpsHub = () => {
                 <Button
                   size='sm'
                   onClick={async () => {
-                    setNotify(await putNotify(notify))
-                    toast.success('Notify saved')
+                    try {
+                      setNotify(await putNotify(notify))
+                      toast.success('Notify saved')
+                    } catch (e) {
+                      toast.error(e instanceof Error ? e.message : 'save failed')
+                    }
                   }}
                 >
                   Save webhooks
@@ -368,12 +380,16 @@ const OpsHub = () => {
             <Button
               size='sm'
               onClick={async () => {
-                await addCredential({ name: credName, username: credUser, secret: credSecret })
-                setCredName('')
-                setCredUser('')
-                setCredSecret('')
-                await reload()
-                toast.success('Credential stored')
+                try {
+                  await addCredential({ name: credName, username: credUser, secret: credSecret })
+                  setCredName('')
+                  setCredUser('')
+                  setCredSecret('')
+                  await reload()
+                  toast.success('Credential stored')
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : 'save failed')
+                }
               }}
             >
               Add credential
@@ -384,7 +400,7 @@ const OpsHub = () => {
                   <span className='flex-1'>
                     {c.name} {c.username && `(${c.username})`}
                   </span>
-                  <button type='button' className='text-destructive' onClick={() => deleteCredential(c.id).then(reload)}>
+                  <button type='button' className='text-destructive' onClick={() => deleteCredential(c.id).then(reload).catch(e => toast.error(e instanceof Error ? e.message : 'delete failed'))}>
                     ×
                   </button>
                 </div>

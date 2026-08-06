@@ -7,7 +7,7 @@ import type { NextRequest } from 'next/server'
  * and static assets requires the talon_session cookie (set by talon-core
  * through the /api/talon proxy). Without it → /login.
  */
-export function proxy(req: NextRequest) {
+export function middleware(req: NextRequest) {
   const token = req.cookies.get('talon_session')?.value
 
   if (!token) {

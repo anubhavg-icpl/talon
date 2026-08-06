@@ -49,7 +49,13 @@ const Starfield = ({ className, count = 700, opacity = 0.45, speed = 0.00035 }: 
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 120)
     camera.position.z = 1
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true })
+    let renderer: THREE.WebGLRenderer
+    try {
+      if (!(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))) return
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true })
+    } catch {
+      return
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75))
     renderer.setClearColor(0x000000, 0)
 
