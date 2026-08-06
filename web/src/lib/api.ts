@@ -1301,3 +1301,474 @@ export const getDetectionSkillsByType = (type: DetectionSkillType) =>
 
 export const getDetectionCases = () =>
   request<{ cases: DetectionCase[] }>(`/detection/cases`)
+
+// ===========================================================================
+// CF-derived features: VFS, Approvals, Gatekeepers, Blueprints, Audit,
+// MCP Gateway, and Sharing/Engagements.
+// Routes registered in internal/control/cf_handlers.go (RegisterCFRoutes).
+// ===========================================================================
+
+// ─── VFS — virtual filesystem (internal/vfs) ────────────────────────────────
+
+/** Entry.type values mirror vfs.NodeType. */
+export type VFSNodeType = 'file' | 'dir' | 'symlink'
+
+/** Matches vfs.Entry (Go json tags). */
+export type VFSEntry = {
+  inode: number
+  name: string
+  type: VFSNodeType
+  mode: number
+  size: number
+  mtime: string // RFC3339
+  rev: number
+  target?: string // symlinks
+  content?: string // small files on read
+}
+
+/** GET /vfs?dir=PATH — list directory entries. */
+export const listVFS = (dir?: string) =>
+  request<VFSEntry[] | null>(`/vfs${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`)
+
+/** POST /vfs/file {path, content} — write (or overwrite) a file. */
+export const writeVFSFile = (path: string, content: string) =>
+  request<{ status: string; path: string }>('/vfs/file', {
+    method: 'POST',
+    body: JSON.stringify({ path, content })
+  })
+
+/**
+ * GET /vfs/file?path=PATH — read a file's bytes. Unlike the other VFS routes,
+ * the backend answers with raw bytes (Content-Type: application/octet-stream),
+ * so this bypasses the JSON `request` wrapper and resolves to text.
+ */
+export const readVFSFile = async (path: string): Promise<string> => {
+  const res = await fetch(`${BASE}/vfs/file?path=${encodeURIComponent(path)}`, { cache: 'no-store' })
+
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.href = '/login'
+    }
+    const text = await res.text().catch(() => '')
+    throw new Error(`talon-core ${res.status}: ${text || res.statusText}`)
+  }
+
+  return res.text()
+}
+
+/** DELETE /vfs/file?path=PATH — remove a file or directory recursively. */
+export const deleteVFSFile = (path: string) =>
+  request<{ status: string }>(`/vfs/file?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
+
+/** POST /vfs/mkdir {path} — create a directory (idempotent, recursive). */
+export const mkdirVFS = (path: string) =>
+  request<{ status: string }>('/vfs/mkdir', { method: 'POST', body: JSON.stringify({ path }) })
+
+/** GET /vfs/stat?path=PATH — stat a single entry. */
+export const statVFS = (path: string) =>
+  request<VFSEntry>(`/vfs/stat?path=${encodeURIComponent(path)}`)
+
+// ─── Approvals — human-in-the-loop action gating (internal/approval) ─────────
+
+/** approval.ActionState lifecycle states. */
+export type ApprovalActionState = 'pending' | 'applying' | 'applied' | 'rejected' | 'failed' | 'unknown'
+
+/** approval.RiskLevel. */
+export type ApprovalRiskLevel = 'low' | 'medium' | 'high' | 'critical'
+
+/** Matches approval.Action (Go json tags). */
+export type ApprovalAction = {
+  id: string
+  run_id: string
+  tool_name: string
+  args: Record<string, unknown> | string // json.RawMessage
+  state: ApprovalActionState
+  risk_level: ApprovalRiskLevel
+  summary: string
+  result?: unknown // json.RawMessage, omitempty
+  created_at: string // RFC3339
+  resolved_at?: string // *time.Time, omitempty
+  claimed_at?: string // *time.Time, omitempty
+}
+
+/** POST /approvals — create a new approval-gated action. */
+export const createApproval = (action: Partial<ApprovalAction> & { run_id: string; tool_name: string }) =>
+  request<ApprovalAction>('/approvals', { method: 'POST', body: JSON.stringify(action) })
+
+/** GET /approvals?run_id=X — list all actions for a run. */
+export const listApprovals = (runId: string) =>
+  request<ApprovalAction[] | null>(`/approvals?run_id=${encodeURIComponent(runId)}`)
+
+/** GET /approvals/pending?run_id=X — list actions still awaiting resolution. */
+export const listPendingApprovals = (runId: string) =>
+  request<ApprovalAction[] | null>(`/approvals/pending?run_id=${encodeURIComponent(runId)}`)
+
+/** GET /approvals/{id} — fetch a single action. */
+export const getApproval = (id: string) => request<ApprovalAction>(`/approvals/${encodeURIComponent(id)}`)
+
+/** POST /approvals/{id}/approve {result} — approve and record the result. */
+export const approveApproval = (id: string, result?: unknown) =>
+  request<{ status: string }>(`/approvals/${encodeURIComponent(id)}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ result })
+  })
+
+/** POST /approvals/{id}/reject {reason} — reject with a reason. */
+export const rejectApproval = (id: string, reason: string) =>
+  request<{ status: string }>(`/approvals/${encodeURIComponent(id)}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason })
+  })
+
+/** GET /approvals/check/{tool} — is this tool considered dangerous? */
+export const checkApprovalDangerous = (tool: string) =>
+  request<{ tool: string; dangerous: boolean }>(`/approvals/check/${encodeURIComponent(tool)}`)
+
+// ─── Gatekeepers — capability-based access control (internal/gatekeeper) ──────
+
+/** gatekeeper.AuthType credential schemes. */
+export type GatekeeperAuthType = 'oauth' | 'apikey' | 'basic'
+
+/** gatekeeper.SessionStatus lifecycle states. */
+export type GatekeeperSessionStatus = 'active' | 'revoked' | 'expired'
+
+/** Matches gatekeeper.Capability (Go json tags). */
+export type Capability = {
+  tool: string[]
+  scope: string[]
+  read_only: boolean
+  expires_at?: string // *time.Time, omitempty
+}
+
+/** Matches gatekeeper.GatekeeperConfig (Go json tags). Credentials are never
+ *  serialized server-side (json:"-"). */
+export type GatekeeperConfig = {
+  name: string
+  type: string
+  auth_type: GatekeeperAuthType
+  allowed_tools?: string[]
+  scopes?: string[]
+  require_approval: boolean
+}
+
+/** Matches gatekeeper.Session (Go json tags). */
+export type GatekeeperSession = {
+  id: string
+  gatekeeper_name: string
+  capabilities: Capability[]
+  created_at: string // RFC3339
+  expires_at?: string // *time.Time, omitempty
+  status: GatekeeperSessionStatus
+}
+
+/** Matches gatekeeper.ActionLog (Go json tags). */
+export type GatekeeperActionLog = {
+  id: string
+  session_id: string
+  action: string
+  resource: string
+  result: string
+  approved: boolean
+  timestamp: string // RFC3339
+  approval_id?: string // *string, omitempty
+}
+
+/** GET /gatekeepers — list all registered gatekeeper configs. */
+export const listGatekeepers = () => request<GatekeeperConfig[]>('/gatekeepers')
+
+/** POST /gatekeepers {GatekeeperConfig} — register (or replace) a gatekeeper. */
+export const registerGatekeeper = (config: GatekeeperConfig) =>
+  request<{ status: string; name: string }>('/gatekeepers', {
+    method: 'POST',
+    body: JSON.stringify(config)
+  })
+
+/** DELETE /gatekeepers/{name} — unregister a gatekeeper. */
+export const removeGatekeeper = (name: string) =>
+  request<{ status: string }>(`/gatekeepers/${encodeURIComponent(name)}`, { method: 'DELETE' })
+
+/** POST /gatekeepers/{name}/access {Capability} — request an access session. */
+export const requestGatekeeperAccess = (name: string, capability: Capability) =>
+  request<GatekeeperSession>(`/gatekeepers/${encodeURIComponent(name)}/access`, {
+    method: 'POST',
+    body: JSON.stringify(capability)
+  })
+
+/** GET /gatekeepers/{name}/actions?session=X — audit trail for a session. */
+export const getGatekeeperActions = (name: string, session?: string) =>
+  request<GatekeeperActionLog[] | null>(
+    `/gatekeepers/${encodeURIComponent(name)}/actions${session ? `?session=${encodeURIComponent(session)}` : ''}`
+  )
+
+/** POST /gatekeepers/{name}/sessions/{sid}/revoke — revoke a session. */
+export const revokeGatekeeperSession = (name: string, sid: string) =>
+  request<{ status: string }>(`/gatekeepers/${encodeURIComponent(name)}/sessions/${encodeURIComponent(sid)}/revoke`, {
+    method: 'POST'
+  })
+
+// ─── Blueprints — reusable pentest playbooks (internal/blueprint) ────────────
+
+/** blueprint.Category values (DB CHECK constraint). */
+export type BlueprintCategory = 'recon' | 'exploit' | 'post-exploit' | 'reporting'
+
+/** Matches blueprint.BlueprintStep (Go json tags). */
+export type BlueprintStep = {
+  order: number
+  tool: string
+  description: string
+  args?: Record<string, string>
+  expected_result?: string
+  on_failure?: string
+}
+
+/** Matches blueprint.Blueprint (Go json tags). */
+export type Blueprint = {
+  id: string
+  name: string
+  description: string
+  category: BlueprintCategory
+  phase: string
+  steps: BlueprintStep[]
+  tags?: string[]
+  version: string
+  author: string
+  created_at: string // RFC3339
+}
+
+/** GET /blueprints?category=X — list blueprints, optionally filtered. */
+export const listBlueprints = (category?: BlueprintCategory) =>
+  request<Blueprint[] | null>(`/blueprints${category ? `?category=${encodeURIComponent(category)}` : ''}`)
+
+/** POST /blueprints {Blueprint} — create a blueprint. */
+export const createBlueprint = (bp: Partial<Blueprint> & { name: string; category: BlueprintCategory }) =>
+  request<Blueprint>('/blueprints', { method: 'POST', body: JSON.stringify(bp) })
+
+/** GET /blueprints/{id} — fetch a single blueprint. */
+export const getBlueprint = (id: string) => request<Blueprint>(`/blueprints/${encodeURIComponent(id)}`)
+
+/** PUT /blueprints/{id} {Blueprint} — replace a blueprint's mutable fields. */
+export const updateBlueprint = (id: string, bp: Partial<Blueprint> & { name: string; category: BlueprintCategory }) =>
+  request<Blueprint>(`/blueprints/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(bp) })
+
+/** DELETE /blueprints/{id} — remove a blueprint. */
+export const deleteBlueprint = (id: string) =>
+  request<{ status: string }>(`/blueprints/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
+// ─── Audit — tamper-evident compliance trail (internal/audit) ────────────────
+
+/** audit.Actor values. */
+export type AuditActor = 'user' | 'agent' | 'system'
+
+/** audit.Severity values. */
+export type AuditSeverity = 'info' | 'low' | 'medium' | 'high' | 'critical'
+
+/** Matches audit.AuditEntry (Go json tags). */
+export type AuditEntry = {
+  id: string
+  run_id: string
+  actor: AuditActor
+  action: string
+  resource_type: string
+  resource_id?: string
+  details?: unknown // json.RawMessage, omitempty
+  ip_address?: string
+  timestamp: string // RFC3339
+  severity: AuditSeverity
+}
+
+/** Shape of the audit export envelope (GET /audit/{run_id}/export). */
+export type AuditExport = {
+  run_id: string
+  count: number
+  entries: AuditEntry[] | null
+}
+
+/** Severity roll-up returned by GET /audit/{run_id}/stats. */
+export type AuditStats = {
+  info: number
+  low: number
+  medium: number
+  high: number
+  critical: number
+  total: number
+}
+
+/** GET /audit/{run_id} — list audit entries for a run (oldest first). */
+export const listAudit = (runId: string) =>
+  request<AuditEntry[] | null>(`/audit/${encodeURIComponent(runId)}`)
+
+/** POST /audit {AuditEntry} — append a compliance entry. */
+export const logAudit = (entry: Partial<AuditEntry> & { run_id: string; actor: AuditActor; action: string }) =>
+  request<AuditEntry>('/audit', { method: 'POST', body: JSON.stringify(entry) })
+
+/** GET /audit/{run_id}/export — full audit trail as a JSON export envelope. */
+export const exportAudit = (runId: string) =>
+  request<AuditExport>(`/audit/${encodeURIComponent(runId)}/export`)
+
+/** GET /audit/{run_id}/stats — per-severity counts plus a total. */
+export const auditStats = (runId: string) =>
+  request<AuditStats>(`/audit/${encodeURIComponent(runId)}/stats`)
+
+// ─── MCP Gateway — tool classification & approval routing (internal/mcpgw) ───
+
+/** mcpgw.TrustTier. */
+export type MCPTrustTier = 'byo' | 'vetted'
+
+/** mcpgw.ToolClassification. */
+export type MCPToolClassification = 'observation' | 'action'
+
+/** Matches mcpgw.ToolDescriptor (Go json tags). */
+export type MCPToolDescriptor = {
+  name: string
+  description: string
+  endpoint: string
+  tier: MCPTrustTier
+  class: MCPToolClassification
+  hints?: Record<string, boolean> // readOnlyHint, destructiveHint, …
+  schema?: Record<string, unknown>
+  vetted: boolean
+}
+
+/** Matches mcpgw.CallRequest (Go json tags). */
+export type MCPCallRequest = {
+  tool_name: string
+  args: Record<string, unknown>
+  run_id: string
+  caller: string // "agent" | "user"
+}
+
+/** Matches mcpgw.CallResult (Go json tags). */
+export type MCPCallResult = {
+  success: boolean
+  output?: unknown
+  error?: string
+  approval_id?: string
+  auto_approved?: boolean
+  simulated?: boolean // true while awaiting approval
+  timestamp: string // RFC3339
+}
+
+/** Tool breakdown returned by GET /mcp/stats. */
+export type MCPStats = {
+  total: number
+  observations: number
+  actions: number
+  vetted: number
+  byo: number
+}
+
+/** GET /mcp/tools — list all registered tool descriptors. */
+export const listMCPTools = () => request<MCPToolDescriptor[]>('/mcp/tools')
+
+/** POST /mcp/tools {ToolDescriptor} — register a tool. */
+export const registerMCPTool = (tool: MCPToolDescriptor) =>
+  request<MCPToolDescriptor>('/mcp/tools', { method: 'POST', body: JSON.stringify(tool) })
+
+/** POST /mcp/call {CallRequest} — invoke a tool through the gateway. */
+export const callMCPTool = (req: MCPCallRequest) =>
+  request<MCPCallResult>('/mcp/call', { method: 'POST', body: JSON.stringify(req) })
+
+/** POST /mcp/approve/{id} — execute a previously-queued (simulated) action. */
+export const approveMCPAction = (id: string) =>
+  request<MCPCallResult>(`/mcp/approve/${encodeURIComponent(id)}`, { method: 'POST' })
+
+/** POST /mcp/reject/{id} {reason} — reject a queued action. */
+export const rejectMCPAction = (id: string, reason: string) =>
+  request<{ status: string }>(`/mcp/reject/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    body: JSON.stringify({ reason })
+  })
+
+/** POST /mcp/vet/{tool} — promote a tool from byo to vetted tier. */
+export const vetMCPTool = (tool: string) =>
+  request<{ status: string; tool: string }>(`/mcp/vet/${encodeURIComponent(tool)}`, { method: 'POST' })
+
+/** GET /mcp/stats — summary counts of registered tools. */
+export const mcpStats = () => request<MCPStats>('/mcp/stats')
+
+// ─── Sharing / Engagements — collaborative pentest scopes (internal/sharing) ─
+
+/** sharing.Role values (hierarchy: owner > build > use). */
+export type EngagementRole = 'owner' | 'build' | 'use'
+
+/** Matches sharing.ShareLink (Go json tags). */
+export type ShareLink = {
+  id: string
+  engagement_id: string
+  role: EngagementRole
+  token: string
+  created_by: string
+  created_at: string // RFC3339
+  expires_at?: string // *time.Time, omitempty
+  revoked: boolean
+  revoked_at?: string // *time.Time, omitempty
+  label?: string
+}
+
+/** Matches sharing.Collaborator (Go json tags). */
+export type Collaborator = {
+  user_id: string
+  username: string
+  role: EngagementRole
+  granted_at: string // RFC3339
+  granted_by: string
+  share_link_id?: string
+}
+
+/** Matches sharing.Engagement (Go json tags). */
+export type Engagement = {
+  id: string
+  name: string
+  owner_id: string
+  run_ids: string[]
+  created_at: string // RFC3339
+  metadata?: Record<string, string>
+}
+
+/** GET /engagements — list engagements visible to the current user. */
+export const listEngagements = () => request<Engagement[] | null>('/engagements')
+
+/** POST /engagements {Engagement} — create an engagement (owner_id set server-side). */
+export const createEngagement = (eng: Partial<Engagement> & { name: string }) =>
+  request<Engagement>('/engagements', { method: 'POST', body: JSON.stringify(eng) })
+
+/** GET /engagements/{id} — fetch a single engagement. */
+export const getEngagement = (id: string) => request<Engagement>(`/engagements/${encodeURIComponent(id)}`)
+
+/** POST /engagements/{id}/shares {role, label} — mint a shareable link + token. */
+export const createEngagementShare = (id: string, role: EngagementRole, label?: string) =>
+  request<ShareLink>(`/engagements/${encodeURIComponent(id)}/shares`, {
+    method: 'POST',
+    body: JSON.stringify({ role, label })
+  })
+
+/** GET /engagements/{id}/shares — list share links for an engagement. */
+export const listEngagementShares = (id: string) =>
+  request<ShareLink[] | null>(`/engagements/${encodeURIComponent(id)}/shares`)
+
+/** POST /engagements/{id}/shares/{linkID}/revoke — revoke a share link. */
+export const revokeEngagementShare = (id: string, linkId: string) =>
+  request<{ status: string; engagement: string }>(
+    `/engagements/${encodeURIComponent(id)}/shares/${encodeURIComponent(linkId)}/revoke`,
+    { method: 'POST' }
+  )
+
+/** POST /share/accept {token, username} — accept an invitation, become a collaborator. */
+export const acceptShare = (token: string, username: string) =>
+  request<Collaborator>('/share/accept', { method: 'POST', body: JSON.stringify({ token, username }) })
+
+/** GET /engagements/{id}/collaborators — list collaborators on an engagement. */
+export const listCollaborators = (id: string) =>
+  request<Collaborator[] | null>(`/engagements/${encodeURIComponent(id)}/collaborators`)
+
+/** DELETE /engagements/{id}/collaborators/{userID} — remove a collaborator. */
+export const removeCollaborator = (id: string, userId: string) =>
+  request<{ status: string }>(`/engagements/${encodeURIComponent(id)}/collaborators/${encodeURIComponent(userId)}`, {
+    method: 'DELETE'
+  })
+
+/** POST /engagements/{id}/runs/{runID} — associate a run with an engagement. */
+export const addRunToEngagement = (id: string, runId: string) =>
+  request<{ status: string }>(`/engagements/${encodeURIComponent(id)}/runs/${encodeURIComponent(runId)}`, {
+    method: 'POST'
+  })

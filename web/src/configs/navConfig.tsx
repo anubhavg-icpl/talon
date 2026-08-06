@@ -88,6 +88,18 @@ export const navItems: NavItem[] = [
         icon: 'Shield',
         label: 'Engagements',
         href: '/ops'
+      },
+      {
+        icon: 'ShieldCheck',
+        label: 'Approvals',
+        href: '/approvals',
+        activePath: '/approvals'
+      },
+      {
+        icon: 'Share2',
+        label: 'Sharing',
+        href: '/engagements',
+        activePath: '/engagements'
       }
     ]
   },
@@ -126,6 +138,12 @@ export const navItems: NavItem[] = [
         href: '/playbooks'
       },
       {
+        icon: 'BookCopy',
+        label: 'Blueprints',
+        href: '/blueprints',
+        activePath: '/blueprints'
+      },
+      {
         icon: 'Radio',
         label: 'Intel Feed',
         href: '/intel'
@@ -135,6 +153,18 @@ export const navItems: NavItem[] = [
   {
     groupLabel: 'System',
     items: [
+      {
+        icon: 'History',
+        label: 'Audit Trail',
+        href: '/audit',
+        activePath: '/audit'
+      },
+      {
+        icon: 'KeySquare',
+        label: 'Gatekeepers',
+        href: '/gatekeepers',
+        activePath: '/gatekeepers'
+      },
       {
         icon: 'Settings',
         label: 'Settings',
