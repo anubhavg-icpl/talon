@@ -14268,6 +14268,56 @@ def browser_agent_endpoint():
         )
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
+@app.route("/api/tools/burpsuite", methods=["POST"])
+def burpsuite_scan():
+    """Execute Burp Suite scanner with project/config file support."""
+    try:
+        params = request.json or {}
+        project_file = params.get("project_file", "")
+        config_file = params.get("config_file", "")
+        target = params.get("target", "")
+        headless = params.get("headless", True)
+        scan_type = params.get("scan_type", "")
+        scan_config = params.get("scan_config", "")
+        output_file = params.get("output_file", "")
+        additional_args = params.get("additional_args", "")
+
+        if not target and not project_file:
+            return jsonify({"error": "Either target or project_file is required"}), 400
+
+        command = "java -jar /opt/burpsuite/burpsuite.jar"
+        if headless:
+            command += " --headless=false"
+        if project_file:
+            command += f" --project-file={_q(project_file)}"
+        if config_file:
+            command += f" --config-file={_q(config_file)}"
+        if scan_type:
+            command += f" --scan-type={_q(scan_type)}"
+        if scan_config:
+            command += f" --scan-configuration={_q(scan_config)}"
+        if output_file:
+            command += f" --output-file={_q(output_file)}"
+        if target:
+            command += f" {_q(target)}"
+        if additional_args:
+            command += f" {_q(additional_args)}"
+
+        result = execute_command(command)
+
+        return jsonify({
+            "target": target,
+            "command": command,
+            "output": result.get("output", ""),
+            "success": result.get("success", False),
+            "timestamp": datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f" Error in burpsuite endpoint: {str(e)}")
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
+
+
 @app.route("/api/tools/burpsuite-alternative", methods=["POST"])
 def burpsuite_alternative():
     """Comprehensive Burp Suite alternative combining HTTP framework and browser agent"""
