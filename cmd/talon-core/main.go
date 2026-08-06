@@ -158,6 +158,19 @@ func main() {
 	}
 	srv := control.NewServer(orch, store, opts...)
 
+	// Initialize CF-derived subsystems (VFS, approvals, gatekeepers,
+	// blueprints, audit, MCP gateway, sharing).
+	cfDataDir := os.Getenv("TALON_DATA_DIR")
+	if cfDataDir == "" {
+		cfDataDir = filepath.Join(os.Getenv("HOME"), ".talon")
+	}
+	if cf, err := control.InitCFIntegration(cfDataDir); err != nil {
+		log.Printf("talon-core: warning: CF integration disabled: %v", err)
+	} else {
+		srv.SetCFIntegration(cf)
+		log.Println("talon-core: CF integration enabled (VFS, approvals, gatekeepers, blueprints, audit, MCP gateway, sharing)")
+	}
+
 	log.Println("talon-core: listening on :8000")
 	server := &http.Server{
 		Addr:              ":8000",

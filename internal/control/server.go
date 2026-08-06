@@ -57,6 +57,8 @@ type Server struct {
 	tools *mcpclient.Multi
 	// platform: targets, scope, schedules, notify, credentials, evidence, budget.
 	platform *Platform
+	// cf holds CF-derived subsystems (VFS, approvals, gatekeepers, etc.)
+	cf *CFIntegration
 }
 
 func NewServer(orch *core.Orchestrator, store *Store, opts ...ServerOption) *Server {
@@ -209,6 +211,10 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /detection/cases", s.handleDetectionListCases)
 	mux.HandleFunc("GET /detection/skills", s.handleDetectionSkills)
 	mux.HandleFunc("GET /detection/skills/{type}", s.handleDetectionSkillsByType)
+
+	// CF-derived feature routes (VFS, approvals, gatekeepers, blueprints, audit, MCP, sharing)
+	s.RegisterCFRoutes(mux)
+
 	return mux
 }
 
