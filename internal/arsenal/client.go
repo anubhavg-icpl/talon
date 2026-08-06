@@ -14,12 +14,14 @@ import (
 
 type Client struct {
 	baseURL string
+	apiKey  string
 	http    *http.Client
 }
 
-func NewClient(baseURL string, timeout time.Duration) *Client {
+func NewClient(baseURL string, timeout time.Duration, apiKey string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
+		apiKey:  apiKey,
 		http:    &http.Client{Timeout: timeout},
 	}
 }
@@ -44,7 +46,14 @@ func (c *Client) Get(endpoint string, params map[string]any) map[string]any {
 	if len(q) > 0 {
 		full += "?" + q.Encode()
 	}
-	resp, err := c.http.Get(full)
+	req, err := http.NewRequest(http.MethodGet, full, nil)
+	if err != nil {
+		return map[string]any{"error": fmt.Sprintf("Request failed: %v", err), "success": false}
+	}
+	if c.apiKey != "" {
+		req.Header.Set("X-Arsenal-Key", c.apiKey)
+	}
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return map[string]any{"error": fmt.Sprintf("Request failed: %v", err), "success": false}
 	}
@@ -58,7 +67,15 @@ func (c *Client) Post(endpoint string, data map[string]any) map[string]any {
 	if err != nil {
 		return map[string]any{"error": fmt.Sprintf("Request failed: %v", err), "success": false}
 	}
-	resp, err := c.http.Post(c.url(endpoint), "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, c.url(endpoint), bytes.NewReader(body))
+	if err != nil {
+		return map[string]any{"error": fmt.Sprintf("Request failed: %v", err), "success": false}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("X-Arsenal-Key", c.apiKey)
+	}
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return map[string]any{"error": fmt.Sprintf("Request failed: %v", err), "success": false}
 	}

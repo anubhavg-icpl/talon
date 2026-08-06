@@ -43,12 +43,14 @@ func getenvInt(key string, fallback int) int {
 type HexstrikeConfig struct {
 	ServerURL string
 	Timeout   int // seconds
+	APIKey    string
 }
 
 func LoadHexstrikeConfig() HexstrikeConfig {
 	return HexstrikeConfig{
 		ServerURL: getenv("HEXSTRIKE_SERVER_URL", "http://localhost:8888"),
 		Timeout:   getenvInt("HEXSTRIKE_TIMEOUT", 300),
+		APIKey:    os.Getenv("ARSENAL_API_KEY"),
 	}
 }
 

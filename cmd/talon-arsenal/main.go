@@ -13,7 +13,7 @@ import (
 
 func main() {
 	cfg := config.LoadHexstrikeConfig()
-	client := arsenal.NewClient(cfg.ServerURL, time.Duration(cfg.Timeout)*time.Second)
+	client := arsenal.NewClient(cfg.ServerURL, time.Duration(cfg.Timeout)*time.Second, cfg.APIKey)
 
 	srv := server.NewMCPServer("talon-arsenal", "1.0.0")
 	arsenal.Register(srv, client)

@@ -36,6 +36,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from collections import OrderedDict
 import shutil
+import shlex
 import venv
 import zipfile
 from pathlib import Path
@@ -107,6 +108,31 @@ app.config['JSON_SORT_KEYS'] = False
 # API Configuration
 API_PORT = int(os.environ.get('HEXSTRIKE_PORT', 8888))
 API_HOST = os.environ.get('HEXSTRIKE_HOST', '127.0.0.1')
+
+# Authentication: require a shared secret on all API requests.
+# If ARSENAL_API_KEY is unset, generate a random one and log it at startup.
+ARSENAL_API_KEY = os.environ.get('ARSENAL_API_KEY', '')
+if not ARSENAL_API_KEY:
+    import secrets as _secrets
+    ARSENAL_API_KEY = _secrets.token_hex(24)
+    logger.warning(" ARSENAL_API_KEY not set — generated ephemeral key: %s", ARSENAL_API_KEY)
+
+
+@app.before_request
+def _require_api_key():
+    """Reject any request lacking a valid X-Arsenal-Key header."""
+    # Health-check endpoint may be called by Docker without the header.
+    if request.endpoint in ('health_check', 'static'):
+        return None
+    token = request.headers.get('X-Arsenal-Key', '')
+    if not token or token != ARSENAL_API_KEY:
+        return jsonify({"error": "Unauthorized: missing or invalid API key"}), 401
+    return None
+
+
+def _q(value: str) -> str:
+    """Shell-quote a user-provided string for safe interpolation."""
+    return shlex.quote(str(value)) if value else "''"
 
 # ============================================================================
 # MODERN VISUAL ENGINE (v2.0 ENHANCEMENT)
@@ -8939,14 +8965,25 @@ class FileOperationsManager:
     """Handle file operations with security and validation"""
 
     def __init__(self, base_dir: str = "/tmp/arsenal_files"):
-        self.base_dir = Path(base_dir)
-        self.base_dir.mkdir(exist_ok=True)
+        self.base_dir = Path(base_dir).resolve()
+        self.base_dir.mkdir(parents=True, exist_ok=True)
         self.max_file_size = 100 * 1024 * 1024  # 100MB
+
+    def _safe_path(self, filename: str) -> Path:
+        """Resolve *filename* relative to base_dir and ensure it stays inside.
+
+        Rejects absolute paths and ../  traversal — pathlib discards the
+        base when given an absolute path, so we must check explicitly.
+        """
+        candidate = (self.base_dir / filename).resolve()
+        if self.base_dir not in candidate.parents and candidate != self.base_dir:
+            raise ValueError(f"path escapes base directory: {filename}")
+        return candidate
 
     def create_file(self, filename: str, content: str, binary: bool = False) -> Dict[str, Any]:
         """Create a file with the specified content"""
         try:
-            file_path = self.base_dir / filename
+            file_path = self._safe_path(filename)
             file_path.parent.mkdir(parents=True, exist_ok=True)
 
             if len(content.encode()) > self.max_file_size:
@@ -8969,7 +9006,7 @@ class FileOperationsManager:
     def modify_file(self, filename: str, content: str, append: bool = False) -> Dict[str, Any]:
         """Modify an existing file"""
         try:
-            file_path = self.base_dir / filename
+            file_path = self._safe_path(filename)
             if not file_path.exists():
                 return {"success": False, "error": "File does not exist"}
 
@@ -8987,7 +9024,7 @@ class FileOperationsManager:
     def delete_file(self, filename: str) -> Dict[str, Any]:
         """Delete a file or directory"""
         try:
-            file_path = self.base_dir / filename
+            file_path = self._safe_path(filename)
             if not file_path.exists():
                 return {"success": False, "error": "File does not exist"}
 
@@ -9006,7 +9043,7 @@ class FileOperationsManager:
     def list_files(self, directory: str = ".") -> Dict[str, Any]:
         """List files in a directory"""
         try:
-            dir_path = self.base_dir / directory
+            dir_path = self._safe_path(directory)
             if not dir_path.exists():
                 return {"success": False, "error": "Directory does not exist"}
 
@@ -10351,15 +10388,15 @@ def nmap():
                 "error": "Target parameter is required"
             }), 400
 
-        command = f"nmap {scan_type}"
+        command = f"nmap {_q(scan_type)}"
 
         if ports:
-            command += f" -p {ports}"
+            command += f" -p {_q(ports)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
-        command += f" {target}"
+        command += f" {_q(target)}"
 
         logger.info(f" Starting Nmap scan: {target}")
 
@@ -10408,10 +10445,10 @@ def gobuster():
                 "error": f"Invalid mode: {mode}. Must be one of: dir, dns, fuzz, vhost"
             }), 400
 
-        command = f"gobuster {mode} -u {url} -w {wordlist}"
+        command = f"gobuster {mode} -u {_q(url)} -w {_q(wordlist)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Gobuster {mode} scan: {url}")
 
@@ -10454,7 +10491,7 @@ def nuclei():
                 "error": "Target parameter is required"
             }), 400
 
-        command = f"nuclei -u {target}"
+        command = f"nuclei -u {_q(target)}"
 
         if severity:
             command += f" -severity {severity}"
@@ -10466,7 +10503,7 @@ def nuclei():
             command += f" -t {template}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Nuclei vulnerability scan: {target}")
 
@@ -10527,7 +10564,7 @@ def prowler():
         command += f" --output-format {output_format}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f"  Starting Prowler {provider} security assessment")
         result = execute_command(command)
@@ -10558,7 +10595,7 @@ def trivy():
                 "error": "Target parameter is required"
             }), 400
 
-        command = f"trivy {scan_type} {target}"
+        command = f"trivy {_q(scan_type)} {_q(target)}"
 
         if output_format:
             command += f" --format {output_format}"
@@ -10570,7 +10607,7 @@ def trivy():
             command += f" --output {output_file}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Trivy {scan_type} scan: {target}")
         result = execute_command(command)
@@ -10617,7 +10654,7 @@ def scout_suite():
         command += f" --report-dir {report_dir}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f"  Starting Scout Suite {provider} assessment")
         result = execute_command(command)
@@ -10651,7 +10688,7 @@ def cloudmapper():
             command += f" --config {config}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f"  Starting CloudMapper {action}")
         result = execute_command(command)
@@ -10696,7 +10733,7 @@ def pacu():
         command = f"pacu < {command_file}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f"  Starting Pacu AWS exploitation")
         result = execute_command(command)
@@ -10729,7 +10766,7 @@ def kube_hunter():
         command = "kube-hunter"
 
         if target:
-            command += f" --remote {target}"
+            command += f" --remote {_q(target)}"
         elif remote:
             command += f" --remote {remote}"
         elif cidr:
@@ -10747,7 +10784,7 @@ def kube_hunter():
             command += f" --report {report}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f"  Starting kube-hunter Kubernetes scan")
         result = execute_command(command)
@@ -10783,7 +10820,7 @@ def kube_bench():
             command += f" --outputfile /tmp/kube-bench-results.{output_format} --json"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f"  Starting kube-bench CIS benchmark")
         result = execute_command(command)
@@ -10815,7 +10852,7 @@ def docker_bench_security():
             command += f" -l {output_file}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Docker Bench Security assessment")
         result = execute_command(command)
@@ -10841,7 +10878,7 @@ def clair():
             return jsonify({"error": "Image parameter is required"}), 400
 
         # Use clairctl for scanning
-        command = f"clairctl analyze {image}"
+        command = f"clairctl analyze {_q(image)}"
 
         if config:
             command += f" --config {config}"
@@ -10850,7 +10887,7 @@ def clair():
             command += f" --format {output_format}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Clair vulnerability scan: {image}")
         result = execute_command(command)
@@ -10883,7 +10920,7 @@ def falco():
             command += " --json"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f"  Starting Falco runtime monitoring for {duration}s")
         result = execute_command(command)
@@ -10905,7 +10942,7 @@ def checkov():
         output_format = params.get("output_format", "json")
         additional_args = params.get("additional_args", "")
 
-        command = f"checkov -d {directory}"
+        command = f"checkov -d {_q(directory)}"
 
         if framework:
             command += f" --framework {framework}"
@@ -10920,7 +10957,7 @@ def checkov():
             command += f" --output {output_format}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Checkov IaC scan: {directory}")
         result = execute_command(command)
@@ -10942,7 +10979,7 @@ def terrascan():
         severity = params.get("severity", "")
         additional_args = params.get("additional_args", "")
 
-        command = f"terrascan scan -t {scan_type} -d {iac_dir}"
+        command = f"terrascan scan -t {_q(scan_type)} -d {_q(iac_dir)}"
 
         if policy_type:
             command += f" -p {policy_type}"
@@ -10954,7 +10991,7 @@ def terrascan():
             command += f" --severity {severity}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Terrascan IaC scan: {iac_dir}")
         result = execute_command(command)
@@ -10979,10 +11016,10 @@ def dirb():
                 "error": "URL parameter is required"
             }), 400
 
-        command = f"dirb {url} {wordlist}"
+        command = f"dirb {_q(url)} {_q(wordlist)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Dirb scan: {url}")
         result = execute_command(command)
@@ -11008,10 +11045,10 @@ def nikto():
                 "error": "Target parameter is required"
             }), 400
 
-        command = f"nikto -h {target}"
+        command = f"nikto -h {_q(target)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Nikto scan: {target}")
         result = execute_command(command)
@@ -11038,13 +11075,13 @@ def sqlmap():
                 "error": "URL parameter is required"
             }), 400
 
-        command = f"sqlmap -u {url} --batch"
+        command = f"sqlmap -u {_q(url)} --batch"
 
         if data:
             command += f" --data=\"{data}\""
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting SQLMap scan: {url}")
         result = execute_command(command)
@@ -11138,9 +11175,9 @@ def hydra():
             command += f" -P {password_file}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
-        command += f" {target} {service}"
+        command += f" {_q(target)} {service}"
 
         logger.info(f" Starting Hydra attack: {target}:{service}")
         result = execute_command(command)
@@ -11174,10 +11211,10 @@ def john():
             command += f" --format={format_type}"
 
         if wordlist:
-            command += f" --wordlist={wordlist}"
+            command += f" --wordlist={_q(wordlist)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         command += f" {hash_file}"
 
@@ -11205,10 +11242,10 @@ def wpscan():
                 "error": "URL parameter is required"
             }), 400
 
-        command = f"wpscan --url {url}"
+        command = f"wpscan --url {_q(url)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting WPScan: {url}")
         result = execute_command(command)
@@ -11234,7 +11271,7 @@ def enum4linux():
                 "error": "Target parameter is required"
             }), 400
 
-        command = f"enum4linux {additional_args} {target}"
+        command = f"enum4linux {additional_args} {_q(target)}"
 
         logger.info(f" Starting Enum4linux: {target}")
         result = execute_command(command)
@@ -11266,18 +11303,18 @@ def ffuf():
         command = f"ffuf"
 
         if mode == "directory":
-            command += f" -u {url}/FUZZ -w {wordlist}"
+            command += f" -u {_q(url)}/FUZZ -w {_q(wordlist)}"
         elif mode == "vhost":
-            command += f" -u {url} -H 'Host: FUZZ' -w {wordlist}"
+            command += f" -u {_q(url)} -H 'Host: FUZZ' -w {_q(wordlist)}"
         elif mode == "parameter":
-            command += f" -u {url}?FUZZ=value -w {wordlist}"
+            command += f" -u {_q(url)}?FUZZ=value -w {_q(wordlist)}"
         else:
-            command += f" -u {url} -w {wordlist}"
+            command += f" -u {_q(url)} -w {_q(wordlist)}"
 
         command += f" -mc {match_codes}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting FFuf {mode} fuzzing: {url}")
         result = execute_command(command)
@@ -11308,22 +11345,22 @@ def netexec():
                 "error": "Target parameter is required"
             }), 400
 
-        command = f"nxc {protocol} {target}"
+        command = f"nxc {_q(protocol)} {_q(target)}"
 
         if username:
-            command += f" -u {username}"
+            command += f" -u {_q(username)}"
 
         if password:
-            command += f" -p {password}"
+            command += f" -p {_q(password)}"
 
         if hash_value:
-            command += f" -H {hash_value}"
+            command += f" -H {_q(hash_value)}"
 
         if module:
-            command += f" -M {module}"
+            command += f" -M {_q(module)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting NetExec {protocol} scan: {target}")
         result = execute_command(command)
@@ -11350,15 +11387,15 @@ def amass():
                 "error": "Domain parameter is required"
             }), 400
 
-        command = f"amass {mode}"
+        command = f"amass {_q(mode)}"
 
         if mode == "enum":
-            command += f" -d {domain}"
+            command += f" -d {_q(domain)}"
         else:
-            command += f" -d {domain}"
+            command += f" -d {_q(domain)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Amass {mode}: {domain}")
         result = execute_command(command)
@@ -11397,12 +11434,12 @@ def hashcat():
         command = f"hashcat -m {hash_type} -a {attack_mode} {hash_file}"
 
         if attack_mode == "0" and wordlist:
-            command += f" {wordlist}"
+            command += f" {_q(wordlist)}"
         elif attack_mode == "3" and mask:
             command += f" {mask}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Hashcat attack: mode {attack_mode}")
         result = execute_command(command)
@@ -11430,7 +11467,7 @@ def subfinder():
                 "error": "Domain parameter is required"
             }), 400
 
-        command = f"subfinder -d {domain}"
+        command = f"subfinder -d {_q(domain)}"
 
         if silent:
             command += " -silent"
@@ -11439,7 +11476,7 @@ def subfinder():
             command += " -all"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Subfinder: {domain}")
         result = execute_command(command)
@@ -11468,7 +11505,7 @@ def smbmap():
                 "error": "Target parameter is required"
             }), 400
 
-        command = f"smbmap -H {target}"
+        command = f"smbmap -H {_q(target)}"
 
         if username:
             command += f" -u {username}"
@@ -11477,10 +11514,10 @@ def smbmap():
             command += f" -p {password}"
 
         if domain:
-            command += f" -d {domain}"
+            command += f" -d {_q(domain)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting SMBMap: {target}")
         result = execute_command(command)
@@ -11513,16 +11550,16 @@ def rustscan():
             logger.warning(" Rustscan called without target parameter")
             return jsonify({"error": "Target parameter is required"}), 400
 
-        command = f"rustscan -a {target} --ulimit {ulimit} -b {batch_size} -t {timeout}"
+        command = f"rustscan -a {_q(target)} --ulimit {ulimit} -b {batch_size} -t {timeout}"
 
         if ports:
-            command += f" -p {ports}"
+            command += f" -p {_q(ports)}"
 
         if scripts:
             command += f" -- -sC -sV"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Rustscan: {target}")
         result = execute_command(command)
@@ -11550,7 +11587,7 @@ def masscan():
             logger.warning(" Masscan called without target parameter")
             return jsonify({"error": "Target parameter is required"}), 400
 
-        command = f"masscan {target} -p{ports} --rate={rate}"
+        command = f"masscan {_q(target)} -p{_q(ports)} --rate={rate}"
 
         if interface:
             command += f" -e {interface}"
@@ -11565,7 +11602,7 @@ def masscan():
             command += " --banners"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Masscan: {target} at rate {rate}")
         result = execute_command(command)
@@ -11595,10 +11632,10 @@ def nmap_advanced():
             logger.warning(" Advanced Nmap called without target parameter")
             return jsonify({"error": "Target parameter is required"}), 400
 
-        command = f"nmap {scan_type} {target}"
+        command = f"nmap {_q(scan_type)} {_q(target)}"
 
         if ports:
-            command += f" -p {ports}"
+            command += f" -p {_q(ports)}"
 
         if stealth:
             command += " -T2 -f --mtu 24"
@@ -11620,7 +11657,7 @@ def nmap_advanced():
             command += " --script=default,discovery,safe"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Advanced Nmap: {target}")
         result = execute_command(command)
@@ -11647,7 +11684,7 @@ def autorecon():
             logger.warning(" AutoRecon called without target parameter")
             return jsonify({"error": "Target parameter is required"}), 400
 
-        command = f"autorecon {target} -o {output_dir} --heartbeat {heartbeat} --timeout {timeout}"
+        command = f"autorecon {_q(target)} -o {output_dir} --heartbeat {heartbeat} --timeout {timeout}"
 
         if port_scans != "default":
             command += f" --port-scans {port_scans}"
@@ -11656,7 +11693,7 @@ def autorecon():
             command += f" --service-scans {service_scans}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting AutoRecon: {target}")
         result = execute_command(command)
@@ -11685,7 +11722,7 @@ def enum4linux_ng():
             logger.warning(" Enum4linux-ng called without target parameter")
             return jsonify({"error": "Target parameter is required"}), 400
 
-        command = f"enum4linux-ng {target}"
+        command = f"enum4linux-ng {_q(target)}"
 
         if username:
             command += f" -u {username}"
@@ -11694,7 +11731,7 @@ def enum4linux_ng():
             command += f" -p {password}"
 
         if domain:
-            command += f" -d {domain}"
+            command += f" -d {_q(domain)}"
 
         # Add specific enumeration options
         enum_options = []
@@ -11711,7 +11748,7 @@ def enum4linux_ng():
             command += f" -A {','.join(enum_options)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Enum4linux-ng: {target}")
         result = execute_command(command)
@@ -11752,10 +11789,10 @@ def rpcclient():
         # Create command sequence
         command_sequence = commands.replace(";", "\n")
 
-        command = f"echo -e '{command_sequence}' | rpcclient {auth_string} {target}"
+        command = f"echo -e '{command_sequence}' | rpcclient {auth_string} {_q(target)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting rpcclient: {target}")
         result = execute_command(command)
@@ -11784,10 +11821,10 @@ def nbtscan():
         if verbose:
             command += " -v"
 
-        command += f" {target}"
+        command += f" {_q(target)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting nbtscan: {target}")
         result = execute_command(command)
@@ -11821,10 +11858,10 @@ def arp_scan():
         if local_network:
             command += " -l"
         else:
-            command += f" {target}"
+            command += f" {_q(target)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting arp-scan: {target if target else 'local network'}")
         result = execute_command(command)
@@ -11866,7 +11903,7 @@ def responder():
             command += " -f"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Responder on interface: {interface}")
         result = execute_command(command)
@@ -11906,7 +11943,7 @@ def volatility():
         command += f" {plugin}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Volatility analysis: {plugin}")
         result = execute_command(command)
@@ -11951,7 +11988,7 @@ def msfvenom():
             command += f" -i {iterations}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting MSFVenom payload generation: {payload}")
         result = execute_command(command)
@@ -11995,7 +12032,7 @@ def gdb():
             command += f" -x {temp_script}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         command += " -batch"
 
@@ -12040,7 +12077,7 @@ def radare2():
             command = f"r2 -q {binary}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Radare2 analysis: {binary}")
         result = execute_command(command)
@@ -12080,7 +12117,7 @@ def binwalk():
             command += " -e"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         command += f" {file_path}"
 
@@ -12115,7 +12152,7 @@ def ropgadget():
             command += f" --only '{gadget_type}'"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting ROPgadget search: {binary}")
         result = execute_command(command)
@@ -12174,7 +12211,7 @@ def xxd():
             command += f" -l {length}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         command += f" {file_path}"
 
@@ -12206,7 +12243,7 @@ def strings():
         command = f"strings -n {min_len}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         command += f" {file_path}"
 
@@ -12243,7 +12280,7 @@ def objdump():
             command += " -x"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         command += f" {binary}"
 
@@ -12291,7 +12328,7 @@ def ghidra():
             command += f" -postScript ExportXml.java {project_dir}/analysis.xml"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Ghidra analysis: {binary}")
         result = execute_command(command, timeout=analysis_timeout)
@@ -12359,7 +12396,7 @@ p.interactive()
         command = f"python3 {script_file}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Pwntools exploit: {exploit_type}")
         result = execute_command(command)
@@ -12392,7 +12429,7 @@ def one_gadget():
         command = f"one_gadget {libc_path} --level {level}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting one_gadget analysis: {libc_path}")
         result = execute_command(command)
@@ -12433,7 +12470,7 @@ def libc_database():
             return jsonify({"error": f"Invalid action: {action}"}), 400
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting libc-database {action}: {symbols or libc_id}")
         result = execute_command(command)
@@ -12486,7 +12523,7 @@ quit
             command += " -ex 'source ~/peda/peda.py' -ex 'quit'"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         target_info = binary or f'PID {attach_pid}' or core_file
         logger.info(f" Starting GDB-PEDA analysis: {target_info}")
@@ -12579,7 +12616,7 @@ for func_addr, func in cfg.functions.items():
         command = f"python3 {script_file}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting angr analysis: {binary}")
         result = execute_command(command, timeout=600)  # Longer timeout for symbolic execution
@@ -12633,7 +12670,7 @@ def ropper():
             command += f" --search '{search_string}'"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting ropper analysis: {binary}")
         result = execute_command(command)
@@ -12670,7 +12707,7 @@ def pwninit():
             command += f" --template {template_type}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting pwninit setup: {binary}")
         result = execute_command(command)
@@ -12700,10 +12737,10 @@ def feroxbuster():
                 "error": "URL parameter is required"
             }), 400
 
-        command = f"feroxbuster -u {url} -w {wordlist} -t {threads}"
+        command = f"feroxbuster -u {_q(url)} -w {_q(wordlist)} -t {threads}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Feroxbuster scan: {url}")
         result = execute_command(command)
@@ -12730,10 +12767,10 @@ def dotdotpwn():
                 "error": "Target parameter is required"
             }), 400
 
-        command = f"dotdotpwn -m {module} -h {target}"
+        command = f"dotdotpwn -m {module} -h {_q(target)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         command += " -b"
 
@@ -12762,13 +12799,13 @@ def xsser():
                 "error": "URL parameter is required"
             }), 400
 
-        command = f"xsser --url '{url}'"
+        command = f"xsser --url {_q(url)}"
 
         if params_str:
             command += f" --param='{params_str}'"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting XSSer scan: {url}")
         result = execute_command(command)
@@ -12795,10 +12832,10 @@ def wfuzz():
                 "error": "URL parameter is required"
             }), 400
 
-        command = f"wfuzz -w {wordlist} '{url}'"
+        command = f"wfuzz -w {_q(wordlist)} {_q(url)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Wfuzz scan: {url}")
         result = execute_command(command)
@@ -12830,13 +12867,13 @@ def dirsearch():
             logger.warning(" Dirsearch called without URL parameter")
             return jsonify({"error": "URL parameter is required"}), 400
 
-        command = f"dirsearch -u {url} -e {extensions} -w {wordlist} -t {threads}"
+        command = f"dirsearch -u {_q(url)} -e {_q(extensions)} -w {_q(wordlist)} -t {threads}"
 
         if recursive:
             command += " -r"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Dirsearch scan: {url}")
         result = execute_command(command)
@@ -12862,7 +12899,7 @@ def katana():
             logger.warning(" Katana called without URL parameter")
             return jsonify({"error": "URL parameter is required"}), 400
 
-        command = f"katana -u {url} -d {depth}"
+        command = f"katana -u {_q(url)} -d {depth}"
 
         if js_crawl:
             command += " -jc"
@@ -12874,7 +12911,7 @@ def katana():
             command += " -jsonl"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f"  Starting Katana crawl: {url}")
         result = execute_command(command)
@@ -12899,7 +12936,7 @@ def gau():
             logger.warning(" Gau called without domain parameter")
             return jsonify({"error": "Domain parameter is required"}), 400
 
-        command = f"gau {domain}"
+        command = f"gau {_q(domain)}"
 
         if providers != "wayback,commoncrawl,otx,urlscan":
             command += f" --providers {providers}"
@@ -12911,7 +12948,7 @@ def gau():
             command += f" --blacklist {blacklist}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Gau URL discovery: {domain}")
         result = execute_command(command)
@@ -12935,7 +12972,7 @@ def waybackurls():
             logger.warning(" Waybackurls called without domain parameter")
             return jsonify({"error": "Domain parameter is required"}), 400
 
-        command = f"waybackurls {domain}"
+        command = f"waybackurls {_q(domain)}"
 
         if get_versions:
             command += " --get-versions"
@@ -12944,7 +12981,7 @@ def waybackurls():
             command += " --no-subs"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f"  Starting Waybackurls discovery: {domain}")
         result = execute_command(command)
@@ -12971,10 +13008,10 @@ def arjun():
             logger.warning(" Arjun called without URL parameter")
             return jsonify({"error": "URL parameter is required"}), 400
 
-        command = f"arjun -u {url} -m {method} -t {threads}"
+        command = f"arjun -u {_q(url)} -m {method} -t {threads}"
 
         if wordlist:
-            command += f" -w {wordlist}"
+            command += f" -w {_q(wordlist)}"
 
         if delay > 0:
             command += f" -d {delay}"
@@ -12983,7 +13020,7 @@ def arjun():
             command += " --stable"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Arjun parameter discovery: {url}")
         result = execute_command(command)
@@ -13008,7 +13045,7 @@ def paramspider():
             logger.warning(" ParamSpider called without domain parameter")
             return jsonify({"error": "Domain parameter is required"}), 400
 
-        command = f"paramspider -d {domain} -l {level}"
+        command = f"paramspider -d {_q(domain)} -l {level}"
 
         if exclude:
             command += f" --exclude {exclude}"
@@ -13017,7 +13054,7 @@ def paramspider():
             command += f" -o {output}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f"  Starting ParamSpider mining: {domain}")
         result = execute_command(command)
@@ -13043,7 +13080,7 @@ def x8():
             logger.warning(" x8 called without URL parameter")
             return jsonify({"error": "URL parameter is required"}), 400
 
-        command = f"x8 -u {url} -w {wordlist} -X {method}"
+        command = f"x8 -u {_q(url)} -w {_q(wordlist)} -X {method}"
 
         if body:
             command += f" -b '{body}'"
@@ -13052,7 +13089,7 @@ def x8():
             command += f" -H '{headers}'"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting x8 parameter discovery: {url}")
         result = execute_command(command)
@@ -13078,7 +13115,7 @@ def jaeles():
             logger.warning(" Jaeles called without URL parameter")
             return jsonify({"error": "URL parameter is required"}), 400
 
-        command = f"jaeles scan -u {url} -c {threads} --timeout {timeout}"
+        command = f"jaeles scan -u {_q(url)} -c {threads} --timeout {timeout}"
 
         if signatures:
             command += f" -s {signatures}"
@@ -13087,7 +13124,7 @@ def jaeles():
             command += f" --config {config}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Jaeles vulnerability scan: {url}")
         result = execute_command(command)
@@ -13117,7 +13154,7 @@ def dalfox():
         if pipe_mode:
             command = "dalfox pipe"
         else:
-            command = f"dalfox url {url}"
+            command = f"dalfox url {_q(url)}"
 
         if blind:
             command += " --blind"
@@ -13132,7 +13169,7 @@ def dalfox():
             command += f" --custom-payload '{custom_payload}'"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Dalfox XSS scan: {url if url else 'pipe mode'}")
         result = execute_command(command)
@@ -13161,7 +13198,7 @@ def httpx():
             logger.warning(" httpx called without target parameter")
             return jsonify({"error": "Target parameter is required"}), 400
 
-        command = f"httpx -l {target} -t {threads}"
+        command = f"httpx -l {_q(target)} -t {threads}"
 
         if probe:
             command += " -probe"
@@ -13182,7 +13219,7 @@ def httpx():
             command += " -server"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting httpx probe: {target}")
         result = execute_command(command)
@@ -13211,7 +13248,7 @@ def anew():
             command = f"echo '{input_data}' | anew"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(" Starting anew data processing")
         result = execute_command(command)
@@ -13234,10 +13271,10 @@ def qsreplace():
             logger.warning(" qsreplace called without URLs")
             return jsonify({"error": "URLs parameter is required"}), 400
 
-        command = f"echo '{urls}' | qsreplace '{replacement}'"
+        command = f"echo {_q(urls)} | qsreplace {_q(replacement)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(" Starting qsreplace parameter replacement")
         result = execute_command(command)
@@ -13261,7 +13298,7 @@ def uro():
             logger.warning(" uro called without URLs")
             return jsonify({"error": "URLs parameter is required"}), 400
 
-        command = f"echo '{urls}' | uro"
+        command = f"echo {_q(urls)} | uro"
 
         if whitelist:
             command += f" --whitelist {whitelist}"
@@ -13270,7 +13307,7 @@ def uro():
             command += f" --blacklist {blacklist}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(" Starting uro URL filtering")
         result = execute_command(command)
@@ -14064,7 +14101,7 @@ def http_framework_endpoint():
             if not url:
                 return jsonify({"error": "URL parameter is required for request action"}), 400
 
-            request_command = f"{method} {url}"
+            request_command = f"{method} {_q(url)}"
             logger.info(f"{ModernVisualEngine.format_command_execution(request_command, 'STARTING')}")
             result = http_framework.intercept_request(url, method, data, headers, cookies)
 
@@ -14082,7 +14119,7 @@ def http_framework_endpoint():
             max_depth = params.get("max_depth", 3)
             max_pages = params.get("max_pages", 100)
 
-            spider_command = f"Spider {url}"
+            spider_command = f"Spider {_q(url)}"
             logger.info(f"{ModernVisualEngine.format_command_execution(spider_command, 'STARTING')}")
             result = http_framework.spider_website(url, max_depth, max_pages)
 
@@ -14351,7 +14388,7 @@ def zap():
             if api_key:
                 command += f" -config api.key={api_key}"
         else:
-            command = f"zaproxy -cmd -quickurl {target}"
+            command = f"zaproxy -cmd -quickurl {_q(target)}"
 
             if format_type:
                 command += f" -quickout {format_type}"
@@ -14363,7 +14400,7 @@ def zap():
                 command += f" -config api.key={api_key}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting ZAP scan: {target}")
         result = execute_command(command)
@@ -14389,10 +14426,10 @@ def wafw00f():
                 "error": "Target parameter is required"
             }), 400
 
-        command = f"wafw00f {target}"
+        command = f"wafw00f {_q(target)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Wafw00f WAF detection: {target}")
         result = execute_command(command)
@@ -14419,13 +14456,13 @@ def fierce():
                 "error": "Domain parameter is required"
             }), 400
 
-        command = f"fierce --domain {domain}"
+        command = f"fierce --domain {_q(domain)}"
 
         if dns_server:
             command += f" --dns-servers {dns_server}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Fierce DNS recon: {domain}")
         result = execute_command(command)
@@ -14453,16 +14490,16 @@ def dnsenum():
                 "error": "Domain parameter is required"
             }), 400
 
-        command = f"dnsenum {domain}"
+        command = f"dnsenum {_q(domain)}"
 
         if dns_server:
             command += f" --dnsserver {dns_server}"
 
         if wordlist:
-            command += f" --file {wordlist}"
+            command += f" --file {_q(wordlist)}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting DNSenum: {domain}")
         result = execute_command(command)
@@ -14887,7 +14924,7 @@ def api_fuzzer():
             })
         else:
             # Discover endpoints using wordlist
-            command = f"ffuf -u {base_url}/FUZZ -w {wordlist} -mc 200,201,202,204,301,302,307,401,403,405 -t 50"
+            command = f"ffuf -u {base_url}/FUZZ -w {_q(wordlist)} -mc 200,201,202,204,301,302,307,401,403,405 -t 50"
 
             logger.info(f" Starting API endpoint discovery: {base_url}")
             result = execute_command(command)
@@ -15270,7 +15307,7 @@ def volatility3():
             command += f" -o {output_file}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Volatility3 analysis: {plugin}")
         result = execute_command(command)
@@ -15307,7 +15344,7 @@ def foremost():
             command += f" -t {file_types}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         command += f" {input_file}"
 
@@ -15359,7 +15396,7 @@ def steghide():
             command += " -p ''"  # Empty passphrase
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Steghide {action}: {cover_file}")
         result = execute_command(command)
@@ -15396,7 +15433,7 @@ def exiftool():
             command += f" -{tags}"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         command += f" {file_path}"
 
@@ -15430,7 +15467,7 @@ def hashpump():
         command = f"hashpump -s {signature} -d '{data}' -k {key_length} -a '{append_data}'"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting HashPump attack")
         result = execute_command(command)
@@ -15476,7 +15513,7 @@ def hakrawler():
             }), 400
 
         # Build command for standard Kali Linux hakrawler (hakluke version)
-        command = f"echo '{url}' | hakrawler -d {depth}"
+        command = f"echo {_q(url)} | hakrawler -d {depth}"
 
         if forms:
             command += " -s"  # Show sources (includes forms)
@@ -15487,7 +15524,7 @@ def hakrawler():
         command += " -u"
 
         if additional_args:
-            command += f" {additional_args}"
+            command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Hakrawler crawling: {url}")
         result = execute_command(command)
@@ -17296,4 +17333,4 @@ if __name__ == "__main__":
         if line.strip():
             logger.info(line)
 
-    app.run(host="0.0.0.0", port=API_PORT, debug=DEBUG_MODE)
+    app.run(host=API_HOST, port=API_PORT, debug=DEBUG_MODE)
