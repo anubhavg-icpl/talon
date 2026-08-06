@@ -431,7 +431,10 @@ func handleJSEndpointExtract(ctx context.Context, args map[string]any, tr *track
 
 	if source == "" {
 		client := &http.Client{Timeout: 10 * time.Second}
-		req, _ := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+		if err != nil {
+			return fmt.Sprintf("js_endpoint_extract: invalid url %q: %v", urlStr, err), true
+		}
 		req.Header.Set("User-Agent", "Talon-Security-Scanner/1.0")
 		resp, err := client.Do(req)
 		if err != nil {

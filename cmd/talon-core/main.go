@@ -159,7 +159,13 @@ func main() {
 	srv := control.NewServer(orch, store, opts...)
 
 	log.Println("talon-core: listening on :8000")
-	if err := http.ListenAndServe(":8000", srv.Handler()); err != nil {
+	server := &http.Server{
+		Addr:              ":8000",
+		Handler:           srv.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("talon-core: %v", err)
 	}
 }

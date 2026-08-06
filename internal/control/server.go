@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -257,16 +258,22 @@ func corsOriginAllowed(origin string) bool {
 	case "localhost", "127.0.0.1", "::1", "0.0.0.0":
 		return u.Scheme == "http" || u.Scheme == "https"
 	}
-	// Private / lab hosts (e.g. http://192.168.x.x:3100, http://invention:3100)
-	if strings.HasPrefix(host, "192.168.") || strings.HasPrefix(host, "10.") ||
-		strings.HasPrefix(host, "172.16.") || strings.HasPrefix(host, "172.17.") ||
-		strings.HasPrefix(host, "172.18.") || strings.HasPrefix(host, "172.19.") ||
-		strings.HasPrefix(host, "172.2") || strings.HasPrefix(host, "172.3") {
-		return u.Scheme == "http" || u.Scheme == "https"
+	// Strict private-range check via net.ParseIP (replaces buggy string-prefix
+	// matching that over-matched public 172.x addresses).
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			return u.Scheme == "http" || u.Scheme == "https"
+		}
+		return false
 	}
-	// Bare hostnames without dots (e.g. invention) used on lab boxes.
-	if !strings.Contains(host, ".") {
-		return u.Scheme == "http" || u.Scheme == "https"
+	// Allow bare hostnames only on private LAN (e.g. invention, talon-box)
+	// when they don't contain a dot — but not arbitrary single-label DNS
+	// names on networks with a search domain. Restrict to common lab TLDs.
+	if strings.Contains(host, ".") {
+		// Allow .local (mDNS) and .lan domains common in lab setups
+		if strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".lan") {
+			return u.Scheme == "http" || u.Scheme == "https"
+		}
 	}
 	return false
 }
@@ -496,7 +503,12 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Run not found")
 		return
 	}
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="talon-export-%s.json"`, runID[:8]))
+	// bounds-check runID before slicing (handles non-UUID IDs gracefully)
+	shortRunID := runID
+	if len(shortRunID) > 8 {
+		shortRunID = runID[:8]
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="talon-export-%s.json"`, shortRunID))
 	writeJSON(w, http.StatusOK, bundle)
 }
 

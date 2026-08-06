@@ -99,10 +99,16 @@ func (s *EvidenceStore) Record(tool string, keyArgs, content string, status int)
 
 func (s *EvidenceStore) appendCapped(rec EvidenceRecord) {
 	s.records = append(s.records, rec)
-	// Enforce cap: drop oldest non-dedup records
+	// Enforce cap: drop oldest records
 	if len(s.records) > s.maxStore {
-		// Keep the most recent maxStore records
 		s.records = s.records[len(s.records)-s.maxStore:]
+		// Rebuild hashIdx so DuplicateOf links don't dangle after eviction
+		s.hashIdx = make(map[string]string, len(s.records))
+		for _, r := range s.records {
+			if r.ContentHash != "" && r.DuplicateOf == "" {
+				s.hashIdx[r.ContentHash] = r.ID
+			}
+		}
 	}
 }
 
@@ -230,10 +236,11 @@ func clipText(text string, limit int, marker string) string {
 }
 
 func truncateStr(s string, n int) string {
-	if len(s) <= n {
+	runes := []rune(s)
+	if len(runes) <= n {
 		return s
 	}
-	return s[:n]
+	return string(runes[:n])
 }
 
 func oneLine(s string, limit int) string {

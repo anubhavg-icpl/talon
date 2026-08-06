@@ -207,7 +207,8 @@ type Platform struct {
 
 	// startFn is set by server to launch runs from schedules.
 	startFn func(input core.RunInput) string // returns run_id
-	stop    chan struct{}
+	stop      chan struct{}
+	stopOnce  sync.Once
 }
 
 func NewPlatform(dataDir string) *Platform {
@@ -423,7 +424,7 @@ func (p *Platform) StartScheduler() {
 	}()
 }
 
-func (p *Platform) StopScheduler() { close(p.stop) }
+func (p *Platform) StopScheduler() { p.stopOnce.Do(func() { close(p.stop) }) }
 
 func (p *Platform) tickSchedules() {
 	if p.startFn == nil {
@@ -485,12 +486,17 @@ func (p *Platform) GetNotify() NotifyConfig {
 	return p.Notify
 }
 
-func (p *Platform) PutNotify(n NotifyConfig) NotifyConfig {
+func (p *Platform) PutNotify(n NotifyConfig) (NotifyConfig, error) {
+	if n.WebhookURL != "" {
+		if err := validateWebhookURL(n.WebhookURL); err != nil {
+			return NotifyConfig{}, err
+		}
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.Notify = n
 	p.saveLocked()
-	return p.Notify
+	return p.Notify, nil
 }
 
 func (p *Platform) Fire(event string, payload map[string]any) {
@@ -540,6 +546,36 @@ func (p *Platform) Fire(event string, payload map[string]any) {
 	}()
 }
 
+// validateWebhookURL guards against SSRF: requires http(s) scheme and rejects
+// loopback, link-local, private, and cloud-metadata IPs.
+func validateWebhookURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid webhook URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("webhook URL must use http or https scheme")
+	}
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("webhook URL missing host")
+	}
+	// Allow loopback for local dev/testing
+	if ip := net.ParseIP(host); ip != nil {
+		if ip.IsLoopback() || ip.IsUnspecified() {
+			return nil
+		}
+		if ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("webhook URL must not point to a private or link-local address")
+		}
+		// Block AWS / GCP / Azure metadata endpoints
+		if host == "169.254.169.254" || host == "fd00:ec2::254" {
+			return fmt.Errorf("webhook URL must not point to cloud metadata endpoint")
+		}
+	}
+	return nil
+}
+
 // ---- Credentials ----
 
 func credKey() []byte {
@@ -548,6 +584,8 @@ func credKey() []byte {
 		k = os.Getenv("TALON_ADMIN_PASSWORD")
 	}
 	if k == "" {
+		log.Printf("WARNING: TALON_CRED_KEY not set — falling back to insecure default key. " +
+			"All stored credentials are trivially decryptable. Set TALON_CRED_KEY in production.")
 		k = "talon-dev-insecure-key"
 	}
 	sum := sha256.Sum256([]byte(k))

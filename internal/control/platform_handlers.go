@@ -93,7 +93,12 @@ func (s *Server) handlePutNotify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.ensurePlatform().PutNotify(n))
+	result, err := s.ensurePlatform().PutNotify(n)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) handleListCredentials(w http.ResponseWriter, r *http.Request) {
