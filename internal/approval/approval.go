@@ -156,7 +156,7 @@ func New(db *sql.DB) (*ActionStore, error) {
 // The DSN enables WAL journaling and a 5s busy timeout for safe concurrent
 // access, matching the rest of the platform's SQLite usage.
 func Open(dbPath string) (*ActionStore, error) {
-	db, err := sql.Open("sqlite3", dbPath+"?_journal=WAL&_busy_timeout=5000")
+	db, err := sql.Open("sqlite", dbPath+"?_journal=WAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("approval: open %s: %w", dbPath, err)
 	}

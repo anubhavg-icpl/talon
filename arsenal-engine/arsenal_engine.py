@@ -11101,6 +11101,15 @@ def metasploit():
         module = params.get("module", "")
         options = params.get("options", {})
 
+        # Accept options as dict {"KEY": "val"} or string "KEY=val KEY2=val2"
+        if isinstance(options, str):
+            parsed = {}
+            for pair in options.split():
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    parsed[k.strip()] = v.strip()
+            options = parsed
+
         if not module:
             logger.warning(" Metasploit called without module parameter")
             return jsonify({
@@ -12331,7 +12340,7 @@ def ghidra():
             command += f" {_q(additional_args)}"
 
         logger.info(f" Starting Ghidra analysis: {binary}")
-        result = execute_command(command, timeout=analysis_timeout)
+        result = execute_command(command)
         logger.info(f" Ghidra analysis completed for {binary}")
         return jsonify(result)
     except Exception as e:
@@ -12619,7 +12628,7 @@ for func_addr, func in cfg.functions.items():
             command += f" {_q(additional_args)}"
 
         logger.info(f" Starting angr analysis: {binary}")
-        result = execute_command(command, timeout=600)  # Longer timeout for symbolic execution
+        result = execute_command(command)  # Longer timeout for symbolic execution
 
         # Cleanup
         try:
@@ -13198,7 +13207,7 @@ def httpx():
             logger.warning(" httpx called without target parameter")
             return jsonify({"error": "Target parameter is required"}), 400
 
-        command = f"httpx -l {_q(target)} -t {threads}"
+        command = f"httpx -u {_q(target)} -t {threads}"
 
         if probe:
             command += " -probe"
@@ -14461,6 +14470,40 @@ def zap():
         return jsonify({
             "error": f"Server error: {str(e)}"
         }), 500
+
+@app.route("/api/tools/whatweb", methods=["POST"])
+def whatweb():
+    """Execute WhatWeb for web technology fingerprinting."""
+    try:
+        params = request.json or {}
+        target = params.get("target", "")
+        aggression = params.get("aggression", 1)
+        additional_args = params.get("additional_args", "")
+
+        if not target:
+            logger.warning(" WhatWeb called without target parameter")
+            return jsonify({"error": "Target parameter is required"}), 400
+
+        command = f"whatweb -a {_q(str(aggression))} {_q(target)}"
+        if additional_args:
+            command += f" {_q(additional_args)}"
+
+        logger.info(f" Starting WhatWeb scan: {target}")
+        result = execute_command(command)
+        logger.info(f" WhatWeb completed for {target}")
+
+        return jsonify({
+            "tool": "whatweb",
+            "target": target,
+            "command": command,
+            "result": result.get("output", ""),
+            "exit_code": result.get("exit_code", -1),
+            "status": "success" if result.get("exit_code", 1) == 0 else "completed_with_errors"
+        })
+    except Exception as e:
+        logger.error(f" WhatWeb error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/tools/wafw00f", methods=["POST"])
 def wafw00f():

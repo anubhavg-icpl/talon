@@ -17,6 +17,8 @@ import (
 	"github.com/anubhavg-icpl/talon/internal/forge"
 	"github.com/anubhavg-icpl/talon/internal/llm"
 	"github.com/anubhavg-icpl/talon/internal/mcpclient"
+
+	_ "modernc.org/sqlite" // pure-Go SQLite driver for CF subsystems (CGO-free)
 )
 
 // Models are built via the shared llm.NewModel factory (single provider
